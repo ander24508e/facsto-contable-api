@@ -12,6 +12,7 @@ tags:
   - name: Fiscal structure
   - name: Customers
   - name: Catalog
+  - name: Sales
   - name: Setup
 paths:
   /health:
@@ -216,6 +217,72 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "422":
           $ref: "#/components/responses/ValidationError"
+  /api/v1/companies/{company}/logo:
+    parameters:
+      - $ref: "#/components/parameters/CompanyPublicId"
+    get:
+      tags: [Companies]
+      summary: Devuelve el logo privado a miembros activos de la empresa.
+      operationId: getCompanyLogo
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Archivo de imagen del logo.
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        "403":
+          $ref: "#/components/responses/CompanyAccessError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    post:
+      tags: [Companies]
+      summary: Sube o reemplaza el logo de la empresa en almacenamiento privado.
+      operationId: uploadCompanyLogo
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [logo]
+              properties:
+                logo:
+                  type: string
+                  format: binary
+                  description: PNG, JPG o WebP de hasta 3 MB.
+      responses:
+        "200":
+          description: Logo actualizado; la ruta privada no se expone.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyResponse"
+        "403":
+          $ref: "#/components/responses/CompanyAccessError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags: [Companies]
+      summary: Quita el logo de la empresa.
+      operationId: deleteCompanyLogo
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        "200":
+          description: Logo eliminado del almacenamiento privado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyResponse"
+        "403":
+          $ref: "#/components/responses/CompanyAccessError"
   /api/v1/companies/{company}/members:
     parameters:
       - $ref: "#/components/parameters/CompanyPublicId"
@@ -355,6 +422,223 @@ paths:
           }
         "403": { $ref: "#/components/responses/CompanyAccessError" }
         "409": { $ref: "#/components/responses/ConflictError" }
+  /api/v1/dashboard/summary:
+    get:
+      tags: [Sales]
+      summary: Devuelve un resumen operativo agregado para la empresa activa.
+      operationId: getDashboardSummary
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/FacstoCompany"
+      responses:
+        "200":
+          description: Conteos y borradores recientes; no incluye métricas fiscales inexistentes.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DashboardSummaryResponse" }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+  /api/v1/sales:
+    get:
+      tags: [Sales]
+      summary: Lista borradores y ventas canceladas de la empresa activa.
+      operationId: listSales
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/FacstoCompany"
+        - { name: search, in: query, schema: { type: string, maxLength: 120 } }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/SaleStatus" } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        "200":
+          description: Página de ventas de la empresa seleccionada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SalePage" }
+        "401": { $ref: "#/components/responses/AuthenticationError" }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    post:
+      tags: [Sales]
+      summary: Crea un borrador y calcula sus valores en FACSTO API.
+      operationId: createSaleDraft
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - $ref: "#/components/parameters/FacstoCompany"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaleDraftRequest" }
+      responses:
+        "201":
+          description: Borrador guardado con snapshots de cliente, artículo e impuestos.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SaleResponse" }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/sales/{sale}:
+    parameters:
+      - name: sale
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - $ref: "#/components/parameters/FacstoCompany"
+    get:
+      tags: [Sales]
+      summary: Consulta un borrador por UUID público dentro de la empresa activa.
+      operationId: getSale
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: Datos y snapshots del borrador.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SaleResponse" }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "404": { $ref: "#/components/responses/NotFoundError" }
+    patch:
+      tags: [Sales]
+      summary: Recalcula y actualiza un borrador que todavía no fue cancelado.
+      operationId: updateSaleDraft
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaleDraftRequest" }
+      responses:
+        "200":
+          description: Borrador actualizado y recalculado en Laravel.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SaleResponse" }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "404": { $ref: "#/components/responses/NotFoundError" }
+        "409": { $ref: "#/components/responses/ConflictError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/sales/{sale}/cancel:
+    post:
+      tags: [Sales]
+      summary: Cancela un borrador sin eliminarlo físicamente.
+      operationId: cancelSaleDraft
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - name: sale
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/FacstoCompany"
+      responses:
+        "200":
+          description: Borrador marcado como CANCELLED y auditado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SaleResponse" }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "404": { $ref: "#/components/responses/NotFoundError" }
+        "409": { $ref: "#/components/responses/ConflictError" }
+  /api/v1/sales/{sale}/invoice:
+    post:
+      tags: [FiscalDocuments]
+      summary: Convierte un borrador listo en factura numerada; no la envía al SRI.
+      operationId: createInvoiceFromSale
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - { name: sale, in: path, required: true, schema: { type: string, format: uuid } }
+        - $ref: "#/components/parameters/FacstoCompany"
+      responses:
+        "201": { description: Factura numerada, content: { application/json: { schema: { $ref: "#/components/schemas/ElectronicDocumentResponse" } } } }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "409": { $ref: "#/components/responses/ConflictError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/invoices:
+    get:
+      tags: [FiscalDocuments]
+      summary: Lista facturas numeradas de la empresa activa.
+      operationId: listInvoices
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/FacstoCompany"
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/DocumentStatus" } }
+      responses:
+        "200": { description: Página de comprobantes fiscales, content: { application/json: { schema: { $ref: "#/components/schemas/ElectronicDocumentPage" } } } }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+  /api/v1/invoices/{invoice}:
+    get:
+      tags: [FiscalDocuments]
+      summary: Consulta un comprobante mediante su UUID público.
+      operationId: getInvoice
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+        - $ref: "#/components/parameters/FacstoCompany"
+      responses:
+        "200": { description: Identidad fiscal y snapshots, content: { application/json: { schema: { $ref: "#/components/schemas/ElectronicDocumentResponse" } } } }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "404": { $ref: "#/components/responses/NotFoundError" }
+  /api/v1/categories:
+    get:
+      tags: [Catalog]
+      summary: Lista categorías de la empresa activa.
+      operationId: listCategories
+      security: [{ sessionCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/FacstoCompany" }]
+      responses: { "200": { description: Categorías, content: { application/json: { schema: { $ref: "#/components/schemas/CategoryPage" } } } } }
+    post:
+      tags: [Catalog]
+      summary: Crea una categoría de la empresa activa.
+      operationId: createCategory
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters: [{ $ref: "#/components/parameters/FacstoCompany" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CategoryInput" } } } }
+      responses: { "201": { description: Categoría creada, content: { application/json: { schema: { $ref: "#/components/schemas/CategoryResponse" } } } }, "403": { $ref: "#/components/responses/CompanyAccessError" }, "422": { $ref: "#/components/responses/ValidationError" } }
+  /api/v1/categories/{category}:
+    parameters:
+      - { name: category, in: path, required: true, schema: { type: string, format: uuid } }
+      - $ref: "#/components/parameters/FacstoCompany"
+    get:
+      tags: [Catalog]
+      summary: Consulta una categoría de la empresa activa.
+      operationId: getCategory
+      security: [{ sessionCookie: [] }]
+      responses: { "200": { description: Categoría, content: { application/json: { schema: { $ref: "#/components/schemas/CategoryResponse" } } } }, "403": { $ref: "#/components/responses/CompanyAccessError" }, "404": { $ref: "#/components/responses/NotFoundError" } }
+    patch:
+      tags: [Catalog]
+      summary: Actualiza una categoría de la empresa activa.
+      operationId: updateCategory
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CategoryInput" } } } }
+      responses: { "200": { description: Categoría actualizada, content: { application/json: { schema: { $ref: "#/components/schemas/CategoryResponse" } } } }, "403": { $ref: "#/components/responses/CompanyAccessError" }, "404": { $ref: "#/components/responses/NotFoundError" }, "409": { $ref: "#/components/responses/ConflictError" } }
+  /api/v1/categories/{category}/activate:
+    post:
+      tags: [Catalog]
+      summary: Activa una categoría existente.
+      operationId: activateCategory
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters: [{ name: category, in: path, required: true, schema: { type: string, format: uuid } }, { $ref: "#/components/parameters/FacstoCompany" }]
+      responses: { "200": { description: Categoría activada, content: { application/json: { schema: { $ref: "#/components/schemas/CategoryResponse" } } } }, "403": { $ref: "#/components/responses/CompanyAccessError" } }
+  /api/v1/categories/{category}/deactivate:
+    post:
+      tags: [Catalog]
+      summary: Desactiva una categoría sin borrarla físicamente.
+      operationId: deactivateCategory
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters: [{ name: category, in: path, required: true, schema: { type: string, format: uuid } }, { $ref: "#/components/parameters/FacstoCompany" }]
+      responses: { "200": { description: Categoría desactivada, content: { application/json: { schema: { $ref: "#/components/schemas/CategoryResponse" } } } }, "403": { $ref: "#/components/responses/CompanyAccessError" } }
+  /api/v1/fiscal-payment-methods:
+    get:
+      tags: [Catalog]
+      summary: Lista las formas fiscales de pago vigentes; no procesa transacciones.
+      operationId: listFiscalPaymentMethods
+      security: [{ sessionCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/FacstoCompany" }]
+      responses: { "200": { description: Catálogo fiscal global vigente, content: { application/json: { schema: { $ref: "#/components/schemas/FiscalPaymentMethodPage" } } } } }
   /api/v1/setup/status:
     get:
       tags: [Setup]
@@ -1272,15 +1556,156 @@ components:
     CompanySetupState:
       type: string
       enum: [ISSUER_REQUIRED, EMISSION_REQUIRED, CERTIFICATE_REQUIRED, READY]
+    SaleStatus:
+      type: string
+      enum: [DRAFT, DOCUMENT_PREPARED, CANCELLED]
+    DocumentType:
+      type: string
+      enum: [INVOICE]
+    DocumentStatus:
+      type: string
+      enum: [DRAFT, NUMBERED, XML_BUILT, SIGNED, QUEUED, RECEIVED, RETURNED, PENDING_AUTHORIZATION, AUTHORIZED, NOT_AUTHORIZED, FAILED]
+    SalePaymentMethod:
+      type: object
+      required: [fiscalPaymentMethodPublicId, amount]
+      properties:
+        fiscalPaymentMethodPublicId: { type: string, format: uuid }
+        methodCode: { type: string, description: Snapshot que devuelve la API en la venta. }
+        methodName: { type: string, description: Snapshot que devuelve la API en la venta. }
+        amount: { type: string, pattern: '^\d+(\.\d{1,2})?$' }
+        reference: { type: [string, "null"], maxLength: 120 }
+        term: { type: [string, "null"], pattern: '^\d+(\.\d{1,2})?$' }
+        timeUnit: { type: [string, "null"], enum: [DAY, MONTH] }
+    SaleDraftRequest:
+      type: object
+      properties:
+        customerPublicId: { type: [string, "null"], format: uuid }
+        notes: { type: [string, "null"], maxLength: 2000 }
+        lines:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            required: [itemPublicId, quantity]
+            properties:
+              itemPublicId: { type: string, format: uuid }
+              quantity: { type: string, pattern: '^\d{1,9}(\.\d{1,6})?$' }
+              discountAmount: { type: [string, "null"], pattern: '^\d{1,14}(\.\d{1,2})?$' }
+        paymentMethods: { type: array, maxItems: 10, items: { $ref: "#/components/schemas/SalePaymentMethod" } }
+    SaleLine:
+      type: object
+      properties:
+        publicId: { type: string, format: uuid }
+        itemPublicId: { type: [string, "null"], format: uuid }
+        itemCode: { type: string }
+        itemName: { type: string }
+        unit: { type: string }
+        quantity: { type: string }
+        unitPrice: { type: string }
+        discountAmount: { type: string }
+        subtotal: { type: string }
+        taxableBase: { type: string }
+        taxTotal: { type: string }
+        total: { type: string }
+        taxes: { type: array, items: { type: object } }
+        paymentMethods: { type: array, items: { type: object } }
+    Sale:
+      type: object
+      required: [publicId, status, customer, subtotal, discountTotal, taxTotal, total, currency, createdAt]
+      properties:
+        publicId: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/SaleStatus" }
+        customer: { type: object, properties: { publicId: { type: [string, "null"], format: uuid }, identificationType: { type: string }, identification: { type: string }, name: { type: string }, address: { type: [string, "null"] }, email: { type: [string, "null"] } } }
+        createdBy: { type: [string, "null"] }
+        notes: { type: [string, "null"] }
+        subtotal: { type: string }
+        discountTotal: { type: string }
+        taxTotal: { type: string }
+        total: { type: string }
+        currency: { type: string, const: USD }
+        lines: { type: array, items: { $ref: "#/components/schemas/SaleLine" } }
+        paymentMethods: { type: array, items: { $ref: "#/components/schemas/SalePaymentMethod" } }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    SaleResponse:
+      type: object
+      properties: { data: { $ref: "#/components/schemas/Sale" } }
+    SalePage:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/Sale" } }
+        links: { type: object }
+        meta: { type: object }
+    DashboardSummaryResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            counts:
+              type: object
+              properties:
+                customers: { type: integer }
+                activeCustomers: { type: integer }
+                items: { type: integer }
+                activeItems: { type: integer }
+                draftSales: { type: integer }
+            recentSales: { type: array, items: { $ref: "#/components/schemas/Sale" } }
     CompanySetupStatus:
       type: object
-      required: [state, issuerReady, emissionReady, certificateReady, deferred]
+      required: [state, ready, canIssueDocuments, issuerReady, emissionReady, certificateReady, deferred]
       properties:
         state: { $ref: "#/components/schemas/CompanySetupState" }
+        ready: { type: boolean }
+        canIssueDocuments: { type: boolean }
         issuerReady: { type: boolean }
         emissionReady: { type: boolean }
         certificateReady: { type: boolean }
         deferred: { type: boolean, description: Indica si la empresa pospuso el asistente; no implica readiness fiscal. }
+    CategoryInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 120 }
+        description: { type: [string, "null"], maxLength: 1000 }
+    Category:
+      allOf:
+        - $ref: "#/components/schemas/CategoryInput"
+        - type: object
+          properties: { publicId: { type: string, format: uuid }, isActive: { type: boolean } }
+    CategoryResponse:
+      type: object
+      properties: { data: { $ref: "#/components/schemas/Category" } }
+    CategoryPage:
+      type: object
+      properties: { data: { type: array, items: { $ref: "#/components/schemas/Category" } }, meta: { type: object }, links: { type: object } }
+    FiscalPaymentMethod:
+      type: object
+      properties: { publicId: { type: string, format: uuid }, code: { type: string }, name: { type: string }, validFrom: { type: string, format: date }, validUntil: { type: [string, "null"], format: date } }
+    FiscalPaymentMethodPage:
+      type: object
+      properties: { data: { type: array, items: { $ref: "#/components/schemas/FiscalPaymentMethod" } }, meta: { type: object }, links: { type: object } }
+    ElectronicDocument:
+      type: object
+      required: [publicId, documentType, fullNumber, accessKey, issueDate, status, customer, totals]
+      properties:
+        publicId: { type: string, format: uuid }
+        documentType: { $ref: "#/components/schemas/DocumentType" }
+        fullNumber: { type: string, pattern: '^\d{3}-\d{3}-\d{9}$' }
+        sequential: { type: string, pattern: '^\d{9}$' }
+        accessKey: { type: string, pattern: '^\d{49}$' }
+        issueDate: { type: string, format: date }
+        status: { $ref: "#/components/schemas/DocumentStatus" }
+        customer: { type: object }
+        totals: { type: object }
+        lines: { type: array, items: { type: object } }
+        taxes: { type: array, items: { type: object } }
+    ElectronicDocumentResponse:
+      type: object
+      properties: { data: { $ref: "#/components/schemas/ElectronicDocument" } }
+    ElectronicDocumentPage:
+      type: object
+      properties: { data: { type: array, items: { $ref: "#/components/schemas/ElectronicDocument" } }, meta: { type: object }, links: { type: object } }
     CompanySetupStatusResponse:
       type: object
       properties: { data: { $ref: "#/components/schemas/CompanySetupStatus" } }
@@ -1382,7 +1807,7 @@ components:
       enum: [OWNER, ADMIN, BILLER, VIEWER]
     Company:
       type: object
-      required: [publicId, accountingRequired, status, role]
+      required: [publicId, accountingRequired, status, role, hasLogo, sriEnvironment]
       properties:
         publicId: { type: string, format: uuid }
         ruc: { type: [string, "null"], pattern: '^\d{13}$' }
@@ -1392,6 +1817,8 @@ components:
         email: { type: [string, "null"], format: email }
         phone: { type: [string, "null"] }
         accountingRequired: { type: boolean }
+        hasLogo: { type: boolean }
+        sriEnvironment: { type: [string, "null"], enum: [TEST, PRODUCTION, null] }
         status: { type: string, enum: [ACTIVE, DISABLED] }
         role: { $ref: "#/components/schemas/CompanyRole" }
     CompanyWrite:

@@ -1,0 +1,67 @@
+<?php
+
+namespace App\Http\Resources\Api\V1;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+final class SaleResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            'publicId' => $this->public_id,
+            'status' => $this->status->value,
+            'customer' => [
+                'publicId' => $this->customer?->public_id,
+                'identificationType' => $this->customer_identification_type,
+                'identification' => $this->customer_identification,
+                'name' => $this->customer_name,
+                'address' => $this->customer_address,
+                'email' => $this->customer_email,
+            ],
+            'createdBy' => $this->creator?->name,
+            'notes' => $this->notes,
+            'subtotal' => $this->subtotal,
+            'discountTotal' => $this->discount_total,
+            'taxTotal' => $this->tax_total,
+            'total' => $this->total,
+            'currency' => $this->currency,
+            'lines' => $this->whenLoaded('details', fn () => $this->details->map(fn ($line): array => [
+                'publicId' => $line->public_id,
+                'itemPublicId' => $line->item?->public_id,
+                'itemCode' => $line->item_code,
+                'auxiliaryCode' => $line->auxiliary_code,
+                'itemName' => $line->item_name,
+                'unit' => $line->unit,
+                'quantity' => $line->quantity,
+                'unitPrice' => $line->unit_price,
+                'discountAmount' => $line->discount_amount,
+                'subtotal' => $line->subtotal,
+                'taxableBase' => $line->taxable_base,
+                'taxTotal' => $line->tax_total,
+                'total' => $line->total,
+                'taxes' => $line->taxes->map(fn ($tax): array => [
+                    'taxType' => $tax->tax_type,
+                    'sriCode' => $tax->sri_code,
+                    'percentageCode' => $tax->percentage_code,
+                    'name' => $tax->tax_name,
+                    'percentage' => $tax->percentage,
+                    'taxableBase' => $tax->taxable_base,
+                    'amount' => $tax->tax_amount,
+                ])->values(),
+            ])->values()),
+            'paymentMethods' => $this->whenLoaded('paymentMethods', fn () => $this->paymentMethods->map(fn ($method): array => [
+                'fiscalPaymentMethodPublicId' => $method->fiscalPaymentMethod?->public_id,
+                'methodCode' => $method->method_code,
+                'methodName' => $method->method_name,
+                'amount' => $method->amount,
+                'reference' => $method->reference,
+                'term' => $method->term,
+                'timeUnit' => $method->time_unit,
+            ])->values()),
+            'createdAt' => $this->created_at?->toIso8601String(),
+            'updatedAt' => $this->updated_at?->toIso8601String(),
+        ];
+    }
+}

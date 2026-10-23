@@ -22,7 +22,7 @@ final class ItemController extends Controller
     public function index(Request $request, CompanyContext $context): AnonymousResourceCollection
     {
         $this->authorize('viewAny', Item::class);
-        $query = $context->company()->items()->with('taxes')->orderBy('name');
+        $query = $context->company()->items()->with(['taxes', 'category'])->orderBy('name');
         if ($search = trim((string) $request->query('search'))) {
             $query->where(fn ($q) => $q->whereRaw('LOWER(name) LIKE ?', ['%'.strtolower($search).'%'])->orWhereRaw('LOWER(internal_code) LIKE ?', ['%'.strtolower($search).'%']));
         }
@@ -50,7 +50,7 @@ final class ItemController extends Controller
     {
         $this->authorize('view', $item);
 
-        return new ItemResource($item->load('taxes'));
+        return new ItemResource($item->load(['taxes', 'category']));
     }
 
     public function update(UpdateItemRequest $request, Item $item, UpdateItemAction $update): ItemResource
@@ -83,7 +83,7 @@ final class ItemController extends Controller
 
     private function attributes(array $data): array
     {
-        foreach (['internalCode' => 'internal_code', 'auxiliaryCode' => 'auxiliary_code', 'salePrice' => 'sale_price'] as $source => $target) {
+        foreach (['internalCode' => 'internal_code', 'auxiliaryCode' => 'auxiliary_code', 'salePrice' => 'sale_price', 'categoryPublicId' => 'category_public_id'] as $source => $target) {
             if (array_key_exists($source, $data)) {
                 $data[$target] = $data[$source];
             }

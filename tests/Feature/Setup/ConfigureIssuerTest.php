@@ -37,7 +37,7 @@ final class ConfigureIssuerTest extends SetupTestCase
         $this->actingAs($owner)
             ->withHeaders($this->companyHeader($company))
             ->putJson('/api/v1/setup/issuer', [
-                'ruc' => '1799999999001',
+                'ruc' => '1790016919001',
                 'legalName' => 'Sociedad privada de prueba',
                 'mainAddress' => 'Quito, Ecuador',
             ])

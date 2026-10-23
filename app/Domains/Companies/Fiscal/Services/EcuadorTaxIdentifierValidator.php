@@ -23,7 +23,8 @@ final class EcuadorTaxIdentifierValidator
 
         return match (true) {
             $type <= 5 => $this->validNaturalPersonRuc($ruc),
-            $type === 6 || $type === 9 => true,
+            $type === 6 => $this->validEntityRuc(substr($ruc, 0, 8), (int) $ruc[8], [3, 2, 7, 6, 5, 4, 3, 2]),
+            $type === 9 => $this->validEntityRuc(substr($ruc, 0, 9), (int) $ruc[9], [4, 3, 2, 7, 6, 5, 4, 3, 2]),
             default => false,
         };
     }
@@ -41,5 +42,21 @@ final class EcuadorTaxIdentifierValidator
         $checkDigit = (10 - ($sum % 10)) % 10;
 
         return $checkDigit === (int) $cedula[9];
+    }
+
+    /** @param list<int> $weights */
+    private function validEntityRuc(string $base, int $providedCheckDigit, array $weights): bool
+    {
+        $sum = 0;
+        foreach ($weights as $index => $weight) {
+            $sum += (int) $base[$index] * $weight;
+        }
+
+        $checkDigit = 11 - ($sum % 11);
+        if ($checkDigit === 11) {
+            $checkDigit = 0;
+        }
+
+        return $checkDigit < 10 && $checkDigit === $providedCheckDigit;
     }
 }

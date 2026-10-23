@@ -23,11 +23,12 @@ final class StoreItemRequest extends FormRequest
             'description' => ['nullable', 'string'],
             'unit' => ['required', 'string', 'max:32'],
             'salePrice' => ['required', 'string', 'regex:/^\d{1,12}(\.\d{1,6})?$/'],
+            'categoryPublicId' => ['nullable', 'uuid'],
         ];
     }
 
     protected function prepareForValidation(): void
     {
-        $this->merge(['internal_code' => $this->input('internalCode'), 'auxiliary_code' => $this->input('auxiliaryCode'), 'sale_price' => $this->input('salePrice')]);
+        $this->merge(['internal_code' => $this->input('internalCode'), 'auxiliary_code' => $this->input('auxiliaryCode'), 'sale_price' => $this->input('salePrice'), 'category_public_id' => $this->input('categoryPublicId')]);
     }
 }

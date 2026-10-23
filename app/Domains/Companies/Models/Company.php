@@ -2,11 +2,13 @@
 
 namespace App\Domains\Companies\Models;
 
+use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\Item;
 use App\Domains\Certificates\Models\DigitalCertificate;
 use App\Domains\Companies\Enums\CompanyStatus;
 use App\Domains\Companies\Fiscal\Models\CompanyFiscalSettings;
 use App\Domains\Customers\Models\Customer;
+use App\Domains\Sales\Models\Sale;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
@@ -15,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
-#[Fillable(['ruc', 'legal_name', 'commercial_name', 'main_address', 'email', 'phone', 'status'])]
+#[Fillable(['ruc', 'legal_name', 'commercial_name', 'main_address', 'email', 'phone', 'logo_path', 'status'])]
 class Company extends Model
 {
     protected static function booted(): void
@@ -63,6 +65,16 @@ class Company extends Model
     public function items(): HasMany
     {
         return $this->hasMany(Item::class);
+    }
+
+    public function categories(): HasMany
+    {
+        return $this->hasMany(Category::class);
+    }
+
+    public function sales(): HasMany
+    {
+        return $this->hasMany(Sale::class);
     }
 
     public function users(): BelongsToMany

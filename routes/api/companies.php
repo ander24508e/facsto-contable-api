@@ -16,6 +16,9 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('/companies', [CompanyController::class, 'store'])->middleware('throttle:30,1');
     Route::get('/companies/{company}', [CompanyController::class, 'show']);
     Route::patch('/companies/{company}', [CompanyController::class, 'update']);
+    Route::get('/companies/{company}/logo', [CompanyController::class, 'logo']);
+    Route::post('/companies/{company}/logo', [CompanyController::class, 'updateLogo'])->middleware('throttle:10,1');
+    Route::delete('/companies/{company}/logo', [CompanyController::class, 'deleteLogo']);
     Route::post('/companies/{company}/members', [CompanyMemberController::class, 'store']);
     Route::delete('/companies/{company}/members/{userPublicId}', [CompanyMemberController::class, 'destroy']);
     Route::post('/companies/{company}/members/{userPublicId}/reactivate', [CompanyMemberController::class, 'reactivate']);

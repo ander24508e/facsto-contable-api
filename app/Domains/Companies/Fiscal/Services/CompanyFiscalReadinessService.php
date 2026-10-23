@@ -31,12 +31,15 @@ final class CompanyFiscalReadinessService
 
     public function summary(Company $company): array
     {
+        $state = $this->state($company);
         $issuerReady = $this->issuerIsReady($company);
         $emissionReady = $issuerReady && $this->emissionIsReady($company);
         $certificateReady = $emissionReady && $this->certificateIsReady($company);
 
         return [
-            'state' => $this->state($company)->value,
+            'state' => $state->value,
+            'ready' => $state === CompanySetupState::READY,
+            'canIssueDocuments' => $state === CompanySetupState::READY,
             'issuerReady' => $issuerReady,
             'emissionReady' => $emissionReady,
             'certificateReady' => $certificateReady,

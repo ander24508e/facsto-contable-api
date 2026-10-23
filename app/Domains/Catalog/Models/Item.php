@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Support\Str;
 
-#[Fillable(['company_id', 'type', 'internal_code', 'auxiliary_code', 'name', 'description', 'unit', 'sale_price', 'is_active'])]
+#[Fillable(['company_id', 'category_id', 'type', 'internal_code', 'auxiliary_code', 'name', 'description', 'unit', 'sale_price', 'is_active'])]
 class Item extends Model
 {
     protected static function booted(): void
@@ -31,6 +31,11 @@ class Item extends Model
     public function taxes(): BelongsToMany
     {
         return $this->belongsToMany(Tax::class, 'item_taxes')->withTimestamps();
+    }
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
     }
 
     protected function casts(): array

@@ -22,7 +22,9 @@ final class CompanyResource extends JsonResource
             'mainAddress' => $company->main_address,
             'email' => $company->email,
             'phone' => $company->phone,
+            'hasLogo' => $company->logo_path !== null,
             'accountingRequired' => $company->fiscalSettings?->accounting_required ?? false,
+            'sriEnvironment' => $company->fiscalSettings?->sri_environment?->value,
             'status' => $company->status->value,
             'role' => $membership?->role->value,
         ];
