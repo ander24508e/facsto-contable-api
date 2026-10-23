@@ -1,0 +1,37 @@
+<?php
+
+namespace App\Providers;
+
+use App\Domains\Catalog\Models\Item;
+use App\Domains\Catalog\Models\Tax;
+use App\Domains\Catalog\Policies\ItemPolicy;
+use App\Domains\Catalog\Policies\TaxPolicy;
+use App\Domains\Companies\Context\CompanyContext;
+use App\Domains\Companies\Models\Company;
+use App\Domains\Companies\Policies\CompanyPolicy;
+use App\Domains\Customers\Models\Customer;
+use App\Domains\Customers\Policies\CustomerPolicy;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\ServiceProvider;
+
+class AppServiceProvider extends ServiceProvider
+{
+    /**
+     * Register any application services.
+     */
+    public function register(): void
+    {
+        $this->app->scoped(CompanyContext::class);
+    }
+
+    /**
+     * Bootstrap any application services.
+     */
+    public function boot(): void
+    {
+        Gate::policy(Company::class, CompanyPolicy::class);
+        Gate::policy(Customer::class, CustomerPolicy::class);
+        Gate::policy(Item::class, ItemPolicy::class);
+        Gate::policy(Tax::class, TaxPolicy::class);
+    }
+}

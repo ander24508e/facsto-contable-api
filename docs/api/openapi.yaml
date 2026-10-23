@@ -1,0 +1,1487 @@
+openapi: 3.1.0
+info:
+  title: FACSTO API
+  version: 1.0.0
+  description: API fiscal de FACSTO. La autenticación de FACSTO Web usa cookies de sesión y CSRF.
+servers:
+  - url: http://localhost:8000
+tags:
+  - name: System
+  - name: Authentication
+  - name: Companies
+  - name: Fiscal structure
+  - name: Customers
+  - name: Catalog
+  - name: Setup
+paths:
+  /health:
+    get:
+      tags: [System]
+      summary: Comprueba la disponibilidad de FACSTO y sus dependencias.
+      operationId: getHealth
+      security: []
+      responses:
+        "200":
+          description: API, PostgreSQL, Redis y almacenamiento privado disponibles.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: Una o más dependencias no están disponibles.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /sanctum/csrf-cookie:
+    get:
+      tags: [Authentication]
+      summary: Inicializa las cookies CSRF para la sesión SPA.
+      operationId: initializeCsrf
+      security: []
+      responses:
+        "204":
+          description: Laravel emitió las cookies XSRF-TOKEN y de sesión.
+  /register:
+    post:
+      tags: [Authentication]
+      summary: Registra un usuario FACSTO e inicia su sesión.
+      operationId: register
+      security:
+        - csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Usuario creado y sesión iniciada.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "419":
+          $ref: "#/components/responses/CsrfError"
+  /login:
+    post:
+      tags: [Authentication]
+      summary: Autentica al usuario y establece la cookie de sesión.
+      operationId: login
+      security:
+        - csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Sesión iniciada.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "419":
+          $ref: "#/components/responses/CsrfError"
+  /logout:
+    post:
+      tags: [Authentication]
+      summary: Cierra la sesión FACSTO actual.
+      operationId: logout
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        "200":
+          description: Sesión cerrada.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      message: { type: string }
+        "401":
+          $ref: "#/components/responses/AuthenticationError"
+        "419":
+          $ref: "#/components/responses/CsrfError"
+  /api/v1/me:
+    get:
+      tags: [Authentication]
+      summary: Devuelve el usuario de la sesión actual.
+      operationId: getCurrentUser
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Usuario autenticado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "401":
+          $ref: "#/components/responses/AuthenticationError"
+  /api/v1/companies:
+    get:
+      tags: [Companies]
+      summary: Lista las empresas con membresía activa para el usuario.
+      operationId: listCompanies
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Empresas accesibles.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyCollection"
+        "401":
+          $ref: "#/components/responses/AuthenticationError"
+    post:
+      tags: [Companies]
+      summary: Crea una empresa y asigna al usuario actual como OWNER.
+      operationId: createCompany
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompanyWrite"
+      responses:
+        "201":
+          description: Empresa y membresía OWNER creadas en una transacción.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyResponse"
+        "401":
+          $ref: "#/components/responses/AuthenticationError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/companies/{company}:
+    parameters:
+      - $ref: "#/components/parameters/CompanyPublicId"
+    get:
+      tags: [Companies]
+      summary: Consulta una empresa accesible mediante su UUID público.
+      operationId: getCompany
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Empresa solicitada.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyResponse"
+        "403":
+          $ref: "#/components/responses/CompanyAccessError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    patch:
+      tags: [Companies]
+      summary: Actualiza una empresa con permisos de ADMIN u OWNER.
+      operationId: updateCompany
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompanyPatch"
+      responses:
+        "200":
+          description: Empresa actualizada.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyResponse"
+        "403":
+          $ref: "#/components/responses/CompanyAccessError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/companies/{company}/members:
+    parameters:
+      - $ref: "#/components/parameters/CompanyPublicId"
+    post:
+      tags: [Companies]
+      summary: Agrega un usuario a la empresa con un rol local.
+      operationId: addCompanyMember
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userPublicId, role]
+              properties:
+                userPublicId: { type: string, format: uuid }
+                role: { $ref: "#/components/schemas/CompanyRole" }
+      responses:
+        "201":
+          description: Membresía creada.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipResponse"
+        "403":
+          $ref: "#/components/responses/CompanyAccessError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/companies/{company}/members/{userPublicId}:
+    parameters:
+      - $ref: "#/components/parameters/CompanyPublicId"
+      - name: userPublicId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [Companies]
+      summary: Desactiva la membresía, protegiendo al último OWNER activo.
+      operationId: removeCompanyMember
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        "200":
+          description: Membresía desactivada.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      isActive: { type: boolean, const: false }
+        "403":
+          $ref: "#/components/responses/CompanyAccessError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+  /api/v1/companies/{company}/members/{userPublicId}/reactivate:
+    parameters:
+      - $ref: "#/components/parameters/CompanyPublicId"
+      - {
+          name: userPublicId,
+          in: path,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    post:
+      tags: [Companies]
+      summary: Reactiva la membresía conservada de un usuario.
+      operationId: reactivateCompanyMember
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      responses:
+        "200":
+          {
+            description: Membresía reactivada,
+            content:
+              {
+                application/json:
+                  {
+                    schema: { $ref: "#/components/schemas/MembershipResponse" },
+                  },
+              },
+          }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "404": { $ref: "#/components/responses/NotFoundError" }
+        "409": { $ref: "#/components/responses/ConflictError" }
+  /api/v1/companies/{company}/members/{userPublicId}/role:
+    parameters:
+      - $ref: "#/components/parameters/CompanyPublicId"
+      - {
+          name: userPublicId,
+          in: path,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    patch:
+      tags: [Companies]
+      summary: Cambia un rol respetando la jerarquía OWNER y ADMIN.
+      operationId: updateCompanyMemberRole
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      required: [role],
+                      properties:
+                        { role: { $ref: "#/components/schemas/CompanyRole" } },
+                    },
+                },
+            },
+        }
+      responses:
+        "200":
+          {
+            description: Rol actualizado,
+            content:
+              {
+                application/json:
+                  {
+                    schema: { $ref: "#/components/schemas/MembershipResponse" },
+                  },
+              },
+          }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "409": { $ref: "#/components/responses/ConflictError" }
+  /api/v1/setup/status:
+    get:
+      tags: [Setup]
+      summary: Calcula el estado real de configuracion fiscal de la empresa activa.
+      operationId: getCompanySetupStatus
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/FacstoCompany"
+      responses:
+        "200":
+          description: Estado calculado por FACSTO API.
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/CompanySetupStatusResponse" }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+  /api/v1/setup/defer:
+    post:
+      tags: [Setup]
+      summary: Posponer la configuracion fiscal inicial de la empresa activa.
+      operationId: deferCompanySetup
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - $ref: "#/components/parameters/FacstoCompany"
+      responses:
+        "200":
+          description: La configuracion queda pospuesta y su estado fiscal conserva el valor real.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CompanySetupStatusResponse" }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+  /api/v1/setup/resume:
+    post:
+      tags: [Setup]
+      summary: Reanudar la configuracion fiscal inicial de la empresa activa.
+      operationId: resumeCompanySetup
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - $ref: "#/components/parameters/FacstoCompany"
+      responses:
+        "200":
+          description: Devuelve el paso pendiente calculado por FACSTO API.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CompanySetupStatusResponse" }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+  /api/v1/setup/issuer:
+    put:
+      tags: [Setup]
+      summary: Configura la identidad fiscal del emisor.
+      operationId: configureIssuer
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - $ref: "#/components/parameters/FacstoCompany"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IssuerConfiguration" }
+      responses:
+        "200":
+          description: Configuracion guardada y estado recalculado.
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/CompanySetupStatusResponse" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/setup/emission:
+    put:
+      tags: [Setup]
+      summary: Configura establecimiento matriz, punto predeterminado y ambiente SRI.
+      operationId: configureEmissionStructure
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - $ref: "#/components/parameters/FacstoCompany"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EmissionConfiguration" }
+      responses:
+        "200":
+          description: Estructura guardada y estado recalculado.
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/CompanySetupStatusResponse" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/setup/certificate:
+    post:
+      tags: [Setup]
+      summary: Inspecciona y almacena un certificado P12/PFX en almacenamiento privado.
+      operationId: uploadDigitalCertificate
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - $ref: "#/components/parameters/FacstoCompany"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: "#/components/schemas/UploadCertificateRequest" }
+      responses:
+        "201":
+          description: Resumen del certificado sin rutas privadas ni secretos.
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/DigitalCertificateResponse" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/setup/certificate/{certificate}:
+    delete:
+      tags: [Setup]
+      summary: Desactiva un certificado de la empresa activa sin borrar su metadata.
+      operationId: deactivateDigitalCertificate
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - $ref: "#/components/parameters/FacstoCompany"
+        - name: certificate
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Certificado desactivado.
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/DigitalCertificateResponse" }
+        "404": { $ref: "#/components/responses/NotFoundError" }
+  /api/v1/establishments:
+    get:
+      tags: [Fiscal structure]
+      summary: Lista establecimientos de la empresa indicada en el contexto.
+      operationId: listEstablishments
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/FacstoCompany"
+      responses:
+        "200":
+          description: Establecimientos de la empresa activa.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstablishmentCollection"
+        "401":
+          $ref: "#/components/responses/AuthenticationError"
+        "403":
+          $ref: "#/components/responses/CompanyAccessError"
+    post:
+      tags: [Fiscal structure]
+      summary: Crea un establecimiento para la empresa activa.
+      operationId: createEstablishment
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/FacstoCompany"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name, address]
+              properties:
+                code: { type: string, pattern: '^\d{3}$' }
+                name: { type: string, maxLength: 150 }
+                address: { type: string, maxLength: 255 }
+                isActive: { type: boolean, default: true }
+      responses:
+        "201":
+          description: Establecimiento creado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstablishmentResponse"
+        "403":
+          $ref: "#/components/responses/CompanyAccessError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/establishments/{establishment}:
+    parameters:
+      - name: establishment
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Fiscal structure]
+      summary: Actualiza un establecimiento de la empresa activa.
+      operationId: updateEstablishment
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/FacstoCompany"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code: { type: string, pattern: '^\d{3}$' }
+                name: { type: string, maxLength: 150 }
+                address: { type: string, maxLength: 255 }
+                isActive: { type: boolean }
+      responses:
+        "200":
+          description: Establecimiento actualizado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstablishmentResponse"
+        "403":
+          $ref: "#/components/responses/CompanyAccessError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/emission-points:
+    get:
+      tags: [Fiscal structure]
+      summary: Lista puntos de emisión de la empresa activa.
+      operationId: listEmissionPoints
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/FacstoCompany"
+      responses:
+        "200":
+          description: Puntos de emisión de la empresa activa.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmissionPointCollection"
+        "401":
+          $ref: "#/components/responses/AuthenticationError"
+        "403":
+          $ref: "#/components/responses/CompanyAccessError"
+    post:
+      tags: [Fiscal structure]
+      summary: Crea un punto de emisión dentro de un establecimiento de la empresa activa.
+      operationId: createEmissionPoint
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/FacstoCompany"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [establishmentPublicId, code, name]
+              properties:
+                establishmentPublicId: { type: string, format: uuid }
+                code: { type: string, pattern: '^\d{3}$' }
+                name: { type: string, maxLength: 150 }
+                isActive: { type: boolean, default: true }
+      responses:
+        "201":
+          description: Punto de emisión creado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmissionPointResponse"
+        "403":
+          $ref: "#/components/responses/CompanyAccessError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/emission-points/{emissionPoint}:
+    parameters:
+      - name: emissionPoint
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Fiscal structure]
+      summary: Actualiza un punto de emisión de la empresa activa.
+      operationId: updateEmissionPoint
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/FacstoCompany"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code: { type: string, pattern: '^\d{3}$' }
+                name: { type: string, maxLength: 150 }
+                isActive: { type: boolean }
+      responses:
+        "200":
+          description: Punto de emisión actualizado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmissionPointResponse"
+        "403":
+          $ref: "#/components/responses/CompanyAccessError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/customers:
+    get:
+      tags: [Customers]
+      summary: Lista clientes de la empresa activa con filtros y paginación.
+      operationId: listCustomers
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/FacstoCompany"
+        - { name: search, in: query, schema: { type: string } }
+        - {
+            name: identification_type,
+            in: query,
+            schema: { $ref: "#/components/schemas/IdentificationType" },
+          }
+        - {
+            name: status,
+            in: query,
+            schema: { type: string, enum: [ACTIVE, INACTIVE] },
+          }
+        - {
+            name: per_page,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 15 },
+          }
+      responses:
+        "200":
+          {
+            description: Clientes paginados,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/CustomerPage" } },
+              },
+          }
+        "401": { $ref: "#/components/responses/AuthenticationError" }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+    post:
+      tags: [Customers]
+      summary: Crea un cliente para la empresa activa.
+      operationId: createCustomer
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters: [{ $ref: "#/components/parameters/FacstoCompany" }]
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    { $ref: "#/components/schemas/CreateCustomerRequest" },
+                },
+            },
+        }
+      responses:
+        "201":
+          {
+            description: Cliente creado,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/CustomerResponse" } },
+              },
+          }
+        "409": { $ref: "#/components/responses/ConflictError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/customers/{customer}:
+    parameters:
+      - {
+          name: customer,
+          in: path,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+      - { $ref: "#/components/parameters/FacstoCompany" }
+    get:
+      tags: [Customers]
+      summary: Consulta un cliente de la empresa activa.
+      operationId: getCustomer
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          {
+            description: Cliente,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/CustomerResponse" } },
+              },
+          }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "404": { $ref: "#/components/responses/NotFoundError" }
+    patch:
+      tags: [Customers]
+      summary: Actualiza un cliente sin cambiar su empresa propietaria.
+      operationId: updateCustomer
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    { $ref: "#/components/schemas/UpdateCustomerRequest" },
+                },
+            },
+        }
+      responses:
+        "200":
+          {
+            description: Cliente actualizado,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/CustomerResponse" } },
+              },
+          }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "409": { $ref: "#/components/responses/ConflictError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/customers/{customer}/activate:
+    post:
+      tags: [Customers]
+      summary: Activa un cliente previamente desactivado.
+      operationId: activateCustomer
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        [
+          {
+            name: customer,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          },
+          { $ref: "#/components/parameters/FacstoCompany" },
+        ]
+      responses:
+        "200":
+          {
+            description: Cliente activo,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/CustomerResponse" } },
+              },
+          }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+  /api/v1/customers/{customer}/deactivate:
+    post:
+      tags: [Customers]
+      summary: Desactiva un cliente sin borrarlo físicamente.
+      operationId: deactivateCustomer
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        [
+          {
+            name: customer,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          },
+          { $ref: "#/components/parameters/FacstoCompany" },
+        ]
+      responses:
+        "200":
+          {
+            description: Cliente inactivo,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/CustomerResponse" } },
+              },
+          }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+  /api/v1/items:
+    get:
+      tags: [Catalog]
+      summary: Lista artículos de la empresa activa con filtros y paginación.
+      operationId: listItems
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/FacstoCompany"
+        - { name: search, in: query, schema: { type: string } }
+        - {
+            name: type,
+            in: query,
+            schema: { $ref: "#/components/schemas/ItemType" },
+          }
+        - {
+            name: status,
+            in: query,
+            schema: { type: string, enum: [ACTIVE, INACTIVE] },
+          }
+        - {
+            name: per_page,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 15 },
+          }
+      responses:
+        "200":
+          {
+            description: Artículos paginados,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/ItemPage" } },
+              },
+          }
+    post:
+      tags: [Catalog]
+      summary: Crea un producto o servicio con precio decimal.
+      operationId: createItem
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters: [{ $ref: "#/components/parameters/FacstoCompany" }]
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                { schema: { $ref: "#/components/schemas/CreateItemRequest" } },
+            },
+        }
+      responses:
+        "201":
+          {
+            description: Artículo creado,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/ItemResponse" } },
+              },
+          }
+        "409": { $ref: "#/components/responses/ConflictError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/items/{item}:
+    parameters:
+      - {
+          name: item,
+          in: path,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+      - { $ref: "#/components/parameters/FacstoCompany" }
+    get:
+      tags: [Catalog]
+      summary: Consulta un artículo de la empresa activa.
+      operationId: getItem
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          {
+            description: Artículo,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/ItemResponse" } },
+              },
+          }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+    patch:
+      tags: [Catalog]
+      summary: Actualiza un artículo.
+      operationId: updateItem
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                { schema: { $ref: "#/components/schemas/UpdateItemRequest" } },
+            },
+        }
+      responses:
+        "200":
+          {
+            description: Artículo actualizado,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/ItemResponse" } },
+              },
+          }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "409": { $ref: "#/components/responses/ConflictError" }
+  /api/v1/items/{item}/activate:
+    post:
+      tags: [Catalog]
+      summary: Activa un producto o servicio.
+      operationId: activateItem
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        [
+          {
+            name: item,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          },
+          { $ref: "#/components/parameters/FacstoCompany" },
+        ]
+      responses:
+        {
+          "200":
+            {
+              description: Artículo actualizado,
+              content:
+                {
+                  application/json:
+                    { schema: { $ref: "#/components/schemas/ItemResponse" } },
+                },
+            },
+        }
+  /api/v1/items/{item}/deactivate:
+    post:
+      tags: [Catalog]
+      summary: Desactiva un artículo sin borrarlo físicamente.
+      operationId: deactivateItem
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        [
+          {
+            name: item,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          },
+          { $ref: "#/components/parameters/FacstoCompany" },
+        ]
+      responses:
+        {
+          "200":
+            {
+              description: Artículo actualizado,
+              content:
+                {
+                  application/json:
+                    { schema: { $ref: "#/components/schemas/ItemResponse" } },
+                },
+            },
+        }
+  /api/v1/items/{item}/taxes:
+    put:
+      tags: [Catalog]
+      summary: Asigna únicamente tasas globales vigentes al artículo.
+      operationId: syncItemTaxes
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        [
+          {
+            name: item,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          },
+          { $ref: "#/components/parameters/FacstoCompany" },
+        ]
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      required: [taxPublicIds],
+                      properties:
+                        {
+                          taxPublicIds:
+                            {
+                              type: array,
+                              items: { type: string, format: uuid },
+                            },
+                        },
+                    },
+                },
+            },
+        }
+      responses:
+        "200":
+          {
+            description: Tasas asignadas,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/ItemResponse" } },
+              },
+          }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/taxes:
+    get:
+      tags: [Catalog]
+      summary: Lista el catálogo global de tasas tributarias activas y vigentes.
+      operationId: listTaxes
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/FacstoCompany"
+        - { name: tax_type, in: query, schema: { type: string } }
+        - {
+            name: per_page,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 50 },
+          }
+      responses:
+        "200":
+          {
+            description: Tasas vigentes paginadas,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/TaxPage" } },
+              },
+          }
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: facsto-api-session
+      description: Cookie HttpOnly de Laravel; las peticiones de escritura requieren X-XSRF-TOKEN.
+    csrfHeader:
+      type: apiKey
+      in: header
+      name: X-XSRF-TOKEN
+      description: Valor URL-decoded de la cookie XSRF-TOKEN.
+  parameters:
+    CompanyPublicId:
+      name: company
+      in: path
+      required: true
+      description: UUID público de la empresa; nunca se usa el RUC como identificador de ruta.
+      schema: { type: string, format: uuid }
+    FacstoCompany:
+      name: X-Facsto-Company
+      in: header
+      required: true
+      description: UUID público de la empresa activa. El backend comprueba membresía y estado.
+      schema: { type: string, format: uuid }
+  responses:
+    AuthenticationError:
+      description: La sesión no está autenticada.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorResponse" }
+    CompanyAccessError:
+      description: La empresa no existe, está inactiva o no pertenece al usuario autenticado.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorResponse" }
+    NotFoundError:
+      description: El recurso público solicitado no existe.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorResponse" }
+    ConflictError:
+      description: La operación contradice una regla de integridad o negocio.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorResponse" }
+    CsrfError:
+      description: Falta actualizar la cookie CSRF para la sesión actual.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorResponse" }
+    ValidationError:
+      description: Los datos enviados no pasan la validación.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorResponse" }
+  schemas:
+    IdentificationType:
+      type: string
+      enum: [RUC, CEDULA, PASSPORT, FINAL_CONSUMER, FOREIGN_IDENTIFICATION]
+    ItemType:
+      type: string
+      enum: [PRODUCT, SERVICE]
+    Customer:
+      type: object
+      required:
+        [publicId, identificationType, identification, legalName, isActive]
+      properties:
+        publicId: { type: string, format: uuid }
+        identificationType: { $ref: "#/components/schemas/IdentificationType" }
+        identification: { type: string, maxLength: 20 }
+        legalName: { type: string, maxLength: 180 }
+        commercialName: { type: [string, "null"] }
+        email: { type: [string, "null"], format: email }
+        phone: { type: [string, "null"] }
+        address: { type: [string, "null"] }
+        isActive: { type: boolean }
+    CreateCustomerRequest:
+      type: object
+      required: [identificationType, identification, legalName]
+      properties:
+        identificationType: { $ref: "#/components/schemas/IdentificationType" }
+        identification: { type: string, maxLength: 20 }
+        legalName: { type: string, maxLength: 180 }
+        commercialName: { type: [string, "null"], maxLength: 180 }
+        email: { type: [string, "null"], format: email }
+        phone: { type: [string, "null"], maxLength: 40 }
+        address: { type: [string, "null"], maxLength: 255 }
+    UpdateCustomerRequest:
+      type: object
+      properties:
+        identificationType: { $ref: "#/components/schemas/IdentificationType" }
+        identification: { type: string, maxLength: 20 }
+        legalName: { type: string, maxLength: 180 }
+        commercialName: { type: [string, "null"], maxLength: 180 }
+        email: { type: [string, "null"], format: email }
+        phone: { type: [string, "null"], maxLength: 40 }
+        address: { type: [string, "null"], maxLength: 255 }
+    CustomerResponse:
+      type: object
+      properties: { data: { $ref: "#/components/schemas/Customer" } }
+    CustomerPage:
+      type: object
+      properties:
+        {
+          data:
+            { type: array, items: { $ref: "#/components/schemas/Customer" } },
+          meta: { type: object },
+          links: { type: object },
+        }
+    Tax:
+      type: object
+      required:
+        [
+          publicId,
+          taxType,
+          sriCode,
+          percentageCode,
+          percentage,
+          validFrom,
+          isActive,
+        ]
+      properties:
+        publicId: { type: string, format: uuid }
+        taxType: { type: string }
+        sriCode: { type: string }
+        percentageCode: { type: string }
+        name: { type: string }
+        percentage: { type: string, format: decimal }
+        validFrom: { type: string, format: date }
+        validUntil: { type: [string, "null"], format: date }
+        isActive: { type: boolean }
+    TaxPage:
+      type: object
+      properties:
+        {
+          data: { type: array, items: { $ref: "#/components/schemas/Tax" } },
+          meta: { type: object },
+          links: { type: object },
+        }
+    Item:
+      type: object
+      required: [publicId, type, internalCode, name, unit, salePrice, isActive]
+      properties:
+        publicId: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/ItemType" }
+        internalCode: { type: string, maxLength: 50 }
+        auxiliaryCode: { type: [string, "null"] }
+        name: { type: string, maxLength: 180 }
+        description: { type: [string, "null"] }
+        unit: { type: string, maxLength: 32 }
+        salePrice: { type: string, pattern: '^\d+(\.\d{1,6})?$' }
+        isActive: { type: boolean }
+        taxes: { type: array, items: { $ref: "#/components/schemas/Tax" } }
+    CreateItemRequest:
+      type: object
+      required: [type, internalCode, name, unit, salePrice]
+      properties:
+        type: { $ref: "#/components/schemas/ItemType" }
+        internalCode: { type: string, maxLength: 50 }
+        auxiliaryCode: { type: [string, "null"], maxLength: 50 }
+        name: { type: string, maxLength: 180 }
+        description: { type: [string, "null"] }
+        unit: { type: string, maxLength: 32 }
+        salePrice: { type: string, pattern: '^\d{1,12}(\.\d{1,6})?$' }
+    UpdateItemRequest:
+      type: object
+      properties:
+        type: { $ref: "#/components/schemas/ItemType" }
+        internalCode: { type: string, maxLength: 50 }
+        auxiliaryCode: { type: [string, "null"], maxLength: 50 }
+        name: { type: string, maxLength: 180 }
+        description: { type: [string, "null"] }
+        unit: { type: string, maxLength: 32 }
+        salePrice: { type: string, pattern: '^\d{1,12}(\.\d{1,6})?$' }
+    ItemResponse:
+      type: object
+      properties: { data: { $ref: "#/components/schemas/Item" } }
+    ItemPage:
+      type: object
+      properties:
+        {
+          data: { type: array, items: { $ref: "#/components/schemas/Item" } },
+          meta: { type: object },
+          links: { type: object },
+        }
+    CompanySetupState:
+      type: string
+      enum: [ISSUER_REQUIRED, EMISSION_REQUIRED, CERTIFICATE_REQUIRED, READY]
+    CompanySetupStatus:
+      type: object
+      required: [state, issuerReady, emissionReady, certificateReady, deferred]
+      properties:
+        state: { $ref: "#/components/schemas/CompanySetupState" }
+        issuerReady: { type: boolean }
+        emissionReady: { type: boolean }
+        certificateReady: { type: boolean }
+        deferred: { type: boolean, description: Indica si la empresa pospuso el asistente; no implica readiness fiscal. }
+    CompanySetupStatusResponse:
+      type: object
+      properties: { data: { $ref: "#/components/schemas/CompanySetupStatus" } }
+    SriEnvironment:
+      type: string
+      enum: [TEST, PRODUCTION]
+    EmissionType:
+      type: string
+      enum: [NORMAL]
+    IssuerConfiguration:
+      type: object
+      required: [ruc, legalName, mainAddress]
+      properties:
+        ruc: { type: string, pattern: '^\d{13}$' }
+        legalName: { type: string, maxLength: 180 }
+        commercialName: { type: [string, "null"], maxLength: 180 }
+        mainAddress: { type: string, maxLength: 255 }
+        email: { type: [string, "null"], format: email }
+        phone: { type: [string, "null"], maxLength: 40 }
+    EmissionConfiguration:
+      type: object
+      required:
+        [
+          establishmentCode,
+          establishmentName,
+          establishmentAddress,
+          emissionPointCode,
+          emissionPointName,
+        ]
+      properties:
+        establishmentCode: { type: string, pattern: '^\d{3}$' }
+        establishmentName: { type: string, maxLength: 120 }
+        establishmentAddress: { type: string, maxLength: 255 }
+        emissionPointCode: { type: string, pattern: '^\d{3}$' }
+        emissionPointName: { type: string, maxLength: 120 }
+        environment:
+          { $ref: "#/components/schemas/SriEnvironment", default: TEST }
+        emissionType:
+          { $ref: "#/components/schemas/EmissionType", default: NORMAL }
+    UploadCertificateRequest:
+      type: object
+      required: [certificate, password]
+      properties:
+        certificate: { type: string, format: binary }
+        password: { type: string, format: password, maxLength: 4096 }
+    DigitalCertificateSummary:
+      type: object
+      required:
+        [publicId, issuedTo, issuer, validFrom, validUntil, status, isActive]
+      properties:
+        publicId: { type: string, format: uuid }
+        issuedTo: { type: string }
+        issuer: { type: string }
+        serialNumber: { type: [string, "null"] }
+        validFrom: { type: string, format: date-time }
+        validUntil: { type: string, format: date-time }
+        status: { type: string, enum: [VALID, INVALID, EXPIRED] }
+        isActive: { type: boolean }
+    DigitalCertificateResponse:
+      type: object
+      properties:
+        { data: { $ref: "#/components/schemas/DigitalCertificateSummary" } }
+    HealthResponse:
+      type: object
+      required: [status, services]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        services:
+          type: object
+          additionalProperties: { type: string, enum: [ok, unavailable] }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, format: password, maxLength: 255 }
+        remember: { type: boolean, default: false }
+    RegisterRequest:
+      allOf:
+        - $ref: "#/components/schemas/LoginRequest"
+        - type: object
+          required: [name, password_confirmation]
+          properties:
+            name: { type: string, maxLength: 120 }
+            password_confirmation: { type: string, format: password }
+    User:
+      type: object
+      required: [publicId, name, email]
+      properties:
+        publicId: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+    UserResponse:
+      type: object
+      properties:
+        data: { $ref: "#/components/schemas/User" }
+    CompanyRole:
+      type: string
+      enum: [OWNER, ADMIN, BILLER, VIEWER]
+    Company:
+      type: object
+      required: [publicId, accountingRequired, status, role]
+      properties:
+        publicId: { type: string, format: uuid }
+        ruc: { type: [string, "null"], pattern: '^\d{13}$' }
+        legalName: { type: [string, "null"] }
+        commercialName: { type: [string, "null"] }
+        mainAddress: { type: [string, "null"] }
+        email: { type: [string, "null"], format: email }
+        phone: { type: [string, "null"] }
+        accountingRequired: { type: boolean }
+        status: { type: string, enum: [ACTIVE, DISABLED] }
+        role: { $ref: "#/components/schemas/CompanyRole" }
+    CompanyWrite:
+      type: object
+      properties:
+        legalName: { type: [string, "null"], maxLength: 180 }
+        commercialName: { type: [string, "null"], maxLength: 180 }
+        mainAddress: { type: [string, "null"], maxLength: 255 }
+        email: { type: [string, "null"], format: email }
+        phone: { type: [string, "null"], maxLength: 40 }
+    CompanyPatch:
+      type: object
+      properties:
+        legalName: { type: string, maxLength: 180 }
+        commercialName: { type: [string, "null"], maxLength: 180 }
+        mainAddress: { type: string, maxLength: 255 }
+        email: { type: [string, "null"], format: email }
+        phone: { type: [string, "null"], maxLength: 40 }
+    CompanyResponse:
+      type: object
+      properties:
+        data: { $ref: "#/components/schemas/Company" }
+    CompanyCollection:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Company" }
+    Membership:
+      type: object
+      properties:
+        userPublicId: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+        role: { $ref: "#/components/schemas/CompanyRole" }
+        isActive: { type: boolean }
+        joinedAt: { type: [string, "null"], format: date-time }
+    MembershipResponse:
+      type: object
+      properties:
+        data: { $ref: "#/components/schemas/Membership" }
+    Establishment:
+      type: object
+      properties:
+        publicId: { type: string, format: uuid }
+        code: { type: string, pattern: '^\d{3}$' }
+        name: { type: string }
+        address: { type: string }
+        isActive: { type: boolean }
+        isMain: { type: boolean }
+    EstablishmentResponse:
+      type: object
+      properties:
+        data: { $ref: "#/components/schemas/Establishment" }
+    EstablishmentCollection:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Establishment" }
+    EmissionPoint:
+      type: object
+      properties:
+        publicId: { type: string, format: uuid }
+        establishmentPublicId: { type: string, format: uuid }
+        establishmentCode: { type: string, pattern: '^\d{3}$' }
+        code: { type: string, pattern: '^\d{3}$' }
+        name: { type: string }
+        isActive: { type: boolean }
+        isDefault: { type: boolean }
+    EmissionPointResponse:
+      type: object
+      properties:
+        data: { $ref: "#/components/schemas/EmissionPoint" }
+    EmissionPointCollection:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/EmissionPoint" }
+    ApiErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details:
+              type: object
+              additionalProperties: true
