@@ -14,7 +14,7 @@ final class InvoiceIsolationTest extends InvoiceFeatureTestCase
         $companyA = $this->readyCompany($owner);
         $companyB = $this->createCompany($other, '1799999998001');
         $sale = $this->makeSale($owner, $companyA);
-        $invoice = $this->actingAs($owner)->postJson('/api/v1/sales/'.$sale->public_id.'/invoice')->assertCreated()->json('data');
+        $invoice = $this->actingAs($owner)->postJson('/api/v1/sales/'.$sale->public_id.'/issue')->assertCreated()->json('data');
         $this->actingAs($other)->getJson('/api/v1/invoices/'.$invoice['publicId'])->assertForbidden();
     }
 }

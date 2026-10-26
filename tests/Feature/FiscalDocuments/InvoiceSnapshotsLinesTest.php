@@ -14,7 +14,7 @@ final class InvoiceSnapshotsLinesTest extends InvoiceFeatureTestCase
         $sale = $this->makeSale($user, $company);
         $line = $sale->details()->firstOrFail();
         $line->item->forceFill(['name' => 'Producto cambiado'])->save();
-        $invoice = $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/invoice')->assertCreated()->json('data');
+        $invoice = $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/issue')->assertCreated()->json('data');
         $this->assertSame('Servicio', $invoice['lines'][0]['description']);
         $this->assertSame('10.000000', $invoice['lines'][0]['unitPrice']);
     }

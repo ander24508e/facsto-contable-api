@@ -68,6 +68,14 @@ return new class extends Migration
             $table->decimal('tip_amount', 18, 2)->default(0);
             $table->decimal('total', 18, 2);
             $table->char('currency', 3)->default('USD');
+            // Momentos reales de cada etapa (F04-F07); authorized_at es la fecha oficial del SRI.
+            $table->timestampTz('numbered_at')->nullable();
+            $table->timestampTz('xml_built_at')->nullable();
+            $table->timestampTz('signed_at')->nullable();
+            $table->string('authorization_number', 49)->nullable();
+            $table->timestampTz('authorized_at')->nullable();
+            $table->timestampTz('last_sri_status_at')->nullable();
+            $table->string('last_error_code', 64)->nullable();
             $table->foreignId('created_by')->constrained('users')->restrictOnDelete();
             $table->timestamps();
             $table->unique('sale_id');
@@ -78,6 +86,7 @@ return new class extends Migration
             $table->foreign(['company_id', 'establishment_id'])->references(['company_id', 'id'])->on('establishments')->restrictOnDelete();
             $table->foreign(['company_id', 'emission_point_id'])->references(['company_id', 'id'])->on('emission_points')->restrictOnDelete();
             $table->index(['company_id', 'status', 'issue_date']);
+            $table->index(['status', 'last_sri_status_at']);
         });
 
         Schema::create('electronic_document_lines', function (Blueprint $table): void {

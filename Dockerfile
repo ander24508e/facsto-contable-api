@@ -1,3 +1,12 @@
+# Etapa de compilación del firmador XAdES-BES: Maven sólo existe aquí, nunca en la imagen final.
+FROM maven:3.9-eclipse-temurin-21-alpine AS xades-signer
+
+WORKDIR /build
+COPY tools/xades-signer/pom.xml ./
+RUN mvn -B -q dependency:go-offline
+COPY tools/xades-signer/src ./src
+RUN mvn -B -q package
+
 FROM php:8.4-cli-alpine AS base
 
 RUN apk add --no-cache \
@@ -6,6 +15,7 @@ RUN apk add --no-cache \
         libxml2-dev \
         libzip-dev \
         oniguruma-dev \
+        openjdk21-jre-headless \
         postgresql-dev \
         sqlite-dev \
         $PHPIZE_DEPS \
@@ -16,6 +26,8 @@ RUN apk add --no-cache \
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/zz-facsto-uploads.ini
+# Fuera de /var/www/html: el volumen de desarrollo no lo oculta.
+COPY --from=xades-signer /build/target/xades-signer.jar /opt/facsto/xades-signer.jar
 
 WORKDIR /var/www/html
 

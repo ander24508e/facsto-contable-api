@@ -17,9 +17,9 @@ use App\Domains\Sri\Xml\InvoiceXmlBuilder;
 use App\Domains\Sri\Xml\Requirements\ProviderRucRequirement;
 use App\Domains\Sri\Xml\Requirements\RimpeRequirement;
 use App\Domains\Sri\Xml\Requirements\WithholdingAgentRequirement;
+use App\Domains\Sri\Xml\XmlSchemaValidationException;
 use App\Domains\Sri\Xml\XmlTextNormalizer;
 use App\Domains\Sri\Xml\XsdValidator;
-use App\Domains\Sri\Xml\XmlSchemaValidationException;
 use PHPUnit\Framework\TestCase;
 
 final class InvoiceXmlBuilderTest extends TestCase
@@ -27,7 +27,7 @@ final class InvoiceXmlBuilderTest extends TestCase
     public function test_builds_escaped_dom_xml_and_validates_against_official_xsd(): void
     {
         $xml = $this->builder()->build($this->data());
-        $dom = new \DOMDocument();
+        $dom = new \DOMDocument;
         self::assertTrue($dom->loadXML($xml));
         $xpath = new \DOMXPath($dom);
         self::assertSame('CONTRIBUYENTE & Cía. <Endara>', $xpath->query('/factura/infoTributaria/razonSocial')->item(0)?->textContent);
@@ -36,13 +36,13 @@ final class InvoiceXmlBuilderTest extends TestCase
         self::assertSame('10.123456', $xpath->query('/factura/detalles/detalle/precioUnitario')->item(0)?->textContent);
         self::assertSame('RUC Proveedor', $xpath->query('/factura/infoAdicional/campoAdicional/@nombre')->item(0)?->nodeValue);
 
-        (new XsdValidator())->validate($xml, dirname(__DIR__, 4).'/resources/sri/xsd/invoice/1.1.0/factura.xsd');
+        (new XsdValidator)->validate($xml, dirname(__DIR__, 4).'/resources/sri/xsd/invoice/1.1.0/factura.xsd');
     }
 
     public function test_rimpe_popular_label_is_emitted_as_a_snapshot_value(): void
     {
         $xml = $this->builder()->build($this->data(rimpeType: 'POPULAR_BUSINESS'));
-        $dom = new \DOMDocument();
+        $dom = new \DOMDocument;
         $dom->loadXML($xml);
         $xpath = new \DOMXPath($dom);
         self::assertSame('CONTRIBUYENTE NEGOCIO POPULAR - RÉGIMEN RIMPE', $xpath->query('/factura/infoTributaria/contribuyenteRimpe')->item(0)?->textContent);
@@ -53,7 +53,7 @@ final class InvoiceXmlBuilderTest extends TestCase
         $xml = $this->builder()->build($this->data(rimpeType: 'POPULAR_BUSINESS'));
 
         try {
-            (new XsdValidator())->validate($xml, dirname(__DIR__, 4).'/resources/sri/xsd/invoice/1.1.0/factura.xsd');
+            (new XsdValidator)->validate($xml, dirname(__DIR__, 4).'/resources/sri/xsd/invoice/1.1.0/factura.xsd');
             self::fail('The official 1.1.0 schema unexpectedly accepted the Ficha 2.34 popular-business label.');
         } catch (XmlSchemaValidationException $exception) {
             self::assertStringContainsString('contribuyenteRimpe', implode(' ', array_column($exception->errors, 'message')));
@@ -62,8 +62,8 @@ final class InvoiceXmlBuilderTest extends TestCase
 
     private function builder(): InvoiceXmlBuilder
     {
-        $text = new XmlTextNormalizer();
-        $decimals = new DecimalFormatter();
+        $text = new XmlTextNormalizer;
+        $decimals = new DecimalFormatter;
         $payments = new InvoicePaymentsBuilder($text, $decimals);
 
         return new InvoiceXmlBuilder(

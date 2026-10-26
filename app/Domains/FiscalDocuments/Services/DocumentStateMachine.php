@@ -15,15 +15,20 @@ final class DocumentStateMachine
         'NUMBERED' => [DocumentStatus::XML_BUILT, DocumentStatus::FAILED],
         'XML_BUILT' => [DocumentStatus::SIGNED, DocumentStatus::FAILED],
         'SIGNED' => [DocumentStatus::QUEUED, DocumentStatus::FAILED],
-        'QUEUED' => [DocumentStatus::RECEIVED, DocumentStatus::RETURNED, DocumentStatus::FAILED],
-        'RECEIVED' => [DocumentStatus::PENDING_AUTHORIZATION, DocumentStatus::RETURNED, DocumentStatus::FAILED],
-        // A returned document is corrected, rebuilt and signed again before resubmission.
+        // QUEUED → SIGNED: the transmission gate closed before the XML left FACSTO.
+        'QUEUED' => [DocumentStatus::RECEIVED, DocumentStatus::RETURNED, DocumentStatus::SIGNED, DocumentStatus::FAILED],
+        'RECEIVED' => [DocumentStatus::PENDING_AUTHORIZATION, DocumentStatus::AUTHORIZED, DocumentStatus::NOT_AUTHORIZED, DocumentStatus::FAILED],
+        // RETURNED / NOT_AUTHORIZED: rebuilt and signed again with the same number and access key.
         'RETURNED' => [DocumentStatus::XML_BUILT, DocumentStatus::FAILED],
         'PENDING_AUTHORIZATION' => [DocumentStatus::AUTHORIZED, DocumentStatus::NOT_AUTHORIZED, DocumentStatus::FAILED],
         'AUTHORIZED' => [],
-        'NOT_AUTHORIZED' => [],
-        'FAILED' => [],
+        'NOT_AUTHORIZED' => [DocumentStatus::XML_BUILT],
+        // FAILED is technical: the signed XML is queued again, or rebuilt when it never existed.
+        'FAILED' => [DocumentStatus::QUEUED, DocumentStatus::XML_BUILT],
     ];
+
+    /** States where the SRI already holds the document and FACSTO only waits for its answer. */
+    public const AWAITING_SRI = [DocumentStatus::QUEUED, DocumentStatus::RECEIVED, DocumentStatus::PENDING_AUTHORIZATION];
 
     public function canTransition(DocumentStatus $from, DocumentStatus $to): bool
     {
@@ -49,7 +54,8 @@ final class DocumentStateMachine
         }
     }
 
-    public function transition(ElectronicDocument $document, DocumentStatus $to): ElectronicDocument
+    /** @param array<string, mixed> $attributes stage timestamps and SRI data written with the new status */
+    public function transition(ElectronicDocument $document, DocumentStatus $to, array $attributes = []): ElectronicDocument
     {
         if (! $this->canTransition($document->status, $to)) {
             throw new ApiException(ApiErrorCode::INVALID_DOCUMENT_TRANSITION, 'La transición solicitada no está permitida.', 409, [
@@ -58,7 +64,7 @@ final class DocumentStateMachine
             ]);
         }
 
-        $document->forceFill(['status' => $to])->save();
+        $document->forceFill(['status' => $to, ...$attributes])->save();
 
         return $document->refresh();
     }

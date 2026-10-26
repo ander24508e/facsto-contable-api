@@ -125,7 +125,7 @@ final class CreateInvoiceFromSaleAction
                     'customer_name' => $sale->customer_name, 'customer_address' => $sale->customer_address, 'customer_email' => $sale->customer_email,
                     'total_without_taxes' => $totalWithoutTaxes, 'subtotal_without_tax' => $subtotalWithoutTax, 'subtotal_zero' => $subtotalZero, 'subtotal_taxed' => $subtotalTaxed,
                     'discount_total' => $sale->discount_total, 'tax_total' => $sale->tax_total, 'tip_amount' => $sale->tip_amount, 'total' => $sale->total,
-                    'currency' => $sale->currency, 'created_by' => $actor->id,
+                    'currency' => $sale->currency, 'created_by' => $actor->id, 'numbered_at' => $issuedAt,
                 ]);
                 foreach ($sale->details as $line) {
                     $documentLine = $document->lines()->create([

@@ -591,22 +591,27 @@ paths:
         "403": { $ref: "#/components/responses/CompanyAccessError" }
         "404": { $ref: "#/components/responses/NotFoundError" }
         "409": { $ref: "#/components/responses/ConflictError" }
-  /api/v1/sales/{sale}/invoice:
+  /api/v1/sales/{sale}/issue:
     post:
       tags: [FiscalDocuments]
-      summary: Emite la factura de un borrador listo (NUMBERED); no la firma ni la envía al SRI.
+      summary: Único comando de emisión; F04 (numerar) → F05 (XML y firma) → encolar F06 (SRI).
       description: >-
         No se asigna secuencial, número ni clave de acceso hasta que la empresa pueda continuar hacia XML, firma y SRI:
         empresa activa, emisor y estructura de emisión completos, certificado vigente, legible y del mismo RUC que el emisor,
         RUC del proveedor configurado y venta lista. Si falta algo responde FISCAL_SETUP_INCOMPLETE con `details.pending`
         (`issuer`, `emission`, `certificate`, `certificate_unreadable`, `company_inactive`), SRI_PROVIDER_NOT_CONFIGURED o
-        SALE_NOT_READY_FOR_INVOICE (`final_consumer_limit`, `tip_limit`, `taxes`, …).
-      operationId: createInvoiceFromSale
+        SALE_NOT_READY_FOR_INVOICE (`final_consumer_limit`, `tip_limit`, `taxes`, …). Numerada la venta, genera el XML 1.1.0,
+        lo valida con el XSD, lo firma (XAdES-BES), verifica la firma y lo encola para el SRI si `SriTransmissionGate` lo
+        permite; si no, queda SIGNED con `transmissionBlockedReason`. Llamarlo otra vez reanuda desde el estado actual sin
+        volver a numerar. Si un paso de F05 falla, el error incluye `details.invoicePublicId`, `details.invoiceStatus` y
+        `details.reason_code` (por ejemplo DIGEST_MISMATCH, KEYSTORE_UNREADABLE, XML_SCHEMA_INVALID).
+      operationId: issueSaleInvoice
       security: [{ sessionCookie: [], csrfHeader: [] }]
       parameters:
         - { name: sale, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        "201": { description: Factura numerada, content: { application/json: { schema: { $ref: "#/components/schemas/ElectronicDocumentResponse" } } } }
+        "201": { description: Venta numerada en esta llamada y procesada hasta su estado actual, content: { application/json: { schema: { $ref: "#/components/schemas/ElectronicDocumentResponse" } } } }
+        "200": { description: Documento existente reanudado sin nuevo secuencial, content: { application/json: { schema: { $ref: "#/components/schemas/ElectronicDocumentResponse" } } } }
         "403": { $ref: "#/components/responses/CompanyAccessError" }
         "409": { $ref: "#/components/responses/ConflictError" }
         "422": { $ref: "#/components/responses/ValidationError" }
@@ -635,6 +640,72 @@ paths:
         "200": { description: Identidad fiscal y snapshots, content: { application/json: { schema: { $ref: "#/components/schemas/ElectronicDocumentResponse" } } } }
         "403": { $ref: "#/components/responses/CompanyAccessError" }
         "404": { $ref: "#/components/responses/NotFoundError" }
+  /api/v1/invoices/{invoice}/sri-status:
+    get:
+      tags: [FiscalDocuments]
+      summary: Estado frente al SRI, línea de tiempo, intentos con sus mensajes oficiales y entrega.
+      operationId: getInvoiceSriStatus
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Trazabilidad F06/F07, content: { application/json: { schema: { $ref: "#/components/schemas/InvoiceSriStatusResponse" } } } }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "404": { $ref: "#/components/responses/NotFoundError" }
+  /api/v1/invoices/{invoice}/retry-sri:
+    post:
+      tags: [FiscalDocuments]
+      summary: Reintento controlado con el mismo número y clave de acceso.
+      description: >-
+        NUMBERED/RETURNED/NOT_AUTHORIZED reconstruyen y firman; XML_BUILT firma; SIGNED o FAILED con XML firmado se
+        encolan otra vez; RECEIVED y PENDING_AUTHORIZATION sólo vuelven a consultar la autorización.
+        AUTHORIZED responde INVOICE_RETRY_NOT_ALLOWED.
+      operationId: retryInvoiceSri
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Documento en su nuevo estado, content: { application/json: { schema: { $ref: "#/components/schemas/ElectronicDocumentResponse" } } } }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "409": { $ref: "#/components/responses/ConflictError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/invoices/{invoice}/artifacts:
+    get:
+      tags: [FiscalDocuments]
+      summary: Archivos privados y versionados del comprobante con su SHA-256.
+      operationId: listInvoiceArtifacts
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Artefactos
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/DocumentArtifact" } } } }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+  /api/v1/invoices/{invoice}/artifacts/{type}:
+    get:
+      tags: [FiscalDocuments]
+      summary: Descarga la última versión de un artefacto (XML o RIDE).
+      description: >-
+        `type` acepta UNSIGNED_XML, SIGNED_XML, AUTHORIZED_XML o RIDE (también en minúsculas con guiones). El RIDE sólo
+        existe para un comprobante AUTHORIZED y se genera si aún no está guardado. Antes de servir se verifica el SHA-256
+        (DOCUMENT_ARTIFACT_INTEGRITY_FAILED); la respuesta incluye `X-Artifact-Sha256`.
+      operationId: downloadInvoiceArtifact
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: type, in: path, required: true, schema: { $ref: "#/components/schemas/DocumentArtifactType" } }
+      responses:
+        "200":
+          description: Archivo
+          content:
+            application/xml: { schema: { type: string, format: binary } }
+            application/pdf: { schema: { type: string, format: binary } }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "404": { $ref: "#/components/responses/NotFoundError" }
+        "409": { $ref: "#/components/responses/ConflictError" }
   /api/v1/categories:
     get:
       tags: [Catalog]
@@ -1734,6 +1805,10 @@ components:
             accessKey: { type: string }
             status: { $ref: "#/components/schemas/DocumentStatus" }
             issueDate: { type: [string, "null"], format: date }
+            environment: { type: [string, "null"], enum: [TEST, PRODUCTION, null] }
+            authorizationNumber: { type: [string, "null"] }
+            authorizedAt: { type: [string, "null"], format: date-time }
+            lastErrorCode: { type: [string, "null"] }
         lines: { type: array, items: { $ref: "#/components/schemas/SaleLine" } }
         paymentMethods: { type: array, items: { $ref: "#/components/schemas/SalePaymentMethod" } }
         createdAt: { type: string, format: date-time }
@@ -1808,10 +1883,88 @@ components:
         accessKey: { type: string, pattern: '^\d{49}$' }
         issueDate: { type: string, format: date }
         status: { $ref: "#/components/schemas/DocumentStatus" }
+        environment: { type: [string, "null"], enum: [TEST, PRODUCTION, null] }
+        authorizationNumber: { type: [string, "null"] }
+        authorizedAt: { type: [string, "null"], format: date-time, description: fechaAutorizacion oficial del SRI }
+        lastSriStatusAt: { type: [string, "null"], format: date-time }
+        lastErrorCode: { type: [string, "null"] }
+        transmissionBlockedReason: { type: [string, "null"], enum: [TRANSPORT_DISABLED, COMPANY_SUBMISSION_DISABLED, PROVIDER_NOT_REGISTERED, null] }
+        timeline: { $ref: "#/components/schemas/InvoiceTimeline" }
         customer: { type: object }
         totals: { type: object }
         lines: { type: array, items: { type: object } }
         taxes: { type: array, items: { type: object } }
+    InvoiceTimeline:
+      type: object
+      properties:
+        numberedAt: { type: [string, "null"], format: date-time }
+        xmlBuiltAt: { type: [string, "null"], format: date-time }
+        signedAt: { type: [string, "null"], format: date-time }
+        sentAt: { type: [string, "null"], format: date-time }
+        receivedAt: { type: [string, "null"], format: date-time }
+        authorizedAt: { type: [string, "null"], format: date-time }
+    DocumentArtifactType:
+      type: string
+      enum: [UNSIGNED_XML, SIGNED_XML, AUTHORIZED_XML, RIDE]
+    DocumentArtifact:
+      type: object
+      properties:
+        publicId: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/DocumentArtifactType" }
+        version: { type: integer, minimum: 1 }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        sizeBytes: { type: integer }
+        mimeType: { type: string }
+        createdAt: { type: string, format: date-time }
+    SriMessage:
+      type: object
+      properties:
+        identifier: { type: [string, "null"] }
+        type: { type: [string, "null"], description: ERROR, ADVERTENCIA o INFORMATIVO }
+        message: { type: string }
+        additionalInformation: { type: [string, "null"] }
+    SriSubmission:
+      type: object
+      properties:
+        publicId: { type: string, format: uuid }
+        operation: { type: string, enum: [RECEPTION, AUTHORIZATION, QUERY] }
+        attempt: { type: integer, minimum: 1 }
+        environment: { type: string, enum: [TEST, PRODUCTION] }
+        status: { type: string, enum: [IN_PROGRESS, RECEIVED, RETURNED, AUTHORIZED, NOT_AUTHORIZED, PENDING, BLOCKED, TRANSPORT_ERROR, RESPONSE_INVALID] }
+        httpStatus: { type: [integer, "null"] }
+        errorCode: { type: [string, "null"] }
+        startedAt: { type: [string, "null"], format: date-time }
+        finishedAt: { type: [string, "null"], format: date-time }
+        messages: { type: array, items: { $ref: "#/components/schemas/SriMessage" } }
+    InvoiceSriStatus:
+      type: object
+      properties:
+        publicId: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/DocumentStatus" }
+        environment: { type: [string, "null"], enum: [TEST, PRODUCTION, null] }
+        accessKey: { type: string, pattern: '^\d{49}$' }
+        authorizationNumber: { type: [string, "null"] }
+        authorizedAt: { type: [string, "null"], format: date-time }
+        lastSriStatusAt: { type: [string, "null"], format: date-time }
+        lastErrorCode: { type: [string, "null"] }
+        transmissionBlockedReason: { type: [string, "null"] }
+        canRetry: { type: boolean }
+        timeline: { $ref: "#/components/schemas/InvoiceTimeline" }
+        artifacts: { type: array, items: { $ref: "#/components/schemas/DocumentArtifactType" } }
+        rideAvailable: { type: boolean }
+        authorizedXmlAvailable: { type: boolean }
+        submissions: { type: array, items: { $ref: "#/components/schemas/SriSubmission" } }
+        delivery:
+          type: [object, "null"]
+          properties:
+            channel: { type: string, enum: [EMAIL] }
+            status: { type: string, enum: [PENDING, SENT, FAILED, SKIPPED_SMTP_NOT_CONFIGURED, SKIPPED_NO_RECIPIENT] }
+            recipient: { type: [string, "null"] }
+            attempts: { type: integer }
+            sentAt: { type: [string, "null"], format: date-time }
+    InvoiceSriStatusResponse:
+      type: object
+      properties: { data: { $ref: "#/components/schemas/InvoiceSriStatus" } }
     ElectronicDocumentResponse:
       type: object
       properties: { data: { $ref: "#/components/schemas/ElectronicDocument" } }

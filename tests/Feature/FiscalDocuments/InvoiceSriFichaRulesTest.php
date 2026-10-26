@@ -18,7 +18,7 @@ final class InvoiceSriFichaRulesTest extends InvoiceFeatureTestCase
         $company = $this->readyCompany($user);
         $sale = $this->finalConsumerSale($user, $this->makeSale($user, $company), '6');
 
-        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/invoice')
+        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/issue')
             ->assertUnprocessable()
             ->assertJsonPath('error.code', 'SALE_NOT_READY_FOR_INVOICE')
             ->assertJsonPath('error.details.pending', ['final_consumer_limit']);
@@ -30,7 +30,7 @@ final class InvoiceSriFichaRulesTest extends InvoiceFeatureTestCase
         $company = $this->readyCompany($user);
         $sale = $this->finalConsumerSale($user, $this->makeSale($user, $company), '5');
 
-        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/invoice')->assertCreated();
+        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/issue')->assertCreated();
     }
 
     public function test_a_company_that_will_transmit_cannot_number_without_the_provider_ruc(): void
@@ -41,7 +41,7 @@ final class InvoiceSriFichaRulesTest extends InvoiceFeatureTestCase
         $company->fiscalSettings->forceFill(['sri_submission_enabled' => true])->save();
         $sale = $this->makeSale($user, $company);
 
-        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/invoice')
+        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/issue')
             ->assertConflict()
             ->assertJsonPath('error.code', 'SRI_PROVIDER_NOT_CONFIGURED');
         $this->assertDatabaseCount('electronic_documents', 0);
@@ -54,7 +54,7 @@ final class InvoiceSriFichaRulesTest extends InvoiceFeatureTestCase
         $company = $this->readyCompany($user);
         $sale = $this->makeSale($user, $company);
 
-        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/invoice')
+        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/issue')
             ->assertConflict()
             ->assertJsonPath('error.code', 'SRI_PROVIDER_NOT_CONFIGURED');
     }

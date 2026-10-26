@@ -5,6 +5,7 @@ namespace App\Domains\Sri\Xml;
 use App\Domains\FiscalDocuments\Enums\DocumentStatus;
 use App\Domains\FiscalDocuments\Enums\DocumentType;
 use App\Domains\FiscalDocuments\Models\ElectronicDocument;
+use App\Domains\FiscalDocuments\Services\DocumentStateMachine;
 use App\Domains\Sri\Mappers\SriDocumentTypeMapper;
 use App\Domains\Sri\Mappers\SriEmissionTypeMapper;
 use App\Domains\Sri\Mappers\SriEnvironmentMapper;
@@ -18,14 +19,16 @@ final class InvoiceXmlPreflightValidator
         private readonly SriEnvironmentMapper $environments,
         private readonly SriEmissionTypeMapper $emissions,
         private readonly SriIdentificationTypeMapper $identifications,
+        private readonly DocumentStateMachine $states,
     ) {}
 
     public function validate(ElectronicDocument $document): void
     {
         $document->loadMissing(['lines.taxes', 'taxes', 'paymentMethods']);
 
-        if ($document->status !== DocumentStatus::NUMBERED) {
-            $this->fail('DOCUMENT_NOT_NUMBERED');
+        // NUMBERED, or RETURNED / NOT_AUTHORIZED / FAILED rebuilt with the same number and access key.
+        if (! $this->states->canTransition($document->status, DocumentStatus::XML_BUILT)) {
+            $this->fail('DOCUMENT_NOT_BUILDABLE');
         }
         if ($document->document_type !== DocumentType::INVOICE) {
             $this->fail('DOCUMENT_TYPE_UNSUPPORTED');

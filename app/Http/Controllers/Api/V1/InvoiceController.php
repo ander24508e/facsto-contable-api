@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Domains\Companies\Context\CompanyContext;
-use App\Domains\FiscalDocuments\Actions\CreateInvoiceFromSaleAction;
+use App\Domains\FiscalDocuments\Actions\IssueSaleInvoiceAction;
 use App\Domains\FiscalDocuments\Models\ElectronicDocument;
 use App\Domains\Sales\Models\Sale;
 use App\Http\Controllers\Controller;
@@ -26,12 +26,14 @@ final class InvoiceController extends Controller
         return ElectronicDocumentResource::collection($query->paginate($validated['per_page'] ?? 15));
     }
 
-    public function fromSale(Sale $sale, CreateInvoiceFromSaleAction $create, Request $request): JsonResponse
+    /** F04 → F05 → F06 queue. 201 when the sale was numbered by this call, 200 when it only resumed. */
+    public function issue(Sale $sale, IssueSaleInvoiceAction $issue, Request $request): JsonResponse
     {
         $this->authorize('create', ElectronicDocument::class);
-        $document = $create->execute($sale, $request->user());
+        $numberedNow = ! ElectronicDocument::query()->where('sale_id', $sale->id)->exists();
+        $document = $issue->execute($sale, $request->user());
 
-        return (new ElectronicDocumentResource($document))->response()->setStatusCode(201);
+        return (new ElectronicDocumentResource($document))->response()->setStatusCode($numberedNow ? 201 : 200);
     }
 
     public function show(ElectronicDocument $invoice): ElectronicDocumentResource

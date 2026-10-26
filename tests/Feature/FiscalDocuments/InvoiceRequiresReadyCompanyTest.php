@@ -13,7 +13,7 @@ final class InvoiceRequiresReadyCompanyTest extends InvoiceFeatureTestCase
         $company = $this->createCompany($user, '1799999999001');
         $sale = $this->makeSale($user, $company);
 
-        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/invoice')
+        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/issue')
             ->assertStatus(409)->assertJsonPath('error.code', 'FISCAL_SETUP_INCOMPLETE');
         $this->assertDatabaseCount('electronic_documents', 0);
     }
@@ -24,7 +24,7 @@ final class InvoiceRequiresReadyCompanyTest extends InvoiceFeatureTestCase
         $company = $this->preparableCompany($user);
         $sale = $this->makeSale($user, $company);
 
-        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/invoice')
+        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/issue')
             ->assertConflict()
             ->assertJsonPath('error.code', 'FISCAL_SETUP_INCOMPLETE')
             ->assertJsonPath('error.details.pending', ['certificate']);

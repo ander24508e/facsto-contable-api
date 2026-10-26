@@ -18,7 +18,7 @@ final class InvoiceAccessKeyDateConsistencyTest extends InvoiceFeatureTestCase
             $sale = $this->makeSale($user, $company);
 
             $document = $this->actingAs($user)
-                ->postJson('/api/v1/sales/'.$sale->public_id.'/invoice')
+                ->postJson('/api/v1/sales/'.$sale->public_id.'/issue')
                 ->assertCreated()
                 ->json('data');
 

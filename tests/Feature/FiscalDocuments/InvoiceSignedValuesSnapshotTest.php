@@ -23,7 +23,7 @@ final class InvoiceSignedValuesSnapshotTest extends InvoiceFeatureTestCase
             'paymentMethods' => [['fiscalPaymentMethodPublicId' => FiscalPaymentMethod::query()->create(['code' => '01', 'name' => 'Sin utilización del sistema financiero', 'valid_from' => today()->subDay(), 'is_active' => true])->public_id, 'amount' => '21.85']],
         ])->assertOk();
 
-        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/invoice')->assertCreated();
+        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/issue')->assertCreated();
 
         // <totalSinImpuestos> covers every line before taxes, including taxed ones.
         $document = ElectronicDocument::query()->where('sale_id', $sale->id)->firstOrFail();

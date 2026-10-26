@@ -1,6 +1,7 @@
 <?php
 
 use App\Domains\Companies\Models\Company;
+use App\Domains\Sri\Commands\SchedulePendingSriDocumentsCommand;
 use App\Http\Middleware\ResolveCompanyContext;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
@@ -22,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+    ->withCommands([SchedulePendingSriDocumentsCommand::class])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->statefulApi();
         $middleware->trimStrings(except: ['password', 'password_confirmation']);

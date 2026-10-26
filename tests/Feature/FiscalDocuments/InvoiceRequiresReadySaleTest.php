@@ -12,7 +12,7 @@ final class InvoiceRequiresReadySaleTest extends InvoiceFeatureTestCase
         $user = User::factory()->create();
         $company = $this->readyCompany($user);
         $sale = $this->makeSale($user, $company, false);
-        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/invoice')
+        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/issue')
             ->assertUnprocessable()->assertJsonPath('error.code', 'SALE_NOT_READY_FOR_INVOICE');
     }
 }

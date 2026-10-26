@@ -37,6 +37,10 @@ final class SaleResource extends JsonResource
                 'accessKey' => $this->electronicDocument->access_key,
                 'status' => $this->electronicDocument->status->value,
                 'issueDate' => $this->electronicDocument->issue_date?->toDateString(),
+                'environment' => $this->electronicDocument->sri_environment,
+                'authorizationNumber' => $this->electronicDocument->authorization_number,
+                'authorizedAt' => $this->electronicDocument->authorized_at?->toIso8601String(),
+                'lastErrorCode' => $this->electronicDocument->last_error_code,
             ] : null),
             'lines' => $this->whenLoaded('details', fn () => $this->details->map(fn ($line): array => [
                 'publicId' => $line->public_id,

@@ -83,7 +83,7 @@ final class BuildInvoiceXmlAction
                 }
 
                 $storedArtifact = $this->artifacts->store($document, DocumentArtifactType::UNSIGNED_XML, $xml);
-                $document = $this->states->transition($document, DocumentStatus::XML_BUILT);
+                $document = $this->states->transition($document, DocumentStatus::XML_BUILT, ['xml_built_at' => now(), 'last_error_code' => null]);
                 $this->audit->record($actor, $company, 'invoice.xml_built', $document, null, [
                     'status' => $document->status->value,
                     'artifact_type' => DocumentArtifactType::UNSIGNED_XML->value,

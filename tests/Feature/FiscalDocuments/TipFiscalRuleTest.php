@@ -29,7 +29,7 @@ final class TipFiscalRuleTest extends InvoiceFeatureTestCase
 
         $this->saveWithTip($user, $sale, '1.00', '11.00')->assertOk()
             ->assertJsonPath('data.tipAmount', '1.00')->assertJsonPath('data.total', '11.00');
-        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/invoice')->assertCreated();
+        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/issue')->assertCreated();
 
         $document = ElectronicDocument::query()->where('sale_id', $sale->id)->firstOrFail();
         $this->assertSame('1.00', $document->tip_amount);

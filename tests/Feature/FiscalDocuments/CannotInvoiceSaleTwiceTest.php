@@ -12,9 +12,9 @@ final class CannotInvoiceSaleTwiceTest extends InvoiceFeatureTestCase
         $user = User::factory()->create();
         $company = $this->readyCompany($user);
         $sale = $this->makeSale($user, $company);
-        $uri = '/api/v1/sales/'.$sale->public_id.'/invoice';
+        $uri = '/api/v1/sales/'.$sale->public_id.'/issue';
         $first = $this->actingAs($user)->postJson($uri)->assertCreated()->json('data');
-        $second = $this->actingAs($user)->postJson($uri)->assertCreated()->json('data');
+        $second = $this->actingAs($user)->postJson($uri)->assertOk()->json('data');
         $this->assertSame($first['accessKey'], $second['accessKey']);
         $this->assertDatabaseHas('document_sequences', ['company_id' => $company->id, 'current_number' => 1]);
     }

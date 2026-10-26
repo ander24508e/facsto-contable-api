@@ -17,18 +17,18 @@ final class SriMappingsTest extends TestCase
 {
     public function test_maps_domain_values_to_sri_values(): void
     {
-        self::assertSame('01', (new SriDocumentTypeMapper())->map(DocumentType::INVOICE));
-        self::assertSame('1', (new SriEnvironmentMapper())->map(SriEnvironment::TEST));
-        self::assertSame('2', (new SriEnvironmentMapper())->map('PRODUCTION'));
-        self::assertSame('1', (new SriEmissionTypeMapper())->map('NORMAL'));
-        self::assertSame('04', (new SriIdentificationTypeMapper())->map(IdentificationType::RUC));
-        self::assertSame('07', (new SriIdentificationTypeMapper())->map('FINAL_CONSUMER'));
-        self::assertSame('DOLAR', (new SriCurrencyMapper())->map('USD'));
+        self::assertSame('01', (new SriDocumentTypeMapper)->map(DocumentType::INVOICE));
+        self::assertSame('1', (new SriEnvironmentMapper)->map(SriEnvironment::TEST));
+        self::assertSame('2', (new SriEnvironmentMapper)->map('PRODUCTION'));
+        self::assertSame('1', (new SriEmissionTypeMapper)->map('NORMAL'));
+        self::assertSame('04', (new SriIdentificationTypeMapper)->map(IdentificationType::RUC));
+        self::assertSame('07', (new SriIdentificationTypeMapper)->map('FINAL_CONSUMER'));
+        self::assertSame('DOLAR', (new SriCurrencyMapper)->map('USD'));
     }
 
     public function test_rejects_unsupported_sri_values(): void
     {
         $this->expectException(LogicException::class);
-        (new SriEmissionTypeMapper())->map('SPECIAL');
+        (new SriEmissionTypeMapper)->map('SPECIAL');
     }
 }

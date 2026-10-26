@@ -15,6 +15,10 @@ use App\Domains\Customers\Models\Customer;
 use App\Domains\Customers\Policies\CustomerPolicy;
 use App\Domains\Sales\Models\Sale;
 use App\Domains\Sales\Policies\SalePolicy;
+use App\Domains\Sri\Contracts\SriProvider;
+use App\Domains\Sri\Providers\EcuadorSriProvider;
+use App\Domains\Sri\Signing\Contracts\XmlSigner;
+use App\Domains\Sri\Signing\JavaXadesBesSigner;
 use App\Domains\Taxes\Models\CompanyTax;
 use App\Domains\Taxes\Policies\CompanyTaxPolicy;
 use Illuminate\Support\Facades\Gate;
@@ -28,6 +32,8 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->scoped(CompanyContext::class);
+        $this->app->bind(XmlSigner::class, JavaXadesBesSigner::class);
+        $this->app->bind(SriProvider::class, EcuadorSriProvider::class);
     }
 
     /**

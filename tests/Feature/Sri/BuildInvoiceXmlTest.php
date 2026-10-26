@@ -14,31 +14,28 @@ final class BuildInvoiceXmlTest extends InvoiceFeatureTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        Storage::fake('private');
         config(['sri.software_provider.ruc' => '1790012345001']);
     }
 
-    public function test_numbered_invoice_builds_valid_private_unsigned_xml_and_is_idempotent(): void
+    public function test_issue_stores_a_valid_private_unsigned_xml_and_never_rebuilds_a_signed_document(): void
     {
         $user = User::factory()->create();
         $company = $this->readyCompany($user);
         $sale = $this->makeSale($user, $company);
-        $invoiceData = $this->actingAs($user)
-            ->postJson('/api/v1/sales/'.$sale->public_id.'/invoice')
-            ->assertCreated()->json('data');
+        $invoiceData = $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/issue')->assertCreated()->json('data');
         $invoice = ElectronicDocument::query()->where('public_id', $invoiceData['publicId'])->firstOrFail();
-        $invoice->paymentMethods()->firstOrFail()->forceFill(['method_code' => '01'])->save();
-
-        $path = '/api/v1/invoices/'.$invoice->public_id.'/xml';
-        $this->actingAs($user)->postJson($path)->assertOk()->assertJsonPath('data.status', 'XML_BUILT');
-        $this->actingAs($user)->postJson($path)->assertUnprocessable();
 
         $artifact = $invoice->artifacts()->where('type', DocumentArtifactType::UNSIGNED_XML->value)->firstOrFail();
         $this->assertSame(1, $artifact->version);
         $this->assertSame(hash('sha256', Storage::disk('private')->get($artifact->path)), $artifact->sha256);
         $this->assertStringContainsString('<claveAcceso>'.$invoice->access_key.'</claveAcceso>', Storage::disk('private')->get($artifact->path));
-        $this->assertSame(DocumentStatus::XML_BUILT, $invoice->refresh()->status);
-        $this->assertDatabaseCount('document_artifacts', 1);
+        $this->assertNotNull($invoice->refresh()->xml_built_at);
+
+        // A signed document is never rebuilt: the technical endpoint refuses it.
+        $this->actingAs($user)->postJson('/api/v1/invoices/'.$invoice->public_id.'/xml')
+            ->assertUnprocessable()->assertJsonPath('error.details.reason_code', 'DOCUMENT_NOT_BUILDABLE');
+        $this->assertSame(DocumentStatus::SIGNED, $invoice->refresh()->status);
+        $this->assertSame(1, $invoice->artifacts()->where('type', DocumentArtifactType::UNSIGNED_XML->value)->count());
     }
 
     public function test_invoice_xml_endpoint_rejects_another_company_document(): void
@@ -46,28 +43,38 @@ final class BuildInvoiceXmlTest extends InvoiceFeatureTestCase
         $userA = User::factory()->create();
         $companyA = $this->readyCompany($userA);
         $saleA = $this->makeSale($userA, $companyA);
-        $invoiceA = $this->actingAs($userA)->postJson('/api/v1/sales/'.$saleA->public_id.'/invoice')->assertCreated()->json('data');
+        $invoiceA = $this->actingAs($userA)->postJson('/api/v1/sales/'.$saleA->public_id.'/issue')->assertCreated()->json('data');
 
         $userB = User::factory()->create();
         $this->readyCompany($userB, '1799999999002', '1790016918001');
         $this->actingAs($userB)->postJson('/api/v1/invoices/'.$invoiceA['publicId'].'/xml')->assertForbidden();
+        $this->actingAs($userB)->getJson('/api/v1/invoices/'.$invoiceA['publicId'].'/artifacts')->assertForbidden();
     }
 
-    public function test_missing_provider_ruc_blocks_xml_without_changing_number_or_status(): void
+    public function test_an_xml_failure_keeps_the_number_and_issue_resumes_without_a_new_sequential(): void
     {
         $user = User::factory()->create();
         $company = $this->readyCompany($user);
         $sale = $this->makeSale($user, $company);
-        $invoiceData = $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/invoice')->assertCreated()->json('data');
-        $invoice = ElectronicDocument::query()->where('public_id', $invoiceData['publicId'])->firstOrFail();
-        $invoice->forceFill(['provider_ruc' => null])->save();
+        // Simulates a numbered document whose frozen provider RUC is missing (Anexo 26).
+        ElectronicDocument::created(fn (ElectronicDocument $document) => $document->forceFill(['provider_ruc' => null])->saveQuietly());
 
-        $this->actingAs($user)->postJson('/api/v1/invoices/'.$invoice->public_id.'/xml')
+        $error = $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/issue')
             ->assertUnprocessable()
-            ->assertJsonPath('error.details.reason_code', 'SRI_PROVIDER_NOT_CONFIGURED');
+            ->assertJsonPath('error.details.reason_code', 'SRI_PROVIDER_NOT_CONFIGURED')
+            ->assertJsonPath('error.details.invoiceStatus', 'NUMBERED')
+            ->json('error.details');
 
-        self::assertSame(DocumentStatus::NUMBERED, $invoice->refresh()->status);
+        $invoice = ElectronicDocument::query()->where('public_id', $error['invoicePublicId'])->firstOrFail();
+        $this->assertSame(DocumentStatus::NUMBERED, $invoice->status);
+        $this->assertSame('SRI_PROVIDER_NOT_CONFIGURED', $invoice->last_error_code);
         $this->assertDatabaseCount('document_artifacts', 0);
-        self::assertSame('000000001', $invoice->sequential);
+
+        $invoice->forceFill(['provider_ruc' => '1790012345001'])->saveQuietly();
+        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/issue')->assertOk()
+            ->assertJsonPath('data.status', 'SIGNED')
+            ->assertJsonPath('data.fullNumber', '001-001-000000001')
+            ->assertJsonPath('data.lastErrorCode', null);
+        $this->assertDatabaseHas('document_sequences', ['company_id' => $company->id, 'current_number' => 1]);
     }
 }

@@ -16,7 +16,7 @@ final class CannotNumberWithMismatchedCertificateTest extends InvoiceFeatureTest
         // The issuer RUC changed after the certificate was uploaded.
         $company->forceFill(['ruc' => '1799999999001'])->save();
 
-        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/invoice')
+        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/issue')
             ->assertConflict()->assertJsonPath('error.details.pending', ['certificate']);
         $this->assertDatabaseCount('electronic_documents', 0);
         $this->assertDatabaseCount('document_sequences', 0);
@@ -29,7 +29,7 @@ final class CannotNumberWithMismatchedCertificateTest extends InvoiceFeatureTest
         $sale = $this->makeSale($user, $company);
         Storage::disk('private')->put($company->digitalCertificates()->firstOrFail()->storage_path, 'corrupted');
 
-        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/invoice')
+        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/issue')
             ->assertConflict()->assertJsonPath('error.details.pending', ['certificate_unreadable']);
         $this->assertDatabaseCount('electronic_documents', 0);
     }
@@ -44,7 +44,7 @@ final class CannotNumberWithMismatchedCertificateTest extends InvoiceFeatureTest
         $second = $this->actingAs($user)->postJson('/api/v1/sales', [])->assertCreated();
         $second->assertJsonPath('data.number', 'V-00002');
 
-        $this->actingAs($user)->postJson('/api/v1/sales/'.$first->public_id.'/invoice')->assertCreated();
+        $this->actingAs($user)->postJson('/api/v1/sales/'.$first->public_id.'/issue')->assertCreated();
         $prepared = $this->actingAs($user)->getJson('/api/v1/sales?stage=prepared')->assertOk();
         $prepared->assertJsonCount(1, 'data')->assertJsonPath('data.0.number', 'V-00001')
             ->assertJsonPath('data.0.document.fullNumber', '001-001-000000001');

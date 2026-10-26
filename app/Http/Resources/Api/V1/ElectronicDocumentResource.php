@@ -2,6 +2,9 @@
 
 namespace App\Http\Resources\Api\V1;
 
+use App\Domains\Companies\Fiscal\Models\CompanyFiscalSettings;
+use App\Domains\FiscalDocuments\Enums\DocumentStatus;
+use App\Domains\Sri\Services\SriTransmissionGate;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -18,6 +21,21 @@ final class ElectronicDocumentResource extends JsonResource
             'accessKey' => $this->access_key,
             'issueDate' => $this->issue_date?->toDateString(),
             'status' => $this->status->value,
+            'environment' => $this->sri_environment,
+            'authorizationNumber' => $this->authorization_number,
+            'authorizedAt' => $this->authorized_at?->toIso8601String(),
+            'lastSriStatusAt' => $this->last_sri_status_at?->toIso8601String(),
+            'lastErrorCode' => $this->last_error_code,
+            // Why a SIGNED document has not left FACSTO yet (global switch, company switch or provider registration).
+            'transmissionBlockedReason' => $this->status === DocumentStatus::SIGNED
+                ? app(SriTransmissionGate::class)->blockingReason(CompanyFiscalSettings::query()->where('company_id', $this->company_id)->first())
+                : null,
+            'timeline' => [
+                'numberedAt' => $this->numbered_at?->toIso8601String(),
+                'xmlBuiltAt' => $this->xml_built_at?->toIso8601String(),
+                'signedAt' => $this->signed_at?->toIso8601String(),
+                'authorizedAt' => $this->authorized_at?->toIso8601String(),
+            ],
             'customer' => [
                 'identificationType' => $this->customer_identification_type,
                 'identification' => $this->customer_identification,
