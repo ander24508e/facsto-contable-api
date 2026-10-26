@@ -12,7 +12,6 @@ final class ConfigureIssuerTest extends SetupTestCase
         $company = $this->createCompany($owner);
 
         $this->actingAs($owner)
-            ->withHeaders($this->companyHeader($company))
             ->putJson('/api/v1/setup/issuer', [
                 'ruc' => '1790016919001',
                 'legalName' => 'Emisor de prueba',
@@ -35,7 +34,6 @@ final class ConfigureIssuerTest extends SetupTestCase
         $company = $this->createCompany($owner);
 
         $this->actingAs($owner)
-            ->withHeaders($this->companyHeader($company))
             ->putJson('/api/v1/setup/issuer', [
                 'ruc' => '1790016919001',
                 'legalName' => 'Sociedad privada de prueba',
@@ -51,7 +49,6 @@ final class ConfigureIssuerTest extends SetupTestCase
         $company = $this->createCompany($owner);
 
         $this->actingAs($owner)
-            ->withHeaders($this->companyHeader($company))
             ->putJson('/api/v1/setup/issuer', [
                 'ruc' => '1712345672001',
                 'legalName' => 'Emisor inválido',

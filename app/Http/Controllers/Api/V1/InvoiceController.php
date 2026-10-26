@@ -18,7 +18,7 @@ final class InvoiceController extends Controller
     {
         $this->authorize('viewAny', ElectronicDocument::class);
         $validated = $request->validate(['per_page' => ['sometimes', 'integer', 'min:1', 'max:100'], 'status' => ['sometimes', 'string', 'max:32']]);
-        $query = ElectronicDocument::query()->where('company_id', $context->company()->id)->with(['lines.taxes', 'taxes', 'paymentMethods'])->latest('issue_date');
+        $query = ElectronicDocument::query()->where('company_id', $context->company()->id)->with(['sale', 'lines.taxes', 'taxes', 'paymentMethods'])->latest('issue_date');
         if (isset($validated['status'])) {
             $query->where('status', $validated['status']);
         }
@@ -38,6 +38,6 @@ final class InvoiceController extends Controller
     {
         $this->authorize('view', $invoice);
 
-        return new ElectronicDocumentResource($invoice->load(['lines.taxes', 'taxes', 'paymentMethods']));
+        return new ElectronicDocumentResource($invoice->load(['sale', 'lines.taxes', 'taxes', 'paymentMethods']));
     }
 }

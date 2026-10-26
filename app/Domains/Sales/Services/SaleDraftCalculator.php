@@ -11,9 +11,9 @@ final class SaleDraftCalculator
 {
     /** @param list<array{itemPublicId: string, quantity: string, discountAmount?: string|null}> $lines
      * @param  Collection<string, Item>  $items
-     * @return array{details: list<array<string, mixed>>, subtotal: string, discountTotal: string, taxTotal: string, total: string}
+     * @return array{details: list<array<string, mixed>>, subtotal: string, discountTotal: string, taxTotal: string, tipAmount: string, total: string}
      */
-    public function calculate(array $lines, Collection $items): array
+    public function calculate(array $lines, Collection $items, string $tipAmount = '0.00'): array
     {
         $details = [];
         $subtotal = '0.00';
@@ -45,19 +45,21 @@ final class SaleDraftCalculator
             $lineTaxTotal = '0.00';
 
             foreach ($item->taxes as $tax) {
-                if (! $tax->is_active || $tax->valid_from->gt(today()) || ($tax->valid_until && $tax->valid_until->lt(today()))) {
+                if (! $tax->isUsableOn(today())) {
                     throw new ApiException(ApiErrorCode::TAX_NOT_AVAILABLE, 'El artículo tiene una tasa que ya no está vigente. Actualiza su configuración antes de continuar.', 422);
                 }
 
-                $amount = $this->round(bcdiv(bcmul($base, $tax->percentage, 8), '100', 8));
+                // Code and percentage always come from the official definition, never from the company.
+                $definition = $tax->definition;
+                $amount = $this->round(bcdiv(bcmul($base, (string) $definition->fixed_percentage, 8), '100', 8));
                 $lineTaxTotal = bcadd($lineTaxTotal, $amount, 2);
                 $lineTaxes[] = [
-                    'tax_id' => $tax->id,
-                    'tax_type' => $tax->tax_type,
-                    'sri_code' => $tax->sri_code,
-                    'percentage_code' => $tax->percentage_code,
+                    'company_tax_id' => $tax->id,
+                    'tax_type' => $definition->tax_type->value,
+                    'sri_code' => $definition->sri_tax_code,
+                    'percentage_code' => $definition->sri_percentage_code,
                     'tax_name' => $tax->name,
-                    'percentage' => $tax->percentage,
+                    'percentage' => $definition->fixed_percentage,
                     'taxable_base' => $base,
                     'tax_amount' => $amount,
                 ];
@@ -81,12 +83,14 @@ final class SaleDraftCalculator
             $taxTotal = bcadd($taxTotal, $lineTaxTotal, 2);
         }
 
-        $total = bcadd(bcsub($subtotal, $discountTotal, 2), $taxTotal, 2);
+        // Tabla 21: VALOR TOTAL = subtotal + impuestos + propina.
+        $tipAmount = $this->round($tipAmount);
+        $total = bcadd(bcadd(bcsub($subtotal, $discountTotal, 2), $taxTotal, 2), $tipAmount, 2);
         if (bccomp($total, '9999999999999999.99', 2) > 0) {
             throw new ApiException(ApiErrorCode::VALIDATION_FAILED, 'El total supera el máximo permitido para este borrador.', 422);
         }
 
-        return compact('details', 'subtotal', 'discountTotal', 'taxTotal', 'total');
+        return compact('details', 'subtotal', 'discountTotal', 'taxTotal', 'tipAmount', 'total');
     }
 
     private function round(string $value, int $scale = 2): string

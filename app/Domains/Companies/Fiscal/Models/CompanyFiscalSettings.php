@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['company_id', 'accounting_required', 'special_taxpayer_number', 'withholding_agent_number', 'rimpe_type', 'sri_environment', 'emission_type', 'setup_deferred_at'])]
+#[Fillable(['company_id', 'accounting_required', 'special_taxpayer_number', 'withholding_agent_number', 'rimpe_type', 'sri_environment', 'emission_type', 'sri_submission_enabled'])]
 class CompanyFiscalSettings extends Model
 {
     public function company(): BelongsTo
@@ -25,7 +25,7 @@ class CompanyFiscalSettings extends Model
             'rimpe_type' => RimpeType::class,
             'sri_environment' => SriEnvironment::class,
             'emission_type' => EmissionType::class,
-            'setup_deferred_at' => 'immutable_datetime',
+            'sri_submission_enabled' => 'boolean',
         ];
     }
 }

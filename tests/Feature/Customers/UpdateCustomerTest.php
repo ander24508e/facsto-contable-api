@@ -11,11 +11,11 @@ final class UpdateCustomerTest extends CompanyTestCase
     {
         $owner = User::factory()->create();
         $company = $this->createCompany($owner, '1799999999001');
-        $customer = $this->actingAs($owner)->withHeaders($this->companyHeader($company))
+        $customer = $this->actingAs($owner)
             ->postJson('/api/v1/customers', ['identificationType' => 'CEDULA', 'identification' => '0123456789', 'legalName' => 'Antes'])
             ->assertCreated()->json('data');
 
-        $this->withHeaders($this->companyHeader($company))->patchJson('/api/v1/customers/'.$customer['publicId'], ['legalName' => 'Después'])
+        $this->patchJson('/api/v1/customers/'.$customer['publicId'], ['legalName' => 'Después'])
             ->assertOk()->assertJsonPath('data.legalName', 'Después');
     }
 }

@@ -2,11 +2,12 @@
 
 namespace App\Domains\Catalog\Models;
 
+use App\Domains\Taxes\Models\CompanyTax;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['item_id', 'tax_id'])]
+#[Fillable(['company_id', 'item_id', 'company_tax_id'])]
 class ItemTax extends Model
 {
     public function item(): BelongsTo
@@ -16,6 +17,6 @@ class ItemTax extends Model
 
     public function tax(): BelongsTo
     {
-        return $this->belongsTo(Tax::class);
+        return $this->belongsTo(CompanyTax::class, 'company_tax_id');
     }
 }

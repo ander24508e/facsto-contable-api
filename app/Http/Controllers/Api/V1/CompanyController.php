@@ -2,65 +2,32 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Domains\Companies\Actions\CreateCompanyAction;
 use App\Domains\Companies\Actions\DeleteCompanyLogoAction;
 use App\Domains\Companies\Actions\UpdateCompanyAction;
 use App\Domains\Companies\Actions\UpdateCompanyLogoAction;
+use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Companies\Models\Company;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Companies\StoreCompanyRequest;
 use App\Http\Requests\Companies\UpdateCompanyRequest;
 use App\Http\Requests\Companies\UploadCompanyLogoRequest;
 use App\Http\Resources\Api\V1\CompanyResource;
 use Illuminate\Http\Request;
-use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class CompanyController extends Controller
 {
-    public function index(): AnonymousResourceCollection
+    public function show(Request $request, CompanyContext $context): CompanyResource
     {
-        $companies = Company::query()
-            ->where('status', 'ACTIVE')
-            ->whereHas('memberships', fn ($query) => $query->where('user_id', auth()->id())->where('is_active', true))
-            ->with([
-                'memberships' => fn ($query) => $query->where('user_id', auth()->id())->where('is_active', true),
-                'fiscalSettings',
-            ])
-            ->orderBy('legal_name')
-            ->get();
-
-        return CompanyResource::collection($companies);
-    }
-
-    public function store(StoreCompanyRequest $request, CreateCompanyAction $create): CompanyResource
-    {
-        $data = $request->validated();
-        $company = $create->execute($request->user(), [
-            'ruc' => $data['ruc'] ?? null,
-            'legal_name' => $data['legalName'] ?? null,
-            'commercial_name' => $data['commercialName'] ?? null,
-            'main_address' => $data['mainAddress'] ?? null,
-            'email' => $data['email'] ?? null,
-            'phone' => $data['phone'] ?? null,
-        ]);
-
-        return new CompanyResource($company->load([
-            'memberships' => fn ($query) => $query->where('user_id', $request->user()->id),
-            'fiscalSettings',
-        ]));
-    }
-
-    public function show(Company $company): CompanyResource
-    {
+        $company = $context->company();
         $this->authorize('view', $company);
 
-        return new CompanyResource($company->load(['memberships' => fn ($query) => $query->where('user_id', auth()->id()), 'fiscalSettings']));
+        return $this->resource($company, $request);
     }
 
-    public function update(UpdateCompanyRequest $request, Company $company, UpdateCompanyAction $update): CompanyResource
+    public function update(UpdateCompanyRequest $request, CompanyContext $context, UpdateCompanyAction $update): CompanyResource
     {
+        $company = $context->company();
         $this->authorize('update', $company);
         $data = $request->validated();
         $attributes = [];
@@ -77,11 +44,12 @@ final class CompanyController extends Controller
             }
         }
 
-        return new CompanyResource($update->execute($company, $attributes)->load(['memberships' => fn ($query) => $query->where('user_id', auth()->id()), 'fiscalSettings']));
+        return $this->resource($update->execute($company, $attributes), $request);
     }
 
-    public function logo(Company $company): StreamedResponse
+    public function logo(CompanyContext $context): StreamedResponse
     {
+        $company = $context->company();
         $this->authorize('view', $company);
 
         abort_unless($company->logo_path && Storage::disk('private')->exists($company->logo_path), 404);
@@ -92,19 +60,27 @@ final class CompanyController extends Controller
         ]);
     }
 
-    public function updateLogo(UploadCompanyLogoRequest $request, Company $company, UpdateCompanyLogoAction $update): CompanyResource
+    public function updateLogo(UploadCompanyLogoRequest $request, CompanyContext $context, UpdateCompanyLogoAction $update): CompanyResource
     {
+        $company = $context->company();
         $this->authorize('update', $company);
-        $update->execute($company, $request->file('logo'), $request->user());
 
-        return new CompanyResource($company->load(['memberships' => fn ($query) => $query->where('user_id', $request->user()->id), 'fiscalSettings']));
+        return $this->resource($update->execute($company, $request->file('logo'), $request->user()), $request);
     }
 
-    public function deleteLogo(Request $request, Company $company, DeleteCompanyLogoAction $delete): CompanyResource
+    public function deleteLogo(Request $request, CompanyContext $context, DeleteCompanyLogoAction $delete): CompanyResource
     {
+        $company = $context->company();
         $this->authorize('update', $company);
-        $delete->execute($company, $request->user());
 
-        return new CompanyResource($company->load(['memberships' => fn ($query) => $query->where('user_id', $request->user()->id), 'fiscalSettings']));
+        return $this->resource($delete->execute($company, $request->user()), $request);
+    }
+
+    private function resource(Company $company, Request $request): CompanyResource
+    {
+        return new CompanyResource($company->load([
+            'memberships' => fn ($query) => $query->where('user_id', $request->user()->id),
+            'fiscalSettings',
+        ]));
     }
 }

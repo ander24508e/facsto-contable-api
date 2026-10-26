@@ -9,6 +9,7 @@ use App\Domains\Companies\Enums\CompanyStatus;
 use App\Domains\Companies\Fiscal\Models\CompanyFiscalSettings;
 use App\Domains\Customers\Models\Customer;
 use App\Domains\Sales\Models\Sale;
+use App\Domains\Taxes\Models\CompanyTax;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
@@ -17,7 +18,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
-#[Fillable(['ruc', 'legal_name', 'commercial_name', 'main_address', 'email', 'phone', 'logo_path', 'status'])]
+#[Fillable(['slug', 'ruc','legal_name', 'commercial_name', 'main_address', 'email', 'phone', 'logo_path', 'status'])]
 class Company extends Model
 {
     protected static function booted(): void
@@ -60,6 +61,11 @@ class Company extends Model
     public function customers(): HasMany
     {
         return $this->hasMany(Customer::class);
+    }
+
+    public function taxes(): HasMany
+    {
+        return $this->hasMany(CompanyTax::class);
     }
 
     public function items(): HasMany

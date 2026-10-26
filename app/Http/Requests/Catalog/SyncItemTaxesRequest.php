@@ -14,6 +14,6 @@ final class SyncItemTaxesRequest extends FormRequest
 
     public function rules(): array
     {
-        return ['taxPublicIds' => ['required', 'array'], 'taxPublicIds.*' => ['required', 'uuid', 'distinct', Rule::exists('taxes', 'public_id')]];
+        return ['taxPublicIds' => ['required', 'array'], 'taxPublicIds.*' => ['required', 'uuid', 'distinct', Rule::exists('company_taxes', 'public_id')]];
     }
 }

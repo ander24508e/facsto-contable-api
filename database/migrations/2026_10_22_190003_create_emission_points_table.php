@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -19,11 +20,14 @@ return new class extends Migration
             $table->boolean('is_default')->default(false);
             $table->timestamps();
             $table->unique(['establishment_id', 'code']);
+            $table->unique(['company_id', 'id'], 'emission_points_company_id_id_unique');
             $table->foreign(['company_id', 'establishment_id'])
                 ->references(['company_id', 'id'])
                 ->on('establishments')
                 ->cascadeOnDelete();
         });
+
+        DB::statement('CREATE UNIQUE INDEX emission_points_one_default_per_establishment ON emission_points (establishment_id) WHERE is_default = true');
     }
 
     public function down(): void

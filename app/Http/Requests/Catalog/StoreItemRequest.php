@@ -17,8 +17,8 @@ final class StoreItemRequest extends FormRequest
     {
         return [
             'type' => ['required', Rule::enum(ItemType::class)],
-            'internalCode' => ['required', 'string', 'max:50'],
-            'auxiliaryCode' => ['nullable', 'string', 'max:50'],
+            'internalCode' => ['required', 'string', 'max:25'],
+            'auxiliaryCode' => ['nullable', 'string', 'max:25'],
             'name' => ['required', 'string', 'max:180'],
             'description' => ['nullable', 'string'],
             'unit' => ['required', 'string', 'max:32'],

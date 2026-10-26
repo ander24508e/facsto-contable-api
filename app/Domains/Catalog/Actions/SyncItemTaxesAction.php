@@ -3,7 +3,7 @@
 namespace App\Domains\Catalog\Actions;
 
 use App\Domains\Catalog\Models\Item;
-use App\Domains\Catalog\Services\ItemTaxService;
+use App\Domains\Taxes\Services\ItemTaxService;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Models\User;
 use App\Shared\Audit\AuditRecorder;
@@ -22,9 +22,9 @@ final class SyncItemTaxesAction
         }
 
         return DB::transaction(function () use ($item, $taxPublicIds, $actor): Item {
-            $before = $item->taxes()->pluck('taxes.public_id')->all();
+            $before = $item->taxes()->pluck('company_taxes.public_id')->all();
             $this->taxes->sync($item, $taxPublicIds);
-            $item->refresh()->load('taxes');
+            $item->refresh()->load('taxes.definition');
             $this->audit->record($actor, $this->context->company(), 'item.taxes_updated', $item, ['taxPublicIds' => $before], ['taxPublicIds' => $item->taxes->pluck('public_id')->all()]);
 
             return $item;

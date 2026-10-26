@@ -21,16 +21,16 @@ Los dos sistemas tendrán bases de datos privadas e independientes.
 Desde la carpeta raíz del proyecto, ejecuta `./scripts/dev-up.ps1` en PowerShell.
 El script prepara el `.env` local y su clave antes de iniciar los contenedores.
 
-La API queda disponible en `http://localhost:8000` y el endpoint de estado en
-`http://localhost:8000/health`. PostgreSQL y Redis sólo se publican en loopback para
+La API queda disponible en `http://localhost:8002` y el endpoint de estado en
+`http://localhost:8002/health`. PostgreSQL y Redis sólo se publican en loopback para
 facilitar herramientas locales.
 
 La API corre en Laravel con PostgreSQL, Redis y Horizon. Los certificados, XML y RIDE
 se guardarán en el disco privado `storage/private`, fuera de `public/`.
 
-Para crear la cuenta y las dos empresas de demostración en un entorno local, ejecuta
-`docker compose exec api php artisan db:seed`. Usuario demo: `demo@facsto.local`,
-contraseña local: `FacstoLocal2026!`. El seeder sólo corre con `APP_ENV=local` y usa
+Para crear la empresa de demostración y sus dos administradores en un entorno local, ejecuta
+`docker compose exec api php artisan db:seed`. Usuarios demo: `demo@facsto.local` (operador) y
+`cliente@facsto.local` (cliente), contraseña local: `FacstoLocal2026!`. El seeder sólo corre con `APP_ENV=local` y usa
 datos ficticios de desarrollo.
 
 ## Convenciones

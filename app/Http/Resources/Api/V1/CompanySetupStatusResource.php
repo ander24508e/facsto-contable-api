@@ -16,7 +16,7 @@ final class CompanySetupStatusResource extends JsonResource
             'issuerReady' => $this['issuerReady'],
             'emissionReady' => $this['emissionReady'],
             'certificateReady' => $this['certificateReady'],
-            'deferred' => $this['deferred'],
+            'onboardingRequired' => $this['onboardingRequired'],
         ];
     }
 }

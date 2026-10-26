@@ -4,8 +4,9 @@ namespace App\Domains\FiscalDocuments\Services;
 
 use App\Domains\Companies\Fiscal\Enums\EmissionType;
 use App\Domains\Companies\Fiscal\Enums\SriEnvironment;
-use App\Domains\Companies\Fiscal\Services\EcuadorTaxIdentifierValidator;
+use App\Domains\Companies\Fiscal\Services\EcuadorRucValidator;
 use App\Domains\FiscalDocuments\Enums\DocumentType;
+use App\Domains\Sri\Mappers\SriDocumentTypeMapper;
 use DateTimeInterface;
 use InvalidArgumentException;
 
@@ -13,7 +14,7 @@ final class AccessKeyGenerator
 {
     public function __construct(
         private readonly SriDocumentTypeMapper $documentTypeMapper,
-        private readonly EcuadorTaxIdentifierValidator $rucValidator,
+        private readonly EcuadorRucValidator $rucValidator,
         private readonly Modulo11Service $modulo11,
     ) {}
 
@@ -28,7 +29,7 @@ final class AccessKeyGenerator
         string $numericCode,
         EmissionType $emissionType,
     ): string {
-        if (! $this->rucValidator->isValidRuc($ruc)) {
+        if (! $this->rucValidator->isStructurallyValid($ruc)) {
             throw new InvalidArgumentException('El RUC no es válido.');
         }
         if (! preg_match('/^\d{3}$/', $establishmentCode) || ! preg_match('/^\d{3}$/', $emissionPointCode)
@@ -43,7 +44,7 @@ final class AccessKeyGenerator
             EmissionType::NORMAL => '1'
         };
         $base = $issueDate->format('dmY')
-            .$this->documentTypeMapper->code($documentType)
+            .$this->documentTypeMapper->map($documentType)
             .$ruc.$environmentCode.$establishmentCode.$emissionPointCode.$sequential.$numericCode.$emissionCode;
         if (strlen($base) !== 48) {
             throw new InvalidArgumentException('La base de clave de acceso debe tener 48 dígitos.');

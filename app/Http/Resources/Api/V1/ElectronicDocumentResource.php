@@ -11,6 +11,7 @@ final class ElectronicDocumentResource extends JsonResource
     {
         return [
             'publicId' => $this->public_id,
+            'salePublicId' => $this->sale?->public_id,
             'documentType' => $this->document_type->value,
             'fullNumber' => $this->full_number,
             'sequential' => $this->sequential,
@@ -30,6 +31,8 @@ final class ElectronicDocumentResource extends JsonResource
                 'subtotalTaxed' => $this->subtotal_taxed,
                 'discountTotal' => $this->discount_total,
                 'taxTotal' => $this->tax_total,
+                'tipAmount' => $this->tip_amount,
+                'totalWithoutTaxes' => $this->total_without_taxes,
                 'total' => $this->total,
                 'currency' => $this->currency,
             ],

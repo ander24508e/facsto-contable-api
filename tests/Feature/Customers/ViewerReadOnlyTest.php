@@ -16,7 +16,7 @@ final class ViewerReadOnlyTest extends CompanyTestCase
         $company = $this->createCompany($owner, '1799999999001');
         app(AddCompanyMemberAction::class)->execute($company, $owner, $viewer, CompanyRole::VIEWER);
 
-        $this->actingAs($viewer)->withHeaders($this->companyHeader($company))->getJson('/api/v1/customers')->assertOk();
+        $this->actingAs($viewer)->getJson('/api/v1/customers')->assertOk();
         $this->postJson('/api/v1/customers', ['identificationType' => 'CEDULA', 'identification' => '0123456789', 'legalName' => 'Cliente'])
             ->assertForbidden();
     }

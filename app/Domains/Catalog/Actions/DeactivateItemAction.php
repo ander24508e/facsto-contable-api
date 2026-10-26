@@ -26,7 +26,7 @@ final class DeactivateItemAction
             $item->refresh();
             $this->audit->record($actor, $this->context->company(), 'item.deactivated', $item, $before, $item->only(['is_active']));
 
-            return $item->load('taxes');
+            return $item->load('taxes.definition');
         });
     }
 }

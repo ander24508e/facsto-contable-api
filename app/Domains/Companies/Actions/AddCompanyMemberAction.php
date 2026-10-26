@@ -27,6 +27,14 @@ final class AddCompanyMemberAction
                 throw new ApiException(ApiErrorCode::COMPANY_ACCESS_DENIED, 'No puedes asignar ese rol.', 403);
             }
 
+            $belongsToAnotherCompany = CompanyMembership::query()
+                ->where('user_id', $user->id)
+                ->where('company_id', '<>', $lockedCompany->id)
+                ->exists();
+            if ($belongsToAnotherCompany) {
+                throw new ApiException(ApiErrorCode::USER_BELONGS_TO_ANOTHER_COMPANY, 'El usuario ya pertenece a otra empresa.', 409);
+            }
+
             $membership = CompanyMembership::query()
                 ->where('company_id', $lockedCompany->id)
                 ->where('user_id', $user->id)

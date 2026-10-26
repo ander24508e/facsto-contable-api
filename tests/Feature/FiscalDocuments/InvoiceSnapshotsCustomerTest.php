@@ -13,7 +13,7 @@ final class InvoiceSnapshotsCustomerTest extends InvoiceFeatureTestCase
         $company = $this->readyCompany($user);
         $sale = $this->makeSale($user, $company);
         $sale->customer->forceFill(['legal_name' => 'Nombre actualizado'])->save();
-        $invoice = $this->actingAs($user)->withHeaders($this->companyHeader($company))->postJson('/api/v1/sales/'.$sale->public_id.'/invoice')->assertCreated()->json('data');
+        $invoice = $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/invoice')->assertCreated()->json('data');
         $this->assertSame('Cliente de prueba', $invoice['customer']['name']);
     }
 }

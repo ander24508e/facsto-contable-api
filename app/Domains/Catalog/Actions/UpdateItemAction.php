@@ -47,7 +47,7 @@ final class UpdateItemAction
             $item->refresh();
             $this->audit->record($actor, $company, 'item.updated', $item, $before, $item->only(['type', 'internal_code', 'auxiliary_code', 'name', 'description', 'unit', 'sale_price', 'is_active', 'category_id']));
 
-            return $item->load(['taxes', 'category']);
+            return $item->load(['taxes.definition', 'category']);
         });
     }
 }

@@ -13,7 +13,6 @@ final class ConfigureEmissionStructureTest extends SetupTestCase
         $this->configureIssuer($company);
 
         $this->actingAs($owner)
-            ->withHeaders($this->companyHeader($company))
             ->putJson('/api/v1/setup/emission', [
                 'establishmentCode' => '003',
                 'establishmentName' => 'Matriz',

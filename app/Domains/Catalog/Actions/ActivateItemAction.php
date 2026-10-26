@@ -26,7 +26,7 @@ final class ActivateItemAction
             $item->refresh();
             $this->audit->record($actor, $this->context->company(), 'item.activated', $item, $before, $item->only(['is_active']));
 
-            return $item->load('taxes');
+            return $item->load('taxes.definition');
         });
     }
 }

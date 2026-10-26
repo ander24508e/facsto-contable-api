@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -21,6 +22,8 @@ return new class extends Migration
             $table->unique(['company_id', 'code']);
             $table->unique(['company_id', 'id']);
         });
+
+        DB::statement('CREATE UNIQUE INDEX establishments_one_main_per_company ON establishments (company_id) WHERE is_main = true');
     }
 
     public function down(): void

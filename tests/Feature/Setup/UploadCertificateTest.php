@@ -16,7 +16,6 @@ final class UploadCertificateTest extends SetupTestCase
         $this->configureEmission($company);
 
         $response = $this->actingAs($owner)
-            ->withHeaders($this->companyHeader($company))
             ->post('/api/v1/setup/certificate', [
                 'certificate' => $this->validPkcs12Upload(),
                 'password' => 'test-password',

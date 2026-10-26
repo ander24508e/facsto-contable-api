@@ -20,7 +20,7 @@ final class CreateSaleDraftTest extends SalesTestCase
     {
         $user = User::factory()->create();
         $company = $this->createCompany($user, '1799999999001');
-        $this->actingAs($user)->withHeaders($this->companyHeader($company))->postJson('/api/v1/sales', ['notes' => 'Empezar después', 'lines' => [], 'paymentMethods' => []])
+        $this->actingAs($user)->postJson('/api/v1/sales', ['notes' => 'Empezar después', 'lines' => [], 'paymentMethods' => []])
             ->assertCreated()->assertJsonPath('data.status', 'DRAFT')->assertJsonPath('data.customer.publicId', null)
             ->assertJsonPath('data.lines', [])->assertJsonPath('data.total', '0.00');
     }

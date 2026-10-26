@@ -13,9 +13,8 @@ final class SaleIsolationTest extends SalesTestCase
         $companyA = $this->createCompany($owner, '1799999999001');
         $companyB = $this->createCompany($other, '1799999998001');
         $sale = $this->makeSale($owner, $companyA);
-        $headers = $this->companyHeader($companyB);
-        $this->actingAs($other)->withHeaders($headers)->getJson('/api/v1/sales/'.$sale->public_id)->assertForbidden();
-        $this->actingAs($other)->withHeaders($headers)->patchJson('/api/v1/sales/'.$sale->public_id, [
+        $this->actingAs($other)->getJson('/api/v1/sales/'.$sale->public_id)->assertForbidden();
+        $this->actingAs($other)->patchJson('/api/v1/sales/'.$sale->public_id, [
             'customerPublicId' => $sale->customer->public_id,
             'lines' => [['itemPublicId' => $sale->details()->first()->item->public_id, 'quantity' => '1']],
             'paymentMethods' => [],

@@ -17,8 +17,8 @@ final class UpdateItemRequest extends FormRequest
     {
         return [
             'type' => ['sometimes', Rule::enum(ItemType::class)],
-            'internalCode' => ['sometimes', 'string', 'max:50'],
-            'auxiliaryCode' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'internalCode' => ['sometimes', 'string', 'max:25'],
+            'auxiliaryCode' => ['sometimes', 'nullable', 'string', 'max:25'],
             'name' => ['sometimes', 'string', 'max:180'],
             'description' => ['sometimes', 'nullable', 'string'],
             'unit' => ['sometimes', 'string', 'max:32'],

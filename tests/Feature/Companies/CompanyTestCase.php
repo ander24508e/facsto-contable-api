@@ -15,14 +15,10 @@ abstract class CompanyTestCase extends TestCase
     protected function createCompany(User $owner, string $ruc): Company
     {
         return app(CreateCompanyAction::class)->execute($owner, [
+            'slug' => 'empresa-'.$ruc,
             'ruc' => $ruc,
             'legal_name' => 'Empresa '.$ruc,
             'main_address' => 'Quito, Ecuador',
         ]);
-    }
-
-    protected function companyHeader(Company $company): array
-    {
-        return ['X-Facsto-Company' => $company->public_id];
     }
 }

@@ -10,9 +10,8 @@ final class ItemCodeUniquenessTest extends CatalogTestCase
     {
         $user = User::factory()->create();
         $company = $this->createCompany($user, '1799999999001');
-        $headers = $this->companyHeader($company);
-        $this->createItemThroughApi($user, $headers);
-        $this->actingAs($user)->withHeaders($headers)->postJson('/api/v1/items', [
+        $this->createItemThroughApi($user);
+        $this->actingAs($user)->postJson('/api/v1/items', [
             'type' => 'SERVICE', 'internalCode' => 'ITEM-001', 'name' => 'Duplicado', 'unit' => 'UND', 'salePrice' => '1.00',
         ])->assertStatus(409)->assertJsonPath('error.code', 'ITEM_DUPLICATE_CODE');
     }

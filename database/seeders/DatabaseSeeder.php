@@ -9,6 +9,8 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        $this->call(SriCatalogSeeder::class);
+
         if (App::environment('local')) {
             $this->call(DevelopmentSeeder::class);
         }

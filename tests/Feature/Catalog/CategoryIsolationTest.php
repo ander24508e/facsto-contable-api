@@ -15,12 +15,12 @@ final class CategoryIsolationTest extends CatalogTestCase
         $categoryA = $companyA->categories()->create(['name' => 'A']);
         $categoryB = $companyB->categories()->create(['name' => 'B']);
 
-        $this->actingAs($userA)->withHeaders($this->companyHeader($companyA))->getJson('/api/v1/categories')
+        $this->actingAs($userA)->getJson('/api/v1/categories')
             ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.publicId', $categoryA->public_id);
-        $this->actingAs($userA)->withHeaders($this->companyHeader($companyA))->getJson('/api/v1/categories/'.$categoryB->public_id)->assertForbidden();
-        $this->actingAs($userA)->withHeaders($this->companyHeader($companyA))->patchJson('/api/v1/categories/'.$categoryB->public_id, ['name' => 'Exfiltrada'])->assertForbidden();
+        $this->actingAs($userA)->getJson('/api/v1/categories/'.$categoryB->public_id)->assertForbidden();
+        $this->actingAs($userA)->patchJson('/api/v1/categories/'.$categoryB->public_id, ['name' => 'Exfiltrada'])->assertForbidden();
 
-        $this->actingAs($userA)->withHeaders($this->companyHeader($companyA))->postJson('/api/v1/items', [
+        $this->actingAs($userA)->postJson('/api/v1/items', [
             'type' => 'PRODUCT', 'internalCode' => 'ITEM-A', 'name' => 'Artículo A', 'unit' => 'UND', 'salePrice' => '10.000000', 'categoryPublicId' => $categoryB->public_id,
         ])->assertUnprocessable()->assertJsonPath('error.code', 'CATEGORY_NOT_FOUND');
     }

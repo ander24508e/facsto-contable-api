@@ -33,7 +33,7 @@ final class CreateItemAction
         $attributes['type'] = ItemType::from($attributes['type']);
 
         return DB::transaction(function () use ($company, $attributes, $actor): Item {
-            $item = $company->items()->create($attributes)->load(['taxes', 'category']);
+            $item = $company->items()->create($attributes)->load(['taxes.definition', 'category']);
             $this->audit->record($actor, $company, 'item.created', $item, null, $item->only(['type', 'internal_code', 'auxiliary_code', 'name', 'description', 'unit', 'sale_price', 'is_active', 'category_id']));
 
             return $item;

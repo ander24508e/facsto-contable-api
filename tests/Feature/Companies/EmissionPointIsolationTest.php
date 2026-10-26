@@ -20,7 +20,7 @@ final class EmissionPointIsolationTest extends CompanyTestCase
         ]);
 
         $this->actingAs($userA)
-            ->patchJson('/api/v1/emission-points/'.$point->public_id, ['name' => 'Modificado'], $this->companyHeader($companyA))
+            ->patchJson('/api/v1/emission-points/'.$point->public_id, ['name' => 'Modificado'])
             ->assertNotFound();
 
         $this->assertDatabaseHas('emission_points', ['id' => $point->id, 'name' => 'Caja B']);

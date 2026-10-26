@@ -11,7 +11,7 @@ final class CancelSaleDraftTest extends SalesTestCase
         $user = User::factory()->create();
         $company = $this->createCompany($user, '1799999999001');
         $sale = $this->makeSale($user, $company, false);
-        $this->actingAs($user)->withHeaders($this->companyHeader($company))->postJson('/api/v1/sales/'.$sale->public_id.'/cancel')->assertOk()->assertJsonPath('data.status', 'CANCELLED');
+        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/cancel')->assertOk()->assertJsonPath('data.status', 'CANCELLED');
         $this->assertDatabaseHas('sales', ['id' => $sale->id, 'status' => 'CANCELLED']);
     }
 }

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['company_id', 'user_id', 'role', 'is_active', 'joined_at'])]
+#[Fillable(['company_id', 'user_id', 'role', 'is_active', 'joined_at', 'onboarding_completed_at'])]
 class CompanyMembership extends Model
 {
     public function company(): BelongsTo
@@ -27,6 +27,7 @@ class CompanyMembership extends Model
             'role' => CompanyRole::class,
             'is_active' => 'boolean',
             'joined_at' => 'datetime',
+            'onboarding_completed_at' => 'immutable_datetime',
         ];
     }
 }

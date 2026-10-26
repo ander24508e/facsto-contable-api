@@ -3,8 +3,9 @@
 namespace Tests\Unit\Sales;
 
 use App\Domains\Catalog\Models\Item;
-use App\Domains\Catalog\Models\Tax;
 use App\Domains\Sales\Services\SaleDraftCalculator;
+use App\Domains\Taxes\Models\CompanyTax;
+use App\Domains\Taxes\Models\SriTaxDefinition;
 use App\Shared\Http\ApiException;
 use Illuminate\Support\Collection;
 use PHPUnit\Framework\Attributes\Test;
@@ -17,8 +18,8 @@ final class SaleDraftCalculatorTest extends TestCase
     {
         $item = new Item(['internal_code' => 'A', 'name' => 'Servicio', 'unit' => 'UND', 'sale_price' => '10.000000']);
         $item->setRelation('taxes', new Collection([
-            new Tax(['tax_type' => 'IVA', 'sri_code' => '2', 'percentage_code' => 'A', 'name' => 'IVA 10', 'percentage' => '10.000000', 'valid_from' => today()->subDay(), 'is_active' => true]),
-            new Tax(['tax_type' => 'FEE', 'sri_code' => '3', 'percentage_code' => 'B', 'name' => 'Tasa 2.5', 'percentage' => '2.500000', 'valid_from' => today()->subDay(), 'is_active' => true]),
+            $this->tax('IVA', '2', 'A', '10.000000'),
+            $this->tax('ICE', '3', 'B', '2.500000'),
         ]));
         $result = app(SaleDraftCalculator::class)->calculate([['itemPublicId' => 'a', 'quantity' => '1.250000', 'discountAmount' => '0.25']], new Collection(['a' => $item]));
         $this->assertSame('12.50', $result['subtotal']);
@@ -40,7 +41,7 @@ final class SaleDraftCalculatorTest extends TestCase
     public function it_rejects_an_expired_tax_definition(): void
     {
         $item = new Item(['sale_price' => '10.000000']);
-        $tax = new Tax(['is_active' => true, 'percentage' => '15.000000', 'valid_from' => today()->subYear(), 'valid_until' => today()->subDay()]);
+        $tax = $this->tax('IVA', '2', '2', '12.000000', today()->subDay());
         $item->setRelation('taxes', new Collection([$tax]));
         $this->expectException(ApiException::class);
         app(SaleDraftCalculator::class)->calculate([['itemPublicId' => 'a', 'quantity' => '1']], new Collection(['a' => $item]));
@@ -66,9 +67,32 @@ final class SaleDraftCalculatorTest extends TestCase
     }
 
     #[Test]
+    public function it_adds_the_tip_to_the_total(): void
+    {
+        $item = new Item(['sale_price' => '100.000000']);
+        $item->setRelation('taxes', new Collection([$this->tax('IVA', '2', '4', '15.000000')]));
+        $result = app(SaleDraftCalculator::class)->calculate([['itemPublicId' => 'a', 'quantity' => '1']], new Collection(['a' => $item]), '10.00');
+        $this->assertSame('10.00', $result['tipAmount']);
+        $this->assertSame('125.00', $result['total']);
+    }
+
+    #[Test]
     public function it_rejects_an_item_that_is_not_in_the_company_scoped_collection(): void
     {
         $this->expectException(ApiException::class);
         app(SaleDraftCalculator::class)->calculate([['itemPublicId' => 'company-b-item', 'quantity' => '1']], new Collection);
+    }
+
+    private function tax(string $type, string $sriCode, string $percentageCode, string $percentage, $validUntil = null): CompanyTax
+    {
+        $definition = new SriTaxDefinition([
+            'tax_type' => $type, 'sri_tax_code' => $sriCode, 'sri_percentage_code' => $percentageCode, 'name' => "{$type} {$percentage}",
+            'calculation_type' => 'PERCENTAGE', 'fixed_percentage' => $percentage, 'calculation_supported' => true,
+            'valid_from' => today()->subYear(), 'valid_until' => $validUntil, 'is_active' => true,
+        ]);
+        $tax = new CompanyTax(['name' => $definition->name, 'is_active' => true]);
+        $tax->setRelation('definition', $definition);
+
+        return $tax;
     }
 }

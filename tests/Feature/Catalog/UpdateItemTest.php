@@ -10,9 +10,9 @@ final class UpdateItemTest extends CatalogTestCase
     {
         $user = User::factory()->create();
         $company = $this->createCompany($user, '1799999999001');
-        $item = $this->createItemThroughApi($user, $this->companyHeader($company));
+        $item = $this->createItemThroughApi($user);
 
-        $this->actingAs($user)->withHeaders($this->companyHeader($company))->patchJson('/api/v1/items/'.$item['publicId'], ['salePrice' => '0.123456'])
+        $this->actingAs($user)->patchJson('/api/v1/items/'.$item['publicId'], ['salePrice' => '0.123456'])
             ->assertOk()->assertJsonPath('data.salePrice', '0.123456');
         $this->assertDatabaseHas('items', ['public_id' => $item['publicId'], 'sale_price' => '0.123456']);
     }

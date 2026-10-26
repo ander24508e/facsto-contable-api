@@ -13,6 +13,8 @@ final class UserResource extends JsonResource
             'publicId' => $this->public_id,
             'name' => $this->name,
             'email' => $this->email,
+            'phone' => $this->phone,
+            'hasProfilePhoto' => $this->profile_photo_path !== null,
         ];
     }
 }

@@ -22,7 +22,7 @@ final class LoginTest extends TestCase
         ]);
 
         $this->withoutMiddleware(PreventRequestForgery::class)
-            ->postJson('/login', ['email' => $user->email, 'password' => 'SecurePass123'])
+            ->postJson('/api/v1/auth/login', ['email' => $user->email, 'password' => 'SecurePass123'])
             ->assertOk()
             ->assertJsonPath('data.publicId', $user->public_id);
 
@@ -40,7 +40,7 @@ final class LoginTest extends TestCase
         ]);
 
         $this->withoutMiddleware(PreventRequestForgery::class)
-            ->postJson('/login', ['email' => $user->email, 'password' => 'SecurePass123'])
+            ->postJson('/api/v1/auth/login', ['email' => $user->email, 'password' => 'SecurePass123'])
             ->assertUnprocessable();
 
         $this->assertGuest();

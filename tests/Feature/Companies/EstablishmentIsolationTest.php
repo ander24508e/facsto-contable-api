@@ -15,7 +15,7 @@ final class EstablishmentIsolationTest extends CompanyTestCase
         $foreignEstablishment = $companyB->establishments()->create(['code' => '001', 'name' => 'Matriz B', 'address' => 'Guayaquil']);
 
         $this->actingAs($userA)
-            ->patchJson('/api/v1/establishments/'.$foreignEstablishment->public_id, ['name' => 'Modificado'], $this->companyHeader($companyA))
+            ->patchJson('/api/v1/establishments/'.$foreignEstablishment->public_id, ['name' => 'Modificado'])
             ->assertNotFound();
 
         $this->assertDatabaseHas('establishments', ['id' => $foreignEstablishment->id, 'name' => 'Matriz B']);
@@ -34,7 +34,7 @@ final class EstablishmentIsolationTest extends CompanyTestCase
                 'establishmentPublicId' => $foreignEstablishment->public_id,
                 'code' => '001',
                 'name' => 'Caja B',
-            ], $this->companyHeader($companyA))
+            ])
             ->assertNotFound();
     }
 }

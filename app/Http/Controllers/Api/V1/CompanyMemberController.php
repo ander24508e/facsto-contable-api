@@ -6,6 +6,7 @@ use App\Domains\Companies\Actions\AddCompanyMemberAction;
 use App\Domains\Companies\Actions\ReactivateCompanyMemberAction;
 use App\Domains\Companies\Actions\RemoveCompanyMemberAction;
 use App\Domains\Companies\Actions\UpdateCompanyMemberRoleAction;
+use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Companies\Enums\CompanyRole;
 use App\Domains\Companies\Models\Company;
 use App\Domains\Companies\Models\CompanyMembership;
@@ -19,8 +20,9 @@ use Illuminate\Http\Request;
 
 final class CompanyMemberController extends Controller
 {
-    public function store(AddCompanyMemberRequest $request, Company $company, AddCompanyMemberAction $add): CompanyMembershipResource
+    public function store(AddCompanyMemberRequest $request, CompanyContext $context, AddCompanyMemberAction $add): CompanyMembershipResource
     {
+        $company = $context->company();
         $this->authorize('update', $company);
         $user = User::query()->where('public_id', $request->validated('userPublicId'))->firstOrFail();
         $membership = $add->execute($company, $request->user(), $user, CompanyRole::from($request->validated('role')));
@@ -28,8 +30,9 @@ final class CompanyMemberController extends Controller
         return new CompanyMembershipResource($membership->load('user'));
     }
 
-    public function destroy(Request $request, Company $company, string $userPublicId, RemoveCompanyMemberAction $remove): JsonResponse
+    public function destroy(Request $request, CompanyContext $context, string $userPublicId, RemoveCompanyMemberAction $remove): JsonResponse
     {
+        $company = $context->company();
         $this->authorize('update', $company);
         $user = User::query()->where('public_id', $userPublicId)->firstOrFail();
         $membership = CompanyMembership::query()
@@ -42,16 +45,18 @@ final class CompanyMemberController extends Controller
         return response()->json(['data' => ['isActive' => false]]);
     }
 
-    public function reactivate(Request $request, Company $company, string $userPublicId, ReactivateCompanyMemberAction $reactivate): CompanyMembershipResource
+    public function reactivate(Request $request, CompanyContext $context, string $userPublicId, ReactivateCompanyMemberAction $reactivate): CompanyMembershipResource
     {
+        $company = $context->company();
         $this->authorize('update', $company);
         $membership = $this->membership($company, $userPublicId);
 
         return new CompanyMembershipResource($reactivate->execute($company, $membership, $request->user())->load('user'));
     }
 
-    public function updateRole(UpdateCompanyMemberRoleRequest $request, Company $company, string $userPublicId, UpdateCompanyMemberRoleAction $update): CompanyMembershipResource
+    public function updateRole(UpdateCompanyMemberRoleRequest $request, CompanyContext $context, string $userPublicId, UpdateCompanyMemberRoleAction $update): CompanyMembershipResource
     {
+        $company = $context->company();
         $this->authorize('update', $company);
         $membership = $this->membership($company, $userPublicId);
 

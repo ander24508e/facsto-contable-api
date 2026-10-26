@@ -16,6 +16,7 @@ final class CompanyResource extends JsonResource
 
         return [
             'publicId' => $company->public_id,
+            'slug' => $company->slug,
             'ruc' => $company->ruc,
             'legalName' => $company->legal_name,
             'commercialName' => $company->commercial_name,

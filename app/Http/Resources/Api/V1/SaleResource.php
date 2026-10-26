@@ -11,7 +11,9 @@ final class SaleResource extends JsonResource
     {
         return [
             'publicId' => $this->public_id,
+            'number' => $this->displayNumber(),
             'status' => $this->status->value,
+            'issueDate' => $this->issue_date?->toDateString(),
             'customer' => [
                 'publicId' => $this->customer?->public_id,
                 'identificationType' => $this->customer_identification_type,
@@ -25,8 +27,17 @@ final class SaleResource extends JsonResource
             'subtotal' => $this->subtotal,
             'discountTotal' => $this->discount_total,
             'taxTotal' => $this->tax_total,
+            'tipAmount' => $this->tip_amount,
             'total' => $this->total,
             'currency' => $this->currency,
+            // Summary of the fiscal document born from this sale; the full document lives under /invoices.
+            'document' => $this->whenLoaded('electronicDocument', fn () => $this->electronicDocument ? [
+                'publicId' => $this->electronicDocument->public_id,
+                'fullNumber' => $this->electronicDocument->full_number,
+                'accessKey' => $this->electronicDocument->access_key,
+                'status' => $this->electronicDocument->status->value,
+                'issueDate' => $this->electronicDocument->issue_date?->toDateString(),
+            ] : null),
             'lines' => $this->whenLoaded('details', fn () => $this->details->map(fn ($line): array => [
                 'publicId' => $line->public_id,
                 'itemPublicId' => $line->item?->public_id,

@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Storage;
 
 final class CompanyFiscalReadinessService
 {
-    public function __construct(private readonly EcuadorTaxIdentifierValidator $rucValidator) {}
+    public function __construct(private readonly EcuadorRucValidator $rucValidator) {}
 
     public function state(Company $company): CompanySetupState
     {
@@ -43,14 +43,13 @@ final class CompanyFiscalReadinessService
             'issuerReady' => $issuerReady,
             'emissionReady' => $emissionReady,
             'certificateReady' => $certificateReady,
-            'deferred' => $company->fiscalSettings?->setup_deferred_at !== null,
         ];
     }
 
     public function issuerIsReady(Company $company): bool
     {
         return is_string($company->ruc)
-            && $this->rucValidator->isValidRuc($company->ruc)
+            && $this->rucValidator->isStructurallyValid($company->ruc)
             && filled($company->legal_name)
             && filled($company->main_address);
     }
@@ -79,9 +78,13 @@ final class CompanyFiscalReadinessService
             ->where('status', CertificateStatus::VALID->value)
             ->first();
 
+        // The certificate must sign for this issuer: its RUC must still match the company RUC.
         return $certificate !== null
+            && $certificate->subject_ruc !== null
+            && $certificate->subject_ruc === $company->ruc
             && $certificate->valid_from->lessThanOrEqualTo(Carbon::now())
             && $certificate->valid_until->greaterThan(Carbon::now())
+            && filled($certificate->storage_path)
             && Storage::disk('private')->exists($certificate->storage_path);
     }
 }

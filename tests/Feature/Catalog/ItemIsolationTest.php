@@ -12,9 +12,9 @@ final class ItemIsolationTest extends CatalogTestCase
         $userB = User::factory()->create();
         $companyA = $this->createCompany($userA, '1799999999001');
         $companyB = $this->createCompany($userB, '1799999999002');
-        $item = $this->createItemThroughApi($userA, $this->companyHeader($companyA));
+        $item = $this->createItemThroughApi($userA);
 
-        $this->actingAs($userB)->withHeaders($this->companyHeader($companyB))->getJson('/api/v1/items/'.$item['publicId'])->assertForbidden();
+        $this->actingAs($userB)->getJson('/api/v1/items/'.$item['publicId'])->assertForbidden();
         $this->patchJson('/api/v1/items/'.$item['publicId'], ['name' => 'Modificado'])->assertForbidden();
     }
 }

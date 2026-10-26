@@ -4,7 +4,7 @@ namespace App\Domains\Companies\Fiscal\Actions;
 
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Companies\Fiscal\DTOs\IssuerConfigurationData;
-use App\Domains\Companies\Fiscal\Services\EcuadorTaxIdentifierValidator;
+use App\Domains\Companies\Fiscal\Services\EcuadorRucValidator;
 use App\Domains\Companies\Models\Company;
 use App\Models\User;
 use App\Shared\Audit\AuditRecorder;
@@ -16,14 +16,14 @@ final class ConfigureIssuerAction
 {
     public function __construct(
         private readonly CompanyContext $context,
-        private readonly EcuadorTaxIdentifierValidator $rucValidator,
+        private readonly EcuadorRucValidator $rucValidator,
         private readonly AuditRecorder $audit,
     ) {}
 
     public function execute(IssuerConfigurationData $data, User $actor): Company
     {
         $company = $this->context->company();
-        if (! $this->rucValidator->isValidRuc($data->ruc)) {
+        if (! $this->rucValidator->isStructurallyValid($data->ruc)) {
             throw new ApiException(ApiErrorCode::INVALID_ECUADOR_RUC, 'El RUC no tiene una estructura ecuatoriana válida.', 422);
         }
 

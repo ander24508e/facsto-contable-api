@@ -10,7 +10,7 @@ final class CreateItemTest extends CatalogTestCase
     {
         $user = User::factory()->create();
         $company = $this->createCompany($user, '1799999999001');
-        $this->createItemThroughApi($user, $this->companyHeader($company));
+        $this->createItemThroughApi($user);
         $this->assertDatabaseHas('items', ['company_id' => $company->id, 'internal_code' => 'ITEM-001', 'sale_price' => '12.500000']);
     }
 }

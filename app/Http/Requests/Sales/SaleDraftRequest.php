@@ -17,6 +17,7 @@ abstract class SaleDraftRequest extends FormRequest
         return [
             'customerPublicId' => ['sometimes', 'nullable', 'uuid'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            'tipAmount' => ['sometimes', 'nullable', 'string', 'regex:/^\d{1,14}(\.\d{1,2})?$/'],
             'lines' => ['sometimes', 'array', 'max:100'],
             'lines.*.itemPublicId' => ['required', 'uuid'],
             'lines.*.quantity' => ['required', 'string', 'regex:/^\d{1,9}(\.\d{1,6})?$/'],

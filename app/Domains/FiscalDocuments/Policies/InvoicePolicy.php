@@ -27,6 +27,11 @@ final class InvoicePolicy
             ->whereIn('role', [CompanyRole::OWNER->value, CompanyRole::ADMIN->value, CompanyRole::BILLER->value])->exists();
     }
 
+    public function process(User $user, ElectronicDocument $invoice): bool
+    {
+        return $invoice->company_id === $this->context->company()->id && $this->create($user);
+    }
+
     private function member(User $user): bool
     {
         return $this->context->company()->memberships()->where('user_id', $user->id)->where('is_active', true)->exists();

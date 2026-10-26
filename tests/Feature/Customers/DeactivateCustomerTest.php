@@ -11,7 +11,7 @@ final class DeactivateCustomerTest extends CompanyTestCase
     {
         $owner = User::factory()->create();
         $company = $this->createCompany($owner, '1799999999001');
-        $this->actingAs($owner)->withHeaders($this->companyHeader($company));
+        $this->actingAs($owner);
         $customer = $this->postJson('/api/v1/customers', ['identificationType' => 'CEDULA', 'identification' => '0123456789', 'legalName' => 'Cliente'])
             ->assertCreated()->json('data');
 

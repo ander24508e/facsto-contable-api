@@ -12,6 +12,7 @@ final readonly class SaleDraftData
         public array $lines = [],
         public array $paymentMethods = [],
         public ?string $notes = null,
+        public string $tipAmount = '0.00',
     ) {}
 
     public static function fromValidated(array $data): self
@@ -21,6 +22,7 @@ final readonly class SaleDraftData
             $data['lines'] ?? [],
             $data['paymentMethods'] ?? [],
             $data['notes'] ?? null,
+            $data['tipAmount'] ?? '0.00',
         );
     }
 
@@ -31,6 +33,7 @@ final readonly class SaleDraftData
             'lines' => $this->lines,
             'paymentMethods' => $this->paymentMethods,
             'notes' => $this->notes,
+            'tipAmount' => $this->tipAmount,
         ];
     }
 }

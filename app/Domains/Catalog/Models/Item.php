@@ -4,6 +4,7 @@ namespace App\Domains\Catalog\Models;
 
 use App\Domains\Catalog\Enums\ItemType;
 use App\Domains\Companies\Models\Company;
+use App\Domains\Taxes\Models\CompanyTax;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -30,7 +31,7 @@ class Item extends Model
 
     public function taxes(): BelongsToMany
     {
-        return $this->belongsToMany(Tax::class, 'item_taxes')->withTimestamps();
+        return $this->belongsToMany(CompanyTax::class, 'item_taxes')->withPivot('company_id')->withTimestamps();
     }
 
     public function category(): BelongsTo

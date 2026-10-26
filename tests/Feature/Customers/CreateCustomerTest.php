@@ -11,7 +11,7 @@ final class CreateCustomerTest extends CompanyTestCase
     {
         $owner = User::factory()->create();
         $company = $this->createCompany($owner, '1799999999001');
-        $this->actingAs($owner)->withHeaders($this->companyHeader($company))->postJson('/api/v1/customers', [
+        $this->actingAs($owner)->postJson('/api/v1/customers', [
             'identificationType' => 'CEDULA', 'identification' => '0123456789', 'legalName' => 'Cliente de prueba',
         ])->assertCreated()->assertJsonPath('data.identificationType', 'CEDULA');
         $this->assertDatabaseHas('audit_logs', ['company_id' => $company->id, 'actor_id' => $owner->id, 'action' => 'customer.created']);
@@ -21,7 +21,7 @@ final class CreateCustomerTest extends CompanyTestCase
     {
         $owner = User::factory()->create();
         $company = $this->createCompany($owner, '1799999999001');
-        $this->actingAs($owner)->withHeaders($this->companyHeader($company))->postJson('/api/v1/customers', [
+        $this->actingAs($owner)->postJson('/api/v1/customers', [
             'identificationType' => 'RUC', 'identification' => '123', 'legalName' => 'Cliente de prueba',
         ])->assertUnprocessable();
     }

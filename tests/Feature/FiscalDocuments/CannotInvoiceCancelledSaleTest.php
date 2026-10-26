@@ -12,8 +12,7 @@ final class CannotInvoiceCancelledSaleTest extends InvoiceFeatureTestCase
         $user = User::factory()->create();
         $company = $this->readyCompany($user);
         $sale = $this->makeSale($user, $company);
-        $headers = $this->companyHeader($company);
-        $this->actingAs($user)->withHeaders($headers)->postJson('/api/v1/sales/'.$sale->public_id.'/cancel')->assertOk();
-        $this->actingAs($user)->withHeaders($headers)->postJson('/api/v1/sales/'.$sale->public_id.'/invoice')->assertConflict();
+        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/cancel')->assertOk();
+        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/invoice')->assertConflict();
     }
 }

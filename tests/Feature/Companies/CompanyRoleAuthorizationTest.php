@@ -15,7 +15,7 @@ final class CompanyRoleAuthorizationTest extends CompanyTestCase
         $company = $this->createCompany($owner, '1799999999001');
         app(AddCompanyMemberAction::class)->execute($company, $owner, $viewer, CompanyRole::VIEWER);
 
-        $this->actingAs($viewer)->withHeaders($this->companyHeader($company))->getJson('/api/v1/establishments')->assertOk();
+        $this->actingAs($viewer)->getJson('/api/v1/establishments')->assertOk();
         $this->postJson('/api/v1/establishments', ['code' => '002', 'name' => 'Sucursal', 'address' => 'Guayaquil'])->assertForbidden();
     }
 }

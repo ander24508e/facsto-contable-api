@@ -9,6 +9,7 @@ use App\Domains\Sales\Actions\UpdateSaleDraftAction;
 use App\Domains\Sales\DTOs\SaleDraftData;
 use App\Domains\Sales\Models\Sale;
 use App\Domains\Sales\Services\SaleInvoiceReadinessService;
+use App\Domains\Sales\Services\SaleStageFilter;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Sales\CreateSaleDraftRequest;
 use App\Http\Requests\Sales\SaleIndexRequest;
@@ -24,7 +25,7 @@ final class SaleController extends Controller
     {
         $this->authorize('viewAny', Sale::class);
         $filters = $request->validated();
-        $query = $context->company()->sales()->with(['customer', 'creator'])->latest();
+        $query = $context->company()->sales()->with(['customer', 'creator', 'electronicDocument'])->latest();
 
         if ($search = trim((string) ($filters['search'] ?? ''))) {
             $pattern = '%'.mb_strtolower($search).'%';
@@ -33,6 +34,9 @@ final class SaleController extends Controller
         }
         if ($status = $filters['status'] ?? null) {
             $query->where('status', $status);
+        }
+        if ($stage = $filters['stage'] ?? null) {
+            SaleStageFilter::apply($query, $stage);
         }
         if ($from = $filters['from'] ?? null) {
             $query->whereDate('created_at', '>=', $from);
@@ -56,7 +60,7 @@ final class SaleController extends Controller
     {
         $this->authorize('view', $sale);
 
-        $sale = $context->company()->sales()->with(['customer', 'creator', 'details.item', 'details.taxes', 'paymentMethods.fiscalPaymentMethod'])
+        $sale = $context->company()->sales()->with(['customer', 'creator', 'details.item', 'details.taxes', 'paymentMethods.fiscalPaymentMethod', 'electronicDocument'])
             ->whereKey($sale->id)->firstOrFail();
 
         return (new SaleResource($sale))->additional(['meta' => ['invoiceReadiness' => $readiness->summary($sale)]]);

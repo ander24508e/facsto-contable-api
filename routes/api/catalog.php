@@ -21,5 +21,11 @@ Route::middleware(['auth:sanctum', 'company.context'])->group(function (): void 
     Route::post('/categories/{category}/activate', [CategoryController::class, 'activate']);
     Route::post('/categories/{category}/deactivate', [CategoryController::class, 'deactivate']);
     Route::get('/taxes', [TaxController::class, 'index']);
+    Route::post('/taxes', [TaxController::class, 'activate']);
+    Route::post('/taxes/{companyTax}/deactivate', [TaxController::class, 'deactivate']);
+    Route::post('/taxes/replacements/preview', [TaxController::class, 'previewReplacement']);
+    Route::post('/taxes/replacements', [TaxController::class, 'replace']);
+    Route::get('/tax-definitions', [TaxController::class, 'definitions']);
+    Route::get('/fiscal-rules', [TaxController::class, 'fiscalRules']);
     Route::get('/fiscal-payment-methods', [FiscalPaymentMethodController::class, 'index']);
 });

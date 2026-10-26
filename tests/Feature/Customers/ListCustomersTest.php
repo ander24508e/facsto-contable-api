@@ -11,7 +11,7 @@ final class ListCustomersTest extends CompanyTestCase
     {
         $owner = User::factory()->create();
         $company = $this->createCompany($owner, '1799999999001');
-        $this->actingAs($owner)->withHeaders($this->companyHeader($company));
+        $this->actingAs($owner);
         foreach (['Ana Pérez', 'Luis Mora'] as $index => $name) {
             $this->postJson('/api/v1/customers', ['identificationType' => 'CEDULA', 'identification' => '012345678'.($index + 1), 'legalName' => $name])->assertCreated();
         }

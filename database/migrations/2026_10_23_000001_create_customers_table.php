@@ -23,11 +23,18 @@ return new class extends Migration
             $table->boolean('is_active')->default(true);
             $table->timestamps();
             $table->unique(['company_id', 'identification_type', 'identification']);
+            $table->unique(['company_id', 'id'], 'customers_company_id_id_unique');
             $table->index(['company_id', 'is_active']);
         });
 
         if (DB::getDriverName() === 'pgsql') {
             DB::statement("ALTER TABLE customers ADD CONSTRAINT customers_identification_type_check CHECK (identification_type IN ('RUC', 'CEDULA', 'PASSPORT', 'FINAL_CONSUMER', 'FOREIGN_IDENTIFICATION'))");
+            DB::statement("ALTER TABLE customers ADD CONSTRAINT customers_identification_format_check CHECK (
+                (identification_type = 'RUC' AND identification ~ '^[0-9]{13}$') OR
+                (identification_type = 'CEDULA' AND identification ~ '^[0-9]{10}$') OR
+                (identification_type = 'FINAL_CONSUMER' AND identification = '9999999999999') OR
+                (identification_type IN ('PASSPORT', 'FOREIGN_IDENTIFICATION') AND identification ~ '^[A-Z0-9-]{3,20}$')
+            )");
         }
     }
 

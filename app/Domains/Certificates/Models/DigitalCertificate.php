@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 
-#[Fillable(['company_id', 'storage_path', 'password_ciphertext', 'issued_to', 'issuer', 'serial_number', 'valid_from', 'valid_until', 'status', 'validated_at', 'last_checked_at', 'is_active'])]
+#[Fillable(['company_id', 'storage_path', 'password_ciphertext', 'issued_to', 'subject_identification', 'subject_ruc', 'issuer', 'serial_number', 'valid_from', 'valid_until', 'status', 'validation_error_code', 'validated_at', 'last_checked_at', 'is_active'])]
 class DigitalCertificate extends Model
 {
     protected static function booted(): void

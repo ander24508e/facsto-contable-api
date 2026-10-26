@@ -17,7 +17,7 @@ final class LogoutTest extends TestCase
 
         $this->withoutMiddleware(PreventRequestForgery::class)
             ->actingAs($user)
-            ->postJson('/logout')
+            ->postJson('/api/v1/auth/logout')
             ->assertOk()
             ->assertJsonPath('data.message', 'Sesión cerrada.');
 

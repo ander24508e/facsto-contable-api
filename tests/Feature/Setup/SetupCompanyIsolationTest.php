@@ -6,7 +6,7 @@ use App\Models\User;
 
 final class SetupCompanyIsolationTest extends SetupTestCase
 {
-    public function test_user_cannot_read_or_configure_another_company_setup(): void
+    public function test_setup_always_targets_the_users_own_company(): void
     {
         $ownerA = User::factory()->create();
         $ownerB = User::factory()->create();
@@ -14,13 +14,6 @@ final class SetupCompanyIsolationTest extends SetupTestCase
         $companyB = $this->createCompany($ownerB);
 
         $this->actingAs($ownerA)
-            ->withHeaders($this->companyHeader($companyB))
-            ->getJson('/api/v1/setup/status')
-            ->assertForbidden()
-            ->assertJsonPath('error.code', 'COMPANY_ACCESS_DENIED');
-
-        $this->actingAs($ownerA)
-            ->withHeaders($this->companyHeader($companyA))
             ->putJson('/api/v1/setup/issuer', [
                 'company_id' => $companyB->id,
                 'ruc' => '1790016919001',

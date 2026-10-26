@@ -11,35 +11,27 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
+/**
+ * Each user belongs to exactly one company (one subscription = one company),
+ * so the tenant is always derived on the server from the authenticated user.
+ * Clients never choose the company.
+ */
 final class ResolveCompanyContext
 {
     public function __construct(private readonly CompanyContext $companyContext) {}
 
     public function handle(Request $request, Closure $next): Response
     {
-        $publicId = $request->header('X-Facsto-Company');
-
-        if (! is_string($publicId) || ! preg_match('/^[0-9a-f-]{36}$/i', $publicId)) {
-            throw new ApiException(ApiErrorCode::INVALID_COMPANY_CONTEXT, 'Envía una empresa activa mediante X-Facsto-Company.', 422);
-        }
-
-        $company = Company::query()->where('public_id', $publicId)->first();
+        $company = Company::query()
+            ->whereHas('memberships', fn ($query) => $query->where('user_id', $request->user()->id)->where('is_active', true))
+            ->first();
 
         if (! $company) {
-            throw new ApiException(ApiErrorCode::COMPANY_NOT_FOUND, 'La empresa indicada no existe.', 404);
+            throw new ApiException(ApiErrorCode::COMPANY_ACCESS_DENIED, 'Tu usuario no tiene acceso activo a ninguna empresa.', 403);
         }
 
         if ($company->status !== CompanyStatus::ACTIVE) {
-            throw new ApiException(ApiErrorCode::COMPANY_INACTIVE, 'La empresa indicada está inactiva.', 403);
-        }
-
-        $isMember = $company->memberships()
-            ->where('user_id', $request->user()->id)
-            ->where('is_active', true)
-            ->exists();
-
-        if (! $isMember) {
-            throw new ApiException(ApiErrorCode::COMPANY_ACCESS_DENIED, 'El usuario no tiene acceso a la empresa indicada.', 403);
+            throw new ApiException(ApiErrorCode::COMPANY_INACTIVE, 'La empresa está inactiva.', 403);
         }
 
         $this->companyContext->set($company);

@@ -8,6 +8,7 @@ servers:
 tags:
   - name: System
   - name: Authentication
+  - name: Account
   - name: Companies
   - name: Fiscal structure
   - name: Customers
@@ -43,31 +44,7 @@ paths:
       responses:
         "204":
           description: Laravel emitió las cookies XSRF-TOKEN y de sesión.
-  /register:
-    post:
-      tags: [Authentication]
-      summary: Registra un usuario FACSTO e inicia su sesión.
-      operationId: register
-      security:
-        - csrfHeader: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RegisterRequest"
-      responses:
-        "201":
-          description: Usuario creado y sesión iniciada.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserResponse"
-        "422":
-          $ref: "#/components/responses/ValidationError"
-        "419":
-          $ref: "#/components/responses/CsrfError"
-  /login:
+  /api/v1/auth/login:
     post:
       tags: [Authentication]
       summary: Autentica al usuario y establece la cookie de sesión.
@@ -91,7 +68,7 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "419":
           $ref: "#/components/responses/CsrfError"
-  /logout:
+  /api/v1/auth/logout:
     post:
       tags: [Authentication]
       summary: Cierra la sesión FACSTO actual.
@@ -131,26 +108,11 @@ paths:
                 $ref: "#/components/schemas/UserResponse"
         "401":
           $ref: "#/components/responses/AuthenticationError"
-  /api/v1/companies:
-    get:
-      tags: [Companies]
-      summary: Lista las empresas con membresía activa para el usuario.
-      operationId: listCompanies
-      security:
-        - sessionCookie: []
-      responses:
-        "200":
-          description: Empresas accesibles.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CompanyCollection"
-        "401":
-          $ref: "#/components/responses/AuthenticationError"
-    post:
-      tags: [Companies]
-      summary: Crea una empresa y asigna al usuario actual como OWNER.
-      operationId: createCompany
+    patch:
+      tags: [Account]
+      summary: Actualiza nombre, teléfono o correo del usuario actual.
+      description: Cambiar el correo exige `currentPassword`. El correo se guarda en minúsculas.
+      operationId: updateCurrentUserProfile
       security:
         - sessionCookie: []
           csrfHeader: []
@@ -159,24 +121,125 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CompanyWrite"
+              type: object
+              properties:
+                name: { type: string, maxLength: 120 }
+                email: { type: string, format: email, maxLength: 254 }
+                phone: { type: string, nullable: true, maxLength: 40 }
+                currentPassword: { type: string, description: Obligatoria sólo si cambia el correo. }
       responses:
-        "201":
-          description: Empresa y membresía OWNER creadas en una transacción.
+        "200":
+          description: Perfil actualizado.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CompanyResponse"
+                $ref: "#/components/schemas/UserResponse"
         "401":
           $ref: "#/components/responses/AuthenticationError"
         "422":
           $ref: "#/components/responses/ValidationError"
-  /api/v1/companies/{company}:
-    parameters:
-      - $ref: "#/components/parameters/CompanyPublicId"
+  /api/v1/me/password:
+    put:
+      tags: [Account]
+      summary: Cambia la contraseña del usuario actual.
+      description: Las demás sesiones del navegador se cierran al cambiar el hash de la contraseña; la sesión actual se regenera.
+      operationId: changeCurrentUserPassword
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, password, passwordConfirmation]
+              properties:
+                currentPassword: { type: string }
+                password: { type: string, minLength: 10, description: Debe incluir letras y números y ser distinta de la actual. }
+                passwordConfirmation: { type: string }
+      responses:
+        "200":
+          description: Contraseña actualizada.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      message: { type: string }
+        "401":
+          $ref: "#/components/responses/AuthenticationError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/me/photo:
+    get:
+      tags: [Account]
+      summary: Devuelve la foto de perfil privada del usuario actual.
+      operationId: getCurrentUserPhoto
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Archivo de imagen.
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        "401":
+          $ref: "#/components/responses/AuthenticationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    post:
+      tags: [Account]
+      summary: Sube o reemplaza la foto de perfil (PNG, JPG o WebP, máximo 3 MB y 2048 px).
+      operationId: uploadCurrentUserPhoto
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [photo]
+              properties:
+                photo: { type: string, format: binary }
+      responses:
+        "200":
+          description: Foto actualizada.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "401":
+          $ref: "#/components/responses/AuthenticationError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags: [Account]
+      summary: Elimina la foto de perfil del usuario actual.
+      operationId: deleteCurrentUserPhoto
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      responses:
+        "200":
+          description: Foto eliminada.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "401":
+          $ref: "#/components/responses/AuthenticationError"
+  /api/v1/company:
     get:
       tags: [Companies]
-      summary: Consulta una empresa accesible mediante su UUID público.
+      summary: Devuelve la empresa del usuario autenticado.
+      description: Cada usuario pertenece a una sola empresa (una suscripción = una empresa). La empresa se resuelve en el servidor a partir de la membresía; el cliente nunca la envía.
       operationId: getCompany
       security:
         - sessionCookie: []
@@ -193,7 +256,7 @@ paths:
           $ref: "#/components/responses/NotFoundError"
     patch:
       tags: [Companies]
-      summary: Actualiza una empresa con permisos de ADMIN u OWNER.
+      summary: Actualiza la empresa del usuario autenticado (ADMIN u OWNER).
       operationId: updateCompany
       security:
         - sessionCookie: []
@@ -217,9 +280,7 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "422":
           $ref: "#/components/responses/ValidationError"
-  /api/v1/companies/{company}/logo:
-    parameters:
-      - $ref: "#/components/parameters/CompanyPublicId"
+  /api/v1/company/logo:
     get:
       tags: [Companies]
       summary: Devuelve el logo privado a miembros activos de la empresa.
@@ -283,9 +344,7 @@ paths:
                 $ref: "#/components/schemas/CompanyResponse"
         "403":
           $ref: "#/components/responses/CompanyAccessError"
-  /api/v1/companies/{company}/members:
-    parameters:
-      - $ref: "#/components/parameters/CompanyPublicId"
+  /api/v1/company/members:
     post:
       tags: [Companies]
       summary: Agrega un usuario a la empresa con un rol local.
@@ -316,9 +375,8 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "422":
           $ref: "#/components/responses/ValidationError"
-  /api/v1/companies/{company}/members/{userPublicId}:
+  /api/v1/company/members/{userPublicId}:
     parameters:
-      - $ref: "#/components/parameters/CompanyPublicId"
       - name: userPublicId
         in: path
         required: true
@@ -348,9 +406,8 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "409":
           $ref: "#/components/responses/ConflictError"
-  /api/v1/companies/{company}/members/{userPublicId}/reactivate:
+  /api/v1/company/members/{userPublicId}/reactivate:
     parameters:
-      - $ref: "#/components/parameters/CompanyPublicId"
       - {
           name: userPublicId,
           in: path,
@@ -377,9 +434,8 @@ paths:
         "403": { $ref: "#/components/responses/CompanyAccessError" }
         "404": { $ref: "#/components/responses/NotFoundError" }
         "409": { $ref: "#/components/responses/ConflictError" }
-  /api/v1/companies/{company}/members/{userPublicId}/role:
+  /api/v1/company/members/{userPublicId}/role:
     parameters:
-      - $ref: "#/components/parameters/CompanyPublicId"
       - {
           name: userPublicId,
           in: path,
@@ -428,8 +484,6 @@ paths:
       summary: Devuelve un resumen operativo agregado para la empresa activa.
       operationId: getDashboardSummary
       security: [{ sessionCookie: [] }]
-      parameters:
-        - $ref: "#/components/parameters/FacstoCompany"
       responses:
         "200":
           description: Conteos y borradores recientes; no incluye métricas fiscales inexistentes.
@@ -440,13 +494,13 @@ paths:
   /api/v1/sales:
     get:
       tags: [Sales]
-      summary: Lista borradores y ventas canceladas de la empresa activa.
+      summary: Lista las ventas de la empresa con el resumen de su comprobante electrónico.
       operationId: listSales
       security: [{ sessionCookie: [] }]
       parameters:
-        - $ref: "#/components/parameters/FacstoCompany"
         - { name: search, in: query, schema: { type: string, maxLength: 120 } }
         - { name: status, in: query, schema: { $ref: "#/components/schemas/SaleStatus" } }
+        - { name: stage, in: query, description: "draft = borradores; prepared = NUMBERED/XML_BUILT/SIGNED; sent = QUEUED/RECEIVED/PENDING_AUTHORIZATION; authorized = AUTHORIZED; problems = RETURNED/NOT_AUTHORIZED/FAILED", schema: { type: string, enum: [draft, prepared, sent, authorized, problems] } }
         - { name: from, in: query, schema: { type: string, format: date } }
         - { name: to, in: query, schema: { type: string, format: date } }
         - { name: page, in: query, schema: { type: integer, minimum: 1 } }
@@ -465,8 +519,6 @@ paths:
       summary: Crea un borrador y calcula sus valores en FACSTO API.
       operationId: createSaleDraft
       security: [{ sessionCookie: [], csrfHeader: [] }]
-      parameters:
-        - $ref: "#/components/parameters/FacstoCompany"
       requestBody:
         required: true
         content:
@@ -486,7 +538,6 @@ paths:
         in: path
         required: true
         schema: { type: string, format: uuid }
-      - $ref: "#/components/parameters/FacstoCompany"
     get:
       tags: [Sales]
       summary: Consulta un borrador por UUID público dentro de la empresa activa.
@@ -531,7 +582,6 @@ paths:
           in: path
           required: true
           schema: { type: string, format: uuid }
-        - $ref: "#/components/parameters/FacstoCompany"
       responses:
         "200":
           description: Borrador marcado como CANCELLED y auditado.
@@ -544,12 +594,17 @@ paths:
   /api/v1/sales/{sale}/invoice:
     post:
       tags: [FiscalDocuments]
-      summary: Convierte un borrador listo en factura numerada; no la envía al SRI.
+      summary: Emite la factura de un borrador listo (NUMBERED); no la firma ni la envía al SRI.
+      description: >-
+        No se asigna secuencial, número ni clave de acceso hasta que la empresa pueda continuar hacia XML, firma y SRI:
+        empresa activa, emisor y estructura de emisión completos, certificado vigente, legible y del mismo RUC que el emisor,
+        RUC del proveedor configurado y venta lista. Si falta algo responde FISCAL_SETUP_INCOMPLETE con `details.pending`
+        (`issuer`, `emission`, `certificate`, `certificate_unreadable`, `company_inactive`), SRI_PROVIDER_NOT_CONFIGURED o
+        SALE_NOT_READY_FOR_INVOICE (`final_consumer_limit`, `tip_limit`, `taxes`, …).
       operationId: createInvoiceFromSale
       security: [{ sessionCookie: [], csrfHeader: [] }]
       parameters:
         - { name: sale, in: path, required: true, schema: { type: string, format: uuid } }
-        - $ref: "#/components/parameters/FacstoCompany"
       responses:
         "201": { description: Factura numerada, content: { application/json: { schema: { $ref: "#/components/schemas/ElectronicDocumentResponse" } } } }
         "403": { $ref: "#/components/responses/CompanyAccessError" }
@@ -562,7 +617,6 @@ paths:
       operationId: listInvoices
       security: [{ sessionCookie: [] }]
       parameters:
-        - $ref: "#/components/parameters/FacstoCompany"
         - { name: page, in: query, schema: { type: integer, minimum: 1 } }
         - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
         - { name: status, in: query, schema: { $ref: "#/components/schemas/DocumentStatus" } }
@@ -577,7 +631,6 @@ paths:
       security: [{ sessionCookie: [] }]
       parameters:
         - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
-        - $ref: "#/components/parameters/FacstoCompany"
       responses:
         "200": { description: Identidad fiscal y snapshots, content: { application/json: { schema: { $ref: "#/components/schemas/ElectronicDocumentResponse" } } } }
         "403": { $ref: "#/components/responses/CompanyAccessError" }
@@ -588,20 +641,17 @@ paths:
       summary: Lista categorías de la empresa activa.
       operationId: listCategories
       security: [{ sessionCookie: [] }]
-      parameters: [{ $ref: "#/components/parameters/FacstoCompany" }]
       responses: { "200": { description: Categorías, content: { application/json: { schema: { $ref: "#/components/schemas/CategoryPage" } } } } }
     post:
       tags: [Catalog]
       summary: Crea una categoría de la empresa activa.
       operationId: createCategory
       security: [{ sessionCookie: [], csrfHeader: [] }]
-      parameters: [{ $ref: "#/components/parameters/FacstoCompany" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CategoryInput" } } } }
       responses: { "201": { description: Categoría creada, content: { application/json: { schema: { $ref: "#/components/schemas/CategoryResponse" } } } }, "403": { $ref: "#/components/responses/CompanyAccessError" }, "422": { $ref: "#/components/responses/ValidationError" } }
   /api/v1/categories/{category}:
     parameters:
       - { name: category, in: path, required: true, schema: { type: string, format: uuid } }
-      - $ref: "#/components/parameters/FacstoCompany"
     get:
       tags: [Catalog]
       summary: Consulta una categoría de la empresa activa.
@@ -621,7 +671,6 @@ paths:
       summary: Activa una categoría existente.
       operationId: activateCategory
       security: [{ sessionCookie: [], csrfHeader: [] }]
-      parameters: [{ name: category, in: path, required: true, schema: { type: string, format: uuid } }, { $ref: "#/components/parameters/FacstoCompany" }]
       responses: { "200": { description: Categoría activada, content: { application/json: { schema: { $ref: "#/components/schemas/CategoryResponse" } } } }, "403": { $ref: "#/components/responses/CompanyAccessError" } }
   /api/v1/categories/{category}/deactivate:
     post:
@@ -629,7 +678,6 @@ paths:
       summary: Desactiva una categoría sin borrarla físicamente.
       operationId: deactivateCategory
       security: [{ sessionCookie: [], csrfHeader: [] }]
-      parameters: [{ name: category, in: path, required: true, schema: { type: string, format: uuid } }, { $ref: "#/components/parameters/FacstoCompany" }]
       responses: { "200": { description: Categoría desactivada, content: { application/json: { schema: { $ref: "#/components/schemas/CategoryResponse" } } } }, "403": { $ref: "#/components/responses/CompanyAccessError" } }
   /api/v1/fiscal-payment-methods:
     get:
@@ -637,16 +685,27 @@ paths:
       summary: Lista las formas fiscales de pago vigentes; no procesa transacciones.
       operationId: listFiscalPaymentMethods
       security: [{ sessionCookie: [] }]
-      parameters: [{ $ref: "#/components/parameters/FacstoCompany" }]
       responses: { "200": { description: Catálogo fiscal global vigente, content: { application/json: { schema: { $ref: "#/components/schemas/FiscalPaymentMethodPage" } } } } }
+  /api/v1/fiscal-profile:
+    get:
+      tags: [Companies]
+      summary: Consulta los atributos tributarios de la empresa activa.
+      operationId: getFiscalProfile
+      security: [{ sessionCookie: [] }]
+      responses: { "200": { description: Perfil fiscal, content: { application/json: { schema: { $ref: "#/components/schemas/FiscalProfileResponse" } } } }, "403": { $ref: "#/components/responses/CompanyAccessError" } }
+    patch:
+      tags: [Companies]
+      summary: Actualiza los atributos tributarios de la empresa activa.
+      operationId: updateFiscalProfile
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/FiscalProfileInput" } } } }
+      responses: { "200": { description: Perfil fiscal actualizado, content: { application/json: { schema: { $ref: "#/components/schemas/FiscalProfileResponse" } } } }, "403": { $ref: "#/components/responses/CompanyAccessError" }, "422": { $ref: "#/components/responses/ValidationError" } }
   /api/v1/setup/status:
     get:
       tags: [Setup]
       summary: Calcula el estado real de configuracion fiscal de la empresa activa.
       operationId: getCompanySetupStatus
       security: [{ sessionCookie: [] }]
-      parameters:
-        - $ref: "#/components/parameters/FacstoCompany"
       responses:
         "200":
           description: Estado calculado por FACSTO API.
@@ -658,29 +717,13 @@ paths:
   /api/v1/setup/defer:
     post:
       tags: [Setup]
-      summary: Posponer la configuracion fiscal inicial de la empresa activa.
+      summary: Omite la bienvenida para el administrador actual; no vuelve a mostrarse.
+      description: Sólo OWNER o ADMIN. La decisión es de ese administrador en esa empresa y no afecta al otro administrador. No cambia la configuración fiscal.
       operationId: deferCompanySetup
       security: [{ sessionCookie: [], csrfHeader: [] }]
-      parameters:
-        - $ref: "#/components/parameters/FacstoCompany"
       responses:
         "200":
-          description: La configuracion queda pospuesta y su estado fiscal conserva el valor real.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/CompanySetupStatusResponse" }
-        "403": { $ref: "#/components/responses/CompanyAccessError" }
-  /api/v1/setup/resume:
-    post:
-      tags: [Setup]
-      summary: Reanudar la configuracion fiscal inicial de la empresa activa.
-      operationId: resumeCompanySetup
-      security: [{ sessionCookie: [], csrfHeader: [] }]
-      parameters:
-        - $ref: "#/components/parameters/FacstoCompany"
-      responses:
-        "200":
-          description: Devuelve el paso pendiente calculado por FACSTO API.
+          description: Bienvenida marcada como omitida; `onboardingRequired` pasa a falso.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CompanySetupStatusResponse" }
@@ -691,8 +734,6 @@ paths:
       summary: Configura la identidad fiscal del emisor.
       operationId: configureIssuer
       security: [{ sessionCookie: [], csrfHeader: [] }]
-      parameters:
-        - $ref: "#/components/parameters/FacstoCompany"
       requestBody:
         required: true
         content:
@@ -712,8 +753,6 @@ paths:
       summary: Configura establecimiento matriz, punto predeterminado y ambiente SRI.
       operationId: configureEmissionStructure
       security: [{ sessionCookie: [], csrfHeader: [] }]
-      parameters:
-        - $ref: "#/components/parameters/FacstoCompany"
       requestBody:
         required: true
         content:
@@ -730,11 +769,14 @@ paths:
   /api/v1/setup/certificate:
     post:
       tags: [Setup]
-      summary: Inspecciona y almacena un certificado P12/PFX en almacenamiento privado.
+      summary: Inspecciona un certificado P12/PFX y sólo lo guarda si puede firmar para el RUC del emisor.
+      description: >-
+        Rechaza con 422 y conserva sólo metadata (el archivo y la contraseña se descartan): CERTIFICATE_INVALID
+        (`details.reason`: INVALID_FILE_OR_PASSWORD, PRIVATE_KEY_MISSING, INVALID_CERTIFICATE), CERTIFICATE_EXPIRED,
+        CERTIFICATE_NOT_YET_VALID, CERTIFICATE_RUC_NOT_FOUND (sin RUC identificable en el OID 1.3.6.1.4.1.37947.3.11) y
+        CERTIFICATE_RUC_MISMATCH (`details.companyRuc`, `details.certificateRuc`).
       operationId: uploadDigitalCertificate
       security: [{ sessionCookie: [], csrfHeader: [] }]
-      parameters:
-        - $ref: "#/components/parameters/FacstoCompany"
       requestBody:
         required: true
         content:
@@ -755,7 +797,6 @@ paths:
       operationId: deactivateDigitalCertificate
       security: [{ sessionCookie: [], csrfHeader: [] }]
       parameters:
-        - $ref: "#/components/parameters/FacstoCompany"
         - name: certificate
           in: path
           required: true
@@ -775,8 +816,6 @@ paths:
       operationId: listEstablishments
       security:
         - sessionCookie: []
-      parameters:
-        - $ref: "#/components/parameters/FacstoCompany"
       responses:
         "200":
           description: Establecimientos de la empresa activa.
@@ -795,8 +834,6 @@ paths:
       security:
         - sessionCookie: []
           csrfHeader: []
-      parameters:
-        - $ref: "#/components/parameters/FacstoCompany"
       requestBody:
         required: true
         content:
@@ -833,8 +870,6 @@ paths:
       security:
         - sessionCookie: []
           csrfHeader: []
-      parameters:
-        - $ref: "#/components/parameters/FacstoCompany"
       requestBody:
         required: true
         content:
@@ -866,8 +901,6 @@ paths:
       operationId: listEmissionPoints
       security:
         - sessionCookie: []
-      parameters:
-        - $ref: "#/components/parameters/FacstoCompany"
       responses:
         "200":
           description: Puntos de emisión de la empresa activa.
@@ -886,8 +919,6 @@ paths:
       security:
         - sessionCookie: []
           csrfHeader: []
-      parameters:
-        - $ref: "#/components/parameters/FacstoCompany"
       requestBody:
         required: true
         content:
@@ -924,8 +955,6 @@ paths:
       security:
         - sessionCookie: []
           csrfHeader: []
-      parameters:
-        - $ref: "#/components/parameters/FacstoCompany"
       requestBody:
         required: true
         content:
@@ -956,7 +985,6 @@ paths:
       operationId: listCustomers
       security: [{ sessionCookie: [] }]
       parameters:
-        - $ref: "#/components/parameters/FacstoCompany"
         - { name: search, in: query, schema: { type: string } }
         - {
             name: identification_type,
@@ -990,7 +1018,6 @@ paths:
       summary: Crea un cliente para la empresa activa.
       operationId: createCustomer
       security: [{ sessionCookie: [], csrfHeader: [] }]
-      parameters: [{ $ref: "#/components/parameters/FacstoCompany" }]
       requestBody:
         {
           required: true,
@@ -1023,7 +1050,6 @@ paths:
           required: true,
           schema: { type: string, format: uuid },
         }
-      - { $ref: "#/components/parameters/FacstoCompany" }
     get:
       tags: [Customers]
       summary: Consulta un cliente de la empresa activa.
@@ -1085,7 +1111,6 @@ paths:
             required: true,
             schema: { type: string, format: uuid },
           },
-          { $ref: "#/components/parameters/FacstoCompany" },
         ]
       responses:
         "200":
@@ -1112,7 +1137,6 @@ paths:
             required: true,
             schema: { type: string, format: uuid },
           },
-          { $ref: "#/components/parameters/FacstoCompany" },
         ]
       responses:
         "200":
@@ -1132,7 +1156,6 @@ paths:
       operationId: listItems
       security: [{ sessionCookie: [] }]
       parameters:
-        - $ref: "#/components/parameters/FacstoCompany"
         - { name: search, in: query, schema: { type: string } }
         - {
             name: type,
@@ -1164,7 +1187,6 @@ paths:
       summary: Crea un producto o servicio con precio decimal.
       operationId: createItem
       security: [{ sessionCookie: [], csrfHeader: [] }]
-      parameters: [{ $ref: "#/components/parameters/FacstoCompany" }]
       requestBody:
         {
           required: true,
@@ -1194,7 +1216,6 @@ paths:
           required: true,
           schema: { type: string, format: uuid },
         }
-      - { $ref: "#/components/parameters/FacstoCompany" }
     get:
       tags: [Catalog]
       summary: Consulta un artículo de la empresa activa.
@@ -1251,7 +1272,6 @@ paths:
             required: true,
             schema: { type: string, format: uuid },
           },
-          { $ref: "#/components/parameters/FacstoCompany" },
         ]
       responses:
         {
@@ -1279,7 +1299,6 @@ paths:
             required: true,
             schema: { type: string, format: uuid },
           },
-          { $ref: "#/components/parameters/FacstoCompany" },
         ]
       responses:
         {
@@ -1296,7 +1315,7 @@ paths:
   /api/v1/items/{item}/taxes:
     put:
       tags: [Catalog]
-      summary: Asigna únicamente tasas globales vigentes al artículo.
+      summary: Asigna tasas globales vigentes al artículo; exige exactamente una tarifa de IVA (ITEM_IVA_REQUIRED).
       operationId: syncItemTaxes
       security: [{ sessionCookie: [], csrfHeader: [] }]
       parameters:
@@ -1307,7 +1326,6 @@ paths:
             required: true,
             schema: { type: string, format: uuid },
           },
-          { $ref: "#/components/parameters/FacstoCompany" },
         ]
       requestBody:
         {
@@ -1345,28 +1363,89 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
   /api/v1/taxes:
     get:
-      tags: [Catalog]
-      summary: Lista el catálogo global de tasas tributarias activas y vigentes.
-      operationId: listTaxes
+      tags: [Taxes]
+      summary: Tarifas oficiales que aplica la empresa (código y porcentaje vienen del catálogo FACSTO).
+      operationId: listCompanyTaxes
       security: [{ sessionCookie: [] }]
       parameters:
-        - $ref: "#/components/parameters/FacstoCompany"
-        - { name: tax_type, in: query, schema: { type: string } }
-        - {
-            name: per_page,
-            in: query,
-            schema: { type: integer, minimum: 1, maximum: 100, default: 50 },
-          }
+        - { name: usable, in: query, description: "1 = sólo las que un producto puede usar hoy", schema: { type: boolean } }
+        - { name: tax_type, in: query, schema: { $ref: "#/components/schemas/TaxType" } }
+      responses:
+        "200": { description: Tarifas de la empresa, content: { application/json: { schema: { $ref: "#/components/schemas/TaxCollection" } } } }
+    post:
+      tags: [Taxes]
+      summary: Aplica una tarifa oficial vigente a la empresa (OWNER/ADMIN). No crea códigos ni porcentajes.
+      operationId: activateCompanyTax
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [definitionPublicId]
+              properties:
+                definitionPublicId: { type: string, format: uuid }
+                validFrom: { type: [string, "null"], format: date, description: Ventana opcional dentro de la vigencia oficial. }
+                validUntil: { type: [string, "null"], format: date }
+      responses:
+        "201": { description: Tarifa aplicada, content: { application/json: { schema: { $ref: "#/components/schemas/TaxResponse" } } } }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/taxes/{companyTax}/deactivate:
+    post:
+      tags: [Taxes]
+      summary: Deja de ofrecer una tarifa para productos (OWNER/ADMIN). Responde COMPANY_TAX_IN_USE si hay productos que la usan.
+      operationId: deactivateCompanyTax
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - { name: companyTax, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Tarifa desactivada, content: { application/json: { schema: { $ref: "#/components/schemas/TaxResponse" } } } }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "409": { $ref: "#/components/responses/ConflictError" }
+  /api/v1/taxes/replacements/preview:
+    post:
+      tags: [Taxes]
+      summary: Muestra cuántos productos cambiarían de una tarifa a otra del mismo impuesto.
+      operationId: previewCompanyTaxReplacement
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/TaxReplacementRequest" } } } }
       responses:
         "200":
-          {
-            description: Tasas vigentes paginadas,
-            content:
-              {
-                application/json:
-                  { schema: { $ref: "#/components/schemas/TaxPage" } },
-              },
-          }
+          description: Impacto del reemplazo
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { from: { $ref: "#/components/schemas/Tax" }, to: { $ref: "#/components/schemas/Tax" }, itemCount: { type: integer } } } } }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/taxes/replacements:
+    post:
+      tags: [Taxes]
+      summary: Reemplaza la tarifa en todos los productos en una transacción; ventas y comprobantes conservan sus copias.
+      operationId: replaceCompanyTax
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/TaxReplacementRequest" } } } }
+      responses:
+        "200": { description: Productos actualizados, content: { application/json: { schema: { type: object, properties: { data: { type: object, properties: { itemCount: { type: integer } } } } } } } }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/tax-definitions:
+    get:
+      tags: [Taxes]
+      summary: Catálogo normativo oficial de FACSTO (sólo lectura).
+      operationId: listTaxDefinitions
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200": { description: Definiciones oficiales, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/SriTaxDefinition" } } } } } } }
+  /api/v1/fiscal-rules:
+    get:
+      tags: [Taxes]
+      summary: Reglas fiscales globales versionadas (sólo lectura; ninguna empresa las modifica).
+      operationId: listFiscalRules
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200": { description: Reglas fiscales, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/FiscalRule" } } } } } } }
 components:
   securitySchemes:
     sessionCookie:
@@ -1379,19 +1458,6 @@ components:
       in: header
       name: X-XSRF-TOKEN
       description: Valor URL-decoded de la cookie XSRF-TOKEN.
-  parameters:
-    CompanyPublicId:
-      name: company
-      in: path
-      required: true
-      description: UUID público de la empresa; nunca se usa el RUC como identificador de ruta.
-      schema: { type: string, format: uuid }
-    FacstoCompany:
-      name: X-Facsto-Company
-      in: header
-      required: true
-      description: UUID público de la empresa activa. El backend comprueba membresía y estado.
-      schema: { type: string, format: uuid }
   responses:
     AuthenticationError:
       description: La sesión no está autenticada.
@@ -1477,44 +1543,76 @@ components:
           meta: { type: object },
           links: { type: object },
         }
+    TaxType:
+      type: string
+      enum: [IVA, ICE, IRBPNR]
     Tax:
       type: object
-      required:
-        [
-          publicId,
-          taxType,
-          sriCode,
-          percentageCode,
-          percentage,
-          validFrom,
-          isActive,
-        ]
+      description: Tarifa aplicada por la empresa; código y porcentaje vienen de su definición oficial.
+      required: [publicId, name, taxType, sriCode, percentageCode, calculationType, definitionPublicId, isActive, isUsable]
       properties:
         publicId: { type: string, format: uuid }
-        taxType: { type: string }
+        name: { type: string }
+        taxType: { $ref: "#/components/schemas/TaxType" }
         sriCode: { type: string }
         percentageCode: { type: string }
-        name: { type: string }
-        percentage: { type: string, format: decimal }
-        validFrom: { type: string, format: date }
+        percentage: { type: [string, "null"], format: decimal }
+        calculationType: { type: string, enum: [PERCENTAGE, SPECIFIC, MIXED] }
+        definitionPublicId: { type: string, format: uuid }
+        officialValidFrom: { type: string, format: date }
+        officialValidUntil: { type: [string, "null"], format: date }
+        validFrom: { type: [string, "null"], format: date }
         validUntil: { type: [string, "null"], format: date }
+        legalBasis: { type: string }
         isActive: { type: boolean }
-    TaxPage:
+        isUsable: { type: boolean }
+    TaxResponse:
+      type: object
+      properties: { data: { $ref: "#/components/schemas/Tax" } }
+    TaxCollection:
+      type: object
+      properties: { data: { type: array, items: { $ref: "#/components/schemas/Tax" } } }
+    TaxReplacementRequest:
+      type: object
+      required: [fromPublicId, toPublicId]
+      properties:
+        fromPublicId: { type: string, format: uuid }
+        toPublicId: { type: string, format: uuid }
+    SriTaxDefinition:
       type: object
       properties:
-        {
-          data: { type: array, items: { $ref: "#/components/schemas/Tax" } },
-          meta: { type: object },
-          links: { type: object },
-        }
+        publicId: { type: string, format: uuid }
+        name: { type: string }
+        taxType: { $ref: "#/components/schemas/TaxType" }
+        sriCode: { type: string }
+        percentageCode: { type: string }
+        calculationType: { type: string, enum: [PERCENTAGE, SPECIFIC, MIXED] }
+        percentage: { type: [string, "null"] }
+        specificRate: { type: [string, "null"] }
+        specificUnit: { type: [string, "null"] }
+        calculationSupported: { type: boolean }
+        validFrom: { type: string, format: date }
+        validUntil: { type: [string, "null"], format: date }
+        legalBasis: { type: string }
+        isCurrent: { type: boolean }
+    FiscalRule:
+      type: object
+      properties:
+        code: { type: string, enum: [FINAL_CONSUMER_MAX_TOTAL, MAX_TIP_PERCENTAGE] }
+        valueType: { type: string, enum: [DECIMAL, STRING] }
+        value: { type: string }
+        validFrom: { type: string, format: date }
+        validUntil: { type: [string, "null"], format: date }
+        legalBasis: { type: string }
+        isCurrent: { type: boolean }
     Item:
       type: object
       required: [publicId, type, internalCode, name, unit, salePrice, isActive]
       properties:
         publicId: { type: string, format: uuid }
         type: { $ref: "#/components/schemas/ItemType" }
-        internalCode: { type: string, maxLength: 50 }
-        auxiliaryCode: { type: [string, "null"] }
+        internalCode: { type: string, maxLength: 25 }
+        auxiliaryCode: { type: [string, "null"], maxLength: 25 }
         name: { type: string, maxLength: 180 }
         description: { type: [string, "null"] }
         unit: { type: string, maxLength: 32 }
@@ -1526,8 +1624,8 @@ components:
       required: [type, internalCode, name, unit, salePrice]
       properties:
         type: { $ref: "#/components/schemas/ItemType" }
-        internalCode: { type: string, maxLength: 50 }
-        auxiliaryCode: { type: [string, "null"], maxLength: 50 }
+        internalCode: { type: string, maxLength: 25 }
+        auxiliaryCode: { type: [string, "null"], maxLength: 25 }
         name: { type: string, maxLength: 180 }
         description: { type: [string, "null"] }
         unit: { type: string, maxLength: 32 }
@@ -1536,8 +1634,8 @@ components:
       type: object
       properties:
         type: { $ref: "#/components/schemas/ItemType" }
-        internalCode: { type: string, maxLength: 50 }
-        auxiliaryCode: { type: [string, "null"], maxLength: 50 }
+        internalCode: { type: string, maxLength: 25 }
+        auxiliaryCode: { type: [string, "null"], maxLength: 25 }
         name: { type: string, maxLength: 180 }
         description: { type: [string, "null"] }
         unit: { type: string, maxLength: 32 }
@@ -1581,6 +1679,7 @@ components:
       properties:
         customerPublicId: { type: [string, "null"], format: uuid }
         notes: { type: [string, "null"], maxLength: 2000 }
+        tipAmount: { type: [string, "null"], pattern: '^\d{1,14}(\.\d{1,2})?$', description: Propina; no supera MAX_TIP_PERCENTAGE del subtotal (TIP_MAX_PERCENTAGE_EXCEEDED). }
         lines:
           type: array
           maxItems: 100
@@ -1611,18 +1710,30 @@ components:
         paymentMethods: { type: array, items: { type: object } }
     Sale:
       type: object
-      required: [publicId, status, customer, subtotal, discountTotal, taxTotal, total, currency, createdAt]
+      required: [publicId, number, status, customer, subtotal, discountTotal, taxTotal, tipAmount, total, currency, createdAt]
       properties:
         publicId: { type: string, format: uuid }
+        number: { type: string, pattern: '^V-\d{5,}$', description: Consecutivo interno por empresa; no es el secuencial del SRI. }
         status: { $ref: "#/components/schemas/SaleStatus" }
+        issueDate: { type: [string, "null"], format: date, description: Fecha fiscal fijada al emitir el comprobante. }
         customer: { type: object, properties: { publicId: { type: [string, "null"], format: uuid }, identificationType: { type: string }, identification: { type: string }, name: { type: string }, address: { type: [string, "null"] }, email: { type: [string, "null"] } } }
         createdBy: { type: [string, "null"] }
         notes: { type: [string, "null"] }
         subtotal: { type: string }
         discountTotal: { type: string }
         taxTotal: { type: string }
-        total: { type: string }
+        tipAmount: { type: string }
+        total: { type: string, description: Subtotal - descuentos + impuestos + propina. }
         currency: { type: string, const: USD }
+        document:
+          type: [object, "null"]
+          description: Resumen del comprobante electrónico nacido de la venta.
+          properties:
+            publicId: { type: string, format: uuid }
+            fullNumber: { type: string }
+            accessKey: { type: string }
+            status: { $ref: "#/components/schemas/DocumentStatus" }
+            issueDate: { type: [string, "null"], format: date }
         lines: { type: array, items: { $ref: "#/components/schemas/SaleLine" } }
         paymentMethods: { type: array, items: { $ref: "#/components/schemas/SalePaymentMethod" } }
         createdAt: { type: string, format: date-time }
@@ -1653,15 +1764,15 @@ components:
             recentSales: { type: array, items: { $ref: "#/components/schemas/Sale" } }
     CompanySetupStatus:
       type: object
-      required: [state, ready, canIssueDocuments, issuerReady, emissionReady, certificateReady, deferred]
+      required: [state, ready, canIssueDocuments, issuerReady, emissionReady, certificateReady, onboardingRequired]
       properties:
         state: { $ref: "#/components/schemas/CompanySetupState" }
         ready: { type: boolean }
-        canIssueDocuments: { type: boolean }
+        canIssueDocuments: { type: boolean, description: Configuración completa con certificado vigente; requisito para firmar y enviar al SRI. }
         issuerReady: { type: boolean }
         emissionReady: { type: boolean }
         certificateReady: { type: boolean }
-        deferred: { type: boolean, description: Indica si la empresa pospuso el asistente; no implica readiness fiscal. }
+        onboardingRequired: { type: boolean, description: "Verdadero sólo para uno de los dos primeros administradores (OWNER/ADMIN) de la empresa que aún no completó ni omitió la bienvenida, mientras la empresa no esté lista. Empleados y administradores posteriores siempre reciben falso." }
     CategoryInput:
       type: object
       required: [name]
@@ -1690,6 +1801,7 @@ components:
       required: [publicId, documentType, fullNumber, accessKey, issueDate, status, customer, totals]
       properties:
         publicId: { type: string, format: uuid }
+        salePublicId: { type: [string, "null"], format: uuid }
         documentType: { $ref: "#/components/schemas/DocumentType" }
         fullNumber: { type: string, pattern: '^\d{3}-\d{3}-\d{9}$' }
         sequential: { type: string, pattern: '^\d{9}$' }
@@ -1703,6 +1815,21 @@ components:
     ElectronicDocumentResponse:
       type: object
       properties: { data: { $ref: "#/components/schemas/ElectronicDocument" } }
+    FiscalProfileInput:
+      type: object
+      properties:
+        accountingRequired: { type: boolean }
+        specialTaxpayerNumber: { type: [string, "null"], maxLength: 20 }
+        withholdingAgentNumber: { type: [string, "null"], maxLength: 20 }
+        rimpeType: { type: [string, "null"], enum: [ENTREPRENEUR, POPULAR_BUSINESS, null] }
+    FiscalProfile:
+      allOf:
+        - $ref: "#/components/schemas/FiscalProfileInput"
+        - type: object
+          required: [accountingRequired]
+    FiscalProfileResponse:
+      type: object
+      properties: { data: { $ref: "#/components/schemas/FiscalProfile" } }
     ElectronicDocumentPage:
       type: object
       properties: { data: { type: array, items: { $ref: "#/components/schemas/ElectronicDocument" } }, meta: { type: object }, links: { type: object } }
@@ -1758,11 +1885,13 @@ components:
       properties:
         publicId: { type: string, format: uuid }
         issuedTo: { type: string }
+        subjectRuc: { type: [string, "null"], pattern: '^\d{13}$' }
         issuer: { type: string }
         serialNumber: { type: [string, "null"] }
         validFrom: { type: string, format: date-time }
         validUntil: { type: string, format: date-time }
-        status: { type: string, enum: [VALID, INVALID, EXPIRED] }
+        status: { type: string, enum: [VALID, INVALID, EXPIRED, NOT_YET_VALID, RUC_NOT_FOUND, RUC_MISMATCH] }
+        validationErrorCode: { type: [string, "null"] }
         isActive: { type: boolean }
     DigitalCertificateResponse:
       type: object
@@ -1787,17 +1916,22 @@ components:
       allOf:
         - $ref: "#/components/schemas/LoginRequest"
         - type: object
-          required: [name, password_confirmation]
+          required: [name, ruc, main_address, password_confirmation]
           properties:
             name: { type: string, maxLength: 120 }
+            phone: { type: string, maxLength: 40, nullable: true }
+            ruc: { type: string, pattern: '^\\d{13}$' }
+            main_address: { type: string, maxLength: 255 }
             password_confirmation: { type: string, format: password }
     User:
       type: object
-      required: [publicId, name, email]
+      required: [publicId, name, email, phone, hasProfilePhoto]
       properties:
         publicId: { type: string, format: uuid }
         name: { type: string }
         email: { type: string, format: email }
+        phone: { type: string, nullable: true }
+        hasProfilePhoto: { type: boolean }
     UserResponse:
       type: object
       properties:
@@ -1807,9 +1941,10 @@ components:
       enum: [OWNER, ADMIN, BILLER, VIEWER]
     Company:
       type: object
-      required: [publicId, accountingRequired, status, role, hasLogo, sriEnvironment]
+      required: [publicId, slug, accountingRequired, status, role, hasLogo, sriEnvironment]
       properties:
         publicId: { type: string, format: uuid }
+        slug: { type: string, pattern: '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$', description: Identificador de la suscripción y futuro subdominio. }
         ruc: { type: [string, "null"], pattern: '^\d{13}$' }
         legalName: { type: [string, "null"] }
         commercialName: { type: [string, "null"] }
