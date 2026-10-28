@@ -39,7 +39,7 @@ final class DocumentSequenceConcurrencyTest extends TestCase
                     DB::purge('pgsql');
                     $childDb = DB::connection('pgsql');
                     $childDb->statement('SET search_path TO '.$schema);
-                    $number = $childDb->transaction(fn (): int => app(DocumentSequenceAllocator::class)->next(1, 1, 1, DocumentType::INVOICE));
+                    $number = $childDb->transaction(fn (): int => app(DocumentSequenceAllocator::class)->next(1, 1, 1, DocumentType::INVOICE, '1790016919001'));
                     fwrite($childSocket, (string) $number."\n");
                     fclose($childSocket);
                     exit(0);

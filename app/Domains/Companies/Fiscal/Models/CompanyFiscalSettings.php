@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['company_id', 'accounting_required', 'special_taxpayer_number', 'withholding_agent_number', 'rimpe_type', 'sri_environment', 'emission_type', 'sri_submission_enabled'])]
+#[Fillable(['company_id', 'accounting_required', 'special_taxpayer_number', 'withholding_agent_number', 'artisan_qualification_number', 'rimpe_type', 'sri_environment', 'emission_type', 'sri_submission_enabled'])]
 class CompanyFiscalSettings extends Model
 {
     public function company(): BelongsTo

@@ -13,6 +13,7 @@ final class DigitalCertificateResource extends JsonResource
             'publicId' => $this->public_id,
             'issuedTo' => $this->issued_to,
             'subjectRuc' => $this->subject_ruc,
+            'identificationSource' => $this->identification_source,
             'issuer' => $this->issuer,
             'serialNumber' => $this->serial_number,
             'validFrom' => $this->valid_from?->toIso8601String(),

@@ -28,7 +28,7 @@ final class ElectronicDocumentResource extends JsonResource
             'lastErrorCode' => $this->last_error_code,
             // Why a SIGNED document has not left FACSTO yet (global switch, company switch or provider registration).
             'transmissionBlockedReason' => $this->status === DocumentStatus::SIGNED
-                ? app(SriTransmissionGate::class)->blockingReason(CompanyFiscalSettings::query()->where('company_id', $this->company_id)->first())
+                ? app(SriTransmissionGate::class)->blockingReason(CompanyFiscalSettings::query()->where('company_id', $this->company_id)->first(), $this->sri_environment)
                 : null,
             'timeline' => [
                 'numberedAt' => $this->numbered_at?->toIso8601String(),

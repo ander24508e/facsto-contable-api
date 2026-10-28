@@ -72,6 +72,24 @@ final class SignElectronicDocumentTest extends InvoiceFeatureTestCase
         $this->assertNull($invoice->signed_at);
     }
 
+    public function test_a_signed_xml_over_the_sri_size_limit_never_becomes_signed(): void
+    {
+        config(['sri.max_document_bytes' => 1024]);
+        $user = User::factory()->create();
+        $company = $this->readyCompany($user);
+        $sale = $this->makeSale($user, $company);
+
+        $this->actingAs($user)->postJson('/api/v1/sales/'.$sale->public_id.'/issue')
+            ->assertUnprocessable()
+            ->assertJsonPath('error.details.reason_code', 'SIGNED_XML_TOO_LARGE')
+            ->assertJsonPath('error.details.maxBytes', 1024)
+            ->assertJsonPath('error.details.invoiceStatus', 'XML_BUILT');
+
+        $invoice = ElectronicDocument::query()->where('sale_id', $sale->id)->firstOrFail();
+        $this->assertSame(DocumentStatus::XML_BUILT, $invoice->status);
+        $this->assertSame(0, $invoice->artifacts()->where('type', DocumentArtifactType::SIGNED_XML->value)->count());
+    }
+
     public function test_the_java_signer_rejects_a_wrong_password_without_exposing_it(): void
     {
         $path = tempnam(sys_get_temp_dir(), 'facsto-test-p12-');

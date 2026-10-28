@@ -17,6 +17,7 @@ final class UpdateEmissionPointRequest extends FormRequest
             'code' => ['sometimes', 'required', 'string', 'regex:/^\d{3}$/'],
             'name' => ['sometimes', 'required', 'string', 'max:120'],
             'isActive' => ['sometimes', 'boolean'],
+            'isDefault' => ['sometimes', 'boolean'],
         ];
     }
 }

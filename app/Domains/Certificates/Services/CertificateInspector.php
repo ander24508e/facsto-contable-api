@@ -3,7 +3,6 @@
 namespace App\Domains\Certificates\Services;
 
 use App\Domains\Certificates\DTOs\CertificateInspectionResult;
-use App\Domains\Companies\Fiscal\Services\EcuadorRucValidator;
 use App\Shared\Http\ApiErrorCode;
 use App\Shared\Http\ApiException;
 use Illuminate\Support\Carbon;
@@ -11,13 +10,10 @@ use Illuminate\Support\Carbon;
 final class CertificateInspector
 {
     /**
-     * X.509 extensions where Ecuadorian certification entities store the holder's RUC.
-     * Only the OID documented in the SRI technical sheet (v2.34, p. 141) is listed; add others
-     * only after confirming them against a real certificate of that entity.
+     * X.509 extension documented in the SRI technical sheet (v2.34, p. 141) for the holder RUC.
+     * Other sources are configured in sri.certificate_identification once confirmed with a real certificate.
      */
     public const RUC_EXTENSION_OIDS = ['1.3.6.1.4.1.37947.3.11'];
-
-    public function __construct(private readonly EcuadorRucValidator $rucValidator) {}
 
     public function inspect(string $filePath, string $password): CertificateInspectionResult
     {
@@ -40,7 +36,7 @@ final class CertificateInspector
         return new CertificateInspectionResult(
             subjectName: $metadata['subject']['CN'] ?? $metadata['subject']['commonName'] ?? 'No especificado',
             subjectIdentification: isset($metadata['subject']['serialNumber']) ? (string) $metadata['subject']['serialNumber'] : null,
-            fiscalIdentification: $this->fiscalIdentification($metadata['extensions'] ?? []),
+            identificationCandidates: $this->identificationCandidates($metadata),
             issuer: $metadata['issuer']['CN'] ?? $metadata['issuer']['commonName'] ?? 'No especificado',
             serialNumber: (string) ($metadata['serialNumberHex'] ?? $metadata['serialNumber'] ?? ''),
             validFrom: Carbon::createFromTimestamp((int) $metadata['validFrom_time_t'], $timezone),
@@ -49,20 +45,37 @@ final class CertificateInspector
         );
     }
 
-    /** Returns the holder RUC only when a recognized extension carries a structurally valid one. */
-    private function fiscalIdentification(array $extensions): ?string
+    /**
+     * Every 10-digit (cédula) or 13-digit (RUC) number in the subject and the extensions, with its source.
+     * Nothing here grants anything by itself: CertificateIdentityResolver only trusts configured sources.
+     *
+     * @return list<array{source: string, value: string, context: string}>
+     */
+    private function identificationCandidates(array $metadata): array
     {
-        foreach (self::RUC_EXTENSION_OIDS as $oid) {
-            if (! isset($extensions[$oid]) || ! is_string($extensions[$oid])) {
-                continue;
+        $fields = [];
+        foreach ((array) ($metadata['subject'] ?? []) as $name => $value) {
+            foreach ((array) $value as $item) {
+                $fields['subject:'.$name][] = (string) $item;
             }
-            $value = $this->derStringContent($extensions[$oid]);
-            if (preg_match('/^\d{13}$/', $value) === 1 && $this->rucValidator->isStructurallyValid($value)) {
-                return $value;
+        }
+        foreach ((array) ($metadata['extensions'] ?? []) as $name => $value) {
+            if (is_string($value)) {
+                $fields['extension:'.$name][] = $this->derStringContent($value);
             }
         }
 
-        return null;
+        $candidates = [];
+        foreach ($fields as $source => $values) {
+            foreach ($values as $text) {
+                preg_match_all('/(?<!\d)(\d{13}|\d{10})(?!\d)/', $text, $matches);
+                foreach (array_unique($matches[1]) as $number) {
+                    $candidates[] = ['source' => $source, 'value' => $number, 'context' => mb_substr($this->printable($text), 0, 200)];
+                }
+            }
+        }
+
+        return $candidates;
     }
 
     /** Unknown extensions arrive as DER: tag (PrintableString/UTF8String/IA5String), length, content. */
@@ -73,6 +86,11 @@ final class CertificateInspector
         }
 
         return trim($raw);
+    }
+
+    private function printable(string $text): string
+    {
+        return trim((string) preg_replace('/[^\P{C}\n]+/u', ' ', mb_convert_encoding($text, 'UTF-8', 'UTF-8')));
     }
 
     private function invalid(string $reason, string $message): ApiException

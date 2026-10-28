@@ -18,6 +18,7 @@ final class StoreEmissionPointRequest extends FormRequest
             'code' => ['required', 'string', 'regex:/^\d{3}$/'],
             'name' => ['required', 'string', 'max:120'],
             'isActive' => ['sometimes', 'boolean'],
+            'isDefault' => ['sometimes', 'boolean'],
         ];
     }
 }

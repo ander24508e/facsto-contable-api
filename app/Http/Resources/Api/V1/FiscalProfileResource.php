@@ -13,6 +13,7 @@ final class FiscalProfileResource extends JsonResource
             'accountingRequired' => (bool) $this->accounting_required,
             'specialTaxpayerNumber' => $this->special_taxpayer_number,
             'withholdingAgentNumber' => $this->withholding_agent_number,
+            'artisanQualificationNumber' => $this->artisan_qualification_number,
             'rimpeType' => $this->rimpe_type?->value,
         ];
     }

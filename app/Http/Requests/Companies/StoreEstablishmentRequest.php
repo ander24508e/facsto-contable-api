@@ -16,8 +16,9 @@ final class StoreEstablishmentRequest extends FormRequest
         return [
             'code' => ['required', 'string', 'regex:/^\d{3}$/'],
             'name' => ['required', 'string', 'max:120'],
-            'address' => ['required', 'string', 'max:255'],
+            'address' => ['nullable', 'string', 'max:255'],
             'isActive' => ['sometimes', 'boolean'],
+            'isMain' => ['sometimes', 'boolean'],
         ];
     }
 }

@@ -76,6 +76,15 @@ final class SignElectronicDocumentAction
         } catch (RuntimeException $exception) {
             throw $this->signingError($document, $exception);
         }
+        // The SRI rejects bigger submissions: such a document never becomes SIGNED nor reaches the queue.
+        $maxBytes = (int) config('sri.max_document_bytes', 320 * 1024);
+        if (strlen($signedXml) > $maxBytes) {
+            throw new ApiException(ApiErrorCode::INVOICE_SIGNING_FAILED, 'El comprobante firmado supera el tamaño máximo que acepta el SRI (320 KB). Divide la venta en varias facturas.', 422, [
+                'reason_code' => 'SIGNED_XML_TOO_LARGE',
+                'sizeBytes' => strlen($signedXml),
+                'maxBytes' => $maxBytes,
+            ]);
+        }
 
         $stored = null;
         try {

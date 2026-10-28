@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\CompanyController;
 use App\Http\Controllers\Api\V1\CompanyMemberController;
 use App\Http\Controllers\Api\V1\EmissionPointController;
+use App\Http\Controllers\Api\V1\EnsureDefaultEmissionStructureController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\FiscalProfileController;
 use App\Http\Controllers\Api\V1\Setup\CertificateSetupController;
@@ -20,6 +21,9 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::patch('/company', [CompanyController::class, 'update']);
         Route::get('/company/logo', [CompanyController::class, 'logo']);
         Route::post('/company/logo', [CompanyController::class, 'updateLogo'])->middleware('throttle:10,1');
+        // Datos de la empresa + firma electrónica en un solo guardado (multipart).
+        Route::post('/company/fiscal-identity', [CompanyController::class, 'saveFiscalIdentity'])->middleware('throttle:10,1');
+        Route::put('/company/electronic-invoicing', [CompanyController::class, 'setElectronicInvoicing']);
         Route::delete('/company/logo', [CompanyController::class, 'deleteLogo']);
         Route::post('/company/members', [CompanyMemberController::class, 'store']);
         Route::delete('/company/members/{userPublicId}', [CompanyMemberController::class, 'destroy']);
@@ -34,10 +38,12 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::post('/setup/certificate', [CertificateSetupController::class, 'store'])->middleware('throttle:5,1');
         Route::delete('/setup/certificate/{certificate}', [CertificateSetupController::class, 'destroy']);
         Route::get('/establishments', [EstablishmentController::class, 'index']);
+        Route::post('/emission-structure/defaults', EnsureDefaultEmissionStructureController::class);
         Route::post('/establishments', [EstablishmentController::class, 'store']);
         Route::patch('/establishments/{establishment}', [EstablishmentController::class, 'update']);
         Route::get('/emission-points', [EmissionPointController::class, 'index']);
         Route::post('/emission-points', [EmissionPointController::class, 'store']);
         Route::patch('/emission-points/{emissionPoint}', [EmissionPointController::class, 'update']);
+        Route::put('/emission-points/{emissionPoint}/sequence', [EmissionPointController::class, 'sequence']);
     });
 });

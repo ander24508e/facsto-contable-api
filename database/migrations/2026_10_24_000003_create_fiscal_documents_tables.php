@@ -15,10 +15,15 @@ return new class extends Migration
             $table->foreignId('establishment_id');
             $table->foreignId('emission_point_id');
             $table->string('document_type', 24);
+            // La numeración pertenece a cada RUC: si la empresa cambia de RUC, el nuevo empieza la suya y la
+            // del anterior queda intacta (y continúa si se vuelve a él).
+            $table->char('issuer_ruc', 13);
             $table->unsignedBigInteger('current_number')->default(0);
+            // Primer secuencial de este RUC en el punto (1, o el que continúa la numeración de otro sistema).
+            $table->unsignedBigInteger('initial_number')->default(1);
             $table->boolean('is_active')->default(true);
             $table->timestamps();
-            $table->unique(['company_id', 'establishment_id', 'emission_point_id', 'document_type'], 'document_sequences_identity_unique');
+            $table->unique(['company_id', 'establishment_id', 'emission_point_id', 'document_type', 'issuer_ruc'], 'document_sequences_identity_unique');
             $table->foreign(['company_id', 'establishment_id'])->references(['company_id', 'id'])->on('establishments')->restrictOnDelete();
             $table->foreign(['company_id', 'emission_point_id'])->references(['company_id', 'id'])->on('emission_points')->restrictOnDelete();
         });
@@ -48,6 +53,7 @@ return new class extends Migration
             $table->boolean('accounting_required')->nullable();
             $table->string('special_taxpayer_number', 20)->nullable();
             $table->string('withholding_agent_number', 20)->nullable();
+            $table->string('artisan_qualification_number', 30)->nullable();
             $table->string('rimpe_type', 32)->nullable();
             $table->string('sri_environment', 16)->nullable();
             $table->string('emission_type', 16)->nullable();
@@ -79,7 +85,7 @@ return new class extends Migration
             $table->foreignId('created_by')->constrained('users')->restrictOnDelete();
             $table->timestamps();
             $table->unique('sale_id');
-            $table->unique(['company_id', 'establishment_code', 'emission_point_code', 'document_type', 'sequential'], 'electronic_documents_number_unique');
+            $table->unique(['company_id', 'issuer_ruc', 'establishment_code', 'emission_point_code', 'document_type', 'sequential'], 'electronic_documents_number_unique');
             $table->unique(['company_id', 'id']);
             $table->foreign(['company_id', 'sale_id'])->references(['company_id', 'id'])->on('sales')->restrictOnDelete();
             $table->foreign(['company_id', 'customer_id'])->references(['company_id', 'id'])->on('customers')->restrictOnDelete();
@@ -136,6 +142,7 @@ return new class extends Migration
 
         if (DB::getDriverName() === 'pgsql') {
             DB::statement('ALTER TABLE document_sequences ADD CONSTRAINT document_sequences_number_check CHECK (current_number BETWEEN 0 AND 999999999)');
+            DB::statement('ALTER TABLE document_sequences ADD CONSTRAINT document_sequences_initial_check CHECK (initial_number BETWEEN 1 AND 999999999)');
             DB::statement("ALTER TABLE electronic_documents ADD CONSTRAINT electronic_documents_status_check CHECK (status IN ('DRAFT','NUMBERED','XML_BUILT','SIGNED','QUEUED','RECEIVED','RETURNED','PENDING_AUTHORIZATION','AUTHORIZED','NOT_AUTHORIZED','FAILED'))");
         }
     }

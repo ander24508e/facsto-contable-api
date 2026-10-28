@@ -3,8 +3,8 @@
 namespace App\Domains\Catalog\Actions;
 
 use App\Domains\Catalog\Models\Item;
-use App\Domains\Taxes\Services\ItemTaxService;
 use App\Domains\Companies\Context\CompanyContext;
+use App\Domains\Taxes\Services\ItemTaxService;
 use App\Models\User;
 use App\Shared\Audit\AuditRecorder;
 use App\Shared\Http\ApiErrorCode;

@@ -280,6 +280,58 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "422":
           $ref: "#/components/responses/ValidationError"
+  /api/v1/company/fiscal-identity:
+    post:
+      tags: [Companies]
+      summary: Datos de la empresa, RUC y firma electrónica en un solo guardado (todo o nada).
+      description: >-
+        Todos los campos son obligatorios y el RUC tiene exactamente 13 dígitos. La firma se valida contra el RUC
+        enviado (no contra el guardado), así el RUC demo nunca la rechaza. `certificate` es obligatorio si el RUC no tiene
+        una firma vigente activa, y siempre que el RUC cambia. Si la firma se rechaza (CERTIFICATE_*) no se guarda nada.
+        Cambiar de RUC exige que no haya comprobantes del RUC actual sin autorizar (COMPANY_RUC_CHANGE_BLOCKED) y el
+        RUC nuevo empieza su propia numeración; la del anterior se conserva.
+      operationId: saveCompanyFiscalIdentity
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [ruc, legalName, commercialName, mainAddress, email, phone]
+              properties:
+                ruc: { type: string, pattern: '^\d{13}$' }
+                legalName: { type: string, maxLength: 180 }
+                commercialName: { type: string, maxLength: 180 }
+                mainAddress: { type: string, maxLength: 255 }
+                email: { type: string, format: email, maxLength: 254 }
+                phone: { type: string, pattern: '^\d{9,10}$' }
+                certificate: { type: string, format: binary, description: Archivo .p12/.pfx del RUC enviado (máx. 10 MB). }
+                password: { type: string, format: password, description: Obligatoria con certificate; sólo viaja en esta petición. }
+      responses:
+        "200": { description: Empresa guardada con su firma activa, content: { application/json: { schema: { $ref: "#/components/schemas/CompanyResponse" } } } }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "409": { $ref: "#/components/responses/ConflictError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/company/electronic-invoicing:
+    put:
+      tags: [Companies]
+      summary: «Activar facturación electrónica» (envío al SRI de la empresa).
+      description: >-
+        Sólo se activa con la lista completa (datos de la empresa, firma vigente del RUC, establecimiento y punto,
+        ambiente); si falta algo responde ELECTRONIC_INVOICING_REQUIREMENTS_PENDING con `details.pending`.
+        Cambiar de RUC lo desactiva. Sigue haciendo falta SRI_TRANSPORT_ENABLED en el servidor.
+      operationId: setElectronicInvoicing
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [enabled], properties: { enabled: { type: boolean } } }
+      responses:
+        "200": { description: Empresa con el estado del activador, content: { application/json: { schema: { $ref: "#/components/schemas/CompanyResponse" } } } }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "409": { $ref: "#/components/responses/ConflictError" }
   /api/v1/company/logo:
     get:
       tags: [Companies]
@@ -911,12 +963,13 @@ paths:
           application/json:
             schema:
               type: object
-              required: [code, name, address]
+              required: [code, name]
               properties:
                 code: { type: string, pattern: '^\d{3}$' }
-                name: { type: string, maxLength: 150 }
-                address: { type: string, maxLength: 255 }
+                name: { type: string, maxLength: 120 }
+                address: { type: [string, "null"], maxLength: 255 }
                 isActive: { type: boolean, default: true }
+                isMain: { type: boolean }
       responses:
         "201":
           description: Establecimiento creado.
@@ -949,9 +1002,10 @@ paths:
               type: object
               properties:
                 code: { type: string, pattern: '^\d{3}$' }
-                name: { type: string, maxLength: 150 }
-                address: { type: string, maxLength: 255 }
+                name: { type: string, maxLength: 120 }
+                address: { type: [string, "null"], maxLength: 255 }
                 isActive: { type: boolean }
+                isMain: { type: boolean }
       responses:
         "200":
           description: Establecimiento actualizado.
@@ -1013,6 +1067,27 @@ paths:
           $ref: "#/components/responses/CompanyAccessError"
         "422":
           $ref: "#/components/responses/ValidationError"
+  /api/v1/emission-points/{emissionPoint}/sequence:
+    put:
+      tags: [Companies]
+      summary: Define el primer secuencial de factura del RUC actual en el punto (p. ej. para continuar otro sistema).
+      description: >-
+        Sólo antes de que ese RUC emita su primera factura en el punto; después responde DOCUMENT_SEQUENCE_LOCKED.
+        Por defecto la numeración empieza en 1.
+      operationId: configureInitialSequential
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - { name: emissionPoint, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [initialSequential], properties: { initialSequential: { type: integer, minimum: 1, maximum: 999999999 } } }
+      responses:
+        "200": { description: Punto con su numeración, content: { application/json: { schema: { $ref: "#/components/schemas/EmissionPointResponse" } } } }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "409": { $ref: "#/components/responses/ConflictError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
   /api/v1/emission-points/{emissionPoint}:
     parameters:
       - name: emissionPoint
@@ -1974,6 +2049,7 @@ components:
         accountingRequired: { type: boolean }
         specialTaxpayerNumber: { type: [string, "null"], maxLength: 20 }
         withholdingAgentNumber: { type: [string, "null"], maxLength: 20 }
+        artisanQualificationNumber: { type: [string, "null"], maxLength: 30, description: Número de calificación artesanal; se congela en cada comprobante y sale en el RIDE. }
         rimpeType: { type: [string, "null"], enum: [ENTREPRENEUR, POPULAR_BUSINESS, null] }
     FiscalProfile:
       allOf:
@@ -2007,18 +2083,11 @@ components:
         phone: { type: [string, "null"], maxLength: 40 }
     EmissionConfiguration:
       type: object
-      required:
-        [
-          establishmentCode,
-          establishmentName,
-          establishmentAddress,
-          emissionPointCode,
-          emissionPointName,
-        ]
+      required: [establishmentCode, establishmentName, emissionPointCode, emissionPointName]
       properties:
         establishmentCode: { type: string, pattern: '^\d{3}$' }
         establishmentName: { type: string, maxLength: 120 }
-        establishmentAddress: { type: string, maxLength: 255 }
+        establishmentAddress: { type: [string, "null"], maxLength: 255 }
         emissionPointCode: { type: string, pattern: '^\d{3}$' }
         emissionPointName: { type: string, maxLength: 120 }
         environment:
@@ -2109,6 +2178,22 @@ components:
         sriEnvironment: { type: [string, "null"], enum: [TEST, PRODUCTION, null] }
         status: { type: string, enum: [ACTIVE, DISABLED] }
         role: { $ref: "#/components/schemas/CompanyRole" }
+        activeCertificate:
+          type: [object, "null"]
+          description: Firma electrónica activa; sólo se expone si puede firmar para el RUC actual.
+          properties:
+            usable: { type: boolean }
+        electronicInvoicing:
+          type: object
+          properties:
+            enabled: { type: boolean }
+            requirements:
+              type: object
+              properties:
+                companyData: { type: boolean }
+                certificate: { type: boolean }
+                emission: { type: boolean }
+                environment: { type: boolean }
     CompanyWrite:
       type: object
       properties:
@@ -2154,7 +2239,7 @@ components:
         publicId: { type: string, format: uuid }
         code: { type: string, pattern: '^\d{3}$' }
         name: { type: string }
-        address: { type: string }
+        address: { type: [string, "null"] }
         isActive: { type: boolean }
         isMain: { type: boolean }
     EstablishmentResponse:
@@ -2177,6 +2262,14 @@ components:
         name: { type: string }
         isActive: { type: boolean }
         isDefault: { type: boolean }
+        sequence:
+          type: object
+          description: Numeración de facturas del RUC actual de la empresa en este punto.
+          properties:
+            issuerRuc: { type: [string, "null"] }
+            initialSequential: { type: integer }
+            nextSequential: { type: integer }
+            locked: { type: boolean, description: true cuando el RUC ya emitió en este punto; la numeración no se puede redefinir. }
     EmissionPointResponse:
       type: object
       properties:

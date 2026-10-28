@@ -2,6 +2,8 @@
 
 namespace App\Http\Resources\Api\V1;
 
+use App\Domains\Certificates\Enums\CertificateStatus;
+use App\Domains\Companies\Fiscal\Services\ElectronicInvoicingRequirements;
 use App\Domains\Companies\Models\Company;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -13,6 +15,7 @@ final class CompanyResource extends JsonResource
         /** @var Company $company */
         $company = $this->resource;
         $membership = $company->memberships->firstWhere('user_id', $request->user()->id);
+        $certificate = $company->digitalCertificates()->where('is_active', true)->first();
 
         return [
             'publicId' => $company->public_id,
@@ -28,6 +31,19 @@ final class CompanyResource extends JsonResource
             'sriEnvironment' => $company->fiscalSettings?->sri_environment?->value,
             'status' => $company->status->value,
             'role' => $membership?->role->value,
+            // Expose only the readiness boolean needed by this view, not certificate notices/metadata.
+            'activeCertificate' => $certificate ? [
+                'usable' => $certificate->status === CertificateStatus::VALID
+                    && $certificate->subject_ruc !== null
+                    && $certificate->subject_ruc === $company->ruc
+                    && $certificate->valid_from?->lessThanOrEqualTo(now())
+                    && $certificate->valid_until?->greaterThan(now()),
+            ] : null,
+            // «Activar facturación electrónica»: the switch and its checklist.
+            'electronicInvoicing' => [
+                'enabled' => (bool) $company->fiscalSettings?->sri_submission_enabled,
+                'requirements' => app(ElectronicInvoicingRequirements::class)->check($company),
+            ],
         ];
     }
 }

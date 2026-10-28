@@ -19,7 +19,7 @@ final class ConfigureEmissionStructureRequest extends FormRequest
         return [
             'establishmentCode' => ['required', 'string', 'regex:/^\d{3}$/'],
             'establishmentName' => ['required', 'string', 'max:120'],
-            'establishmentAddress' => ['required', 'string', 'max:255'],
+            'establishmentAddress' => ['nullable', 'string', 'max:255'],
             'emissionPointCode' => ['required', 'string', 'regex:/^\d{3}$/'],
             'emissionPointName' => ['required', 'string', 'max:120'],
             'environment' => ['sometimes', Rule::enum(SriEnvironment::class)],

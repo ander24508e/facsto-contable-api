@@ -10,7 +10,7 @@ final readonly class EmissionStructureData
     public function __construct(
         public string $establishmentCode,
         public string $establishmentName,
-        public string $establishmentAddress,
+        public ?string $establishmentAddress,
         public string $emissionPointCode,
         public string $emissionPointName,
         public SriEnvironment $environment,

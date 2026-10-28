@@ -19,6 +19,7 @@ final class UpdateFiscalProfileRequest extends FormRequest
             'accountingRequired' => ['sometimes', 'boolean'],
             'specialTaxpayerNumber' => ['sometimes', 'nullable', 'string', 'max:20'],
             'withholdingAgentNumber' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'artisanQualificationNumber' => ['sometimes', 'nullable', 'string', 'max:30'],
             'rimpeType' => ['sometimes', 'nullable', Rule::enum(RimpeType::class)],
         ];
     }

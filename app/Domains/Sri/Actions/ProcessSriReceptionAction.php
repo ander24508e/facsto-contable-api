@@ -41,7 +41,7 @@ final class ProcessSriReceptionAction
             }
             // The gate is checked again right before the XML leaves FACSTO.
             $settings = CompanyFiscalSettings::query()->where('company_id', $document->company_id)->first();
-            if (($reason = $this->gate->blockingReason($settings)) !== null) {
+            if (($reason = $this->gate->blockingReason($settings, $document->sri_environment)) !== null) {
                 $this->recorder->start($document, SriOperation::RECEPTION, SriSubmissionStatus::BLOCKED, $reason);
 
                 return [$this->states->transition($document, DocumentStatus::SIGNED), null];

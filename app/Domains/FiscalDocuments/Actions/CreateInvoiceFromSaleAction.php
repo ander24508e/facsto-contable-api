@@ -64,7 +64,7 @@ final class CreateInvoiceFromSaleAction
                 $providerRuc = (string) config('sri.software_provider.ruc');
 
                 $type = DocumentType::INVOICE;
-                $number = $this->sequences->next($company->id, $establishment->id, $point->id, $type);
+                $number = $this->sequences->next($company->id, $establishment->id, $point->id, $type, (string) $company->ruc);
                 $sequential = $this->sequentialFormatter->format($number);
                 $fullNumber = $this->numberFormatter->format($establishment->code, $point->code, $sequential);
                 $numericCode = $this->numericCodes->generate();
@@ -115,6 +115,7 @@ final class CreateInvoiceFromSaleAction
                     'accounting_required' => $settings->accounting_required,
                     'special_taxpayer_number' => $settings->special_taxpayer_number,
                     'withholding_agent_number' => $settings->withholding_agent_number,
+                    'artisan_qualification_number' => $settings->artisan_qualification_number,
                     'rimpe_type' => $settings->rimpe_type?->value,
                     'sri_environment' => $settings->sri_environment->value,
                     'emission_type' => $settings->emission_type->value,

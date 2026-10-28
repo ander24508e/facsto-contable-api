@@ -35,6 +35,9 @@
                 @if ($ride->issuer['withholdingAgentNumber'])
                     <div><span class="label">Agente de retención, resolución Nro.:</span> {{ $ride->issuer['withholdingAgentNumber'] }}</div>
                 @endif
+                @if ($ride->issuer['artisanQualificationNumber'] ?? null)
+                    <div><span class="label">Artesano calificado Nro.:</span> {{ $ride->issuer['artisanQualificationNumber'] }}</div>
+                @endif
                 @if ($ride->issuer['rimpe'])
                     <div class="label">{{ $ride->issuer['rimpe'] }}</div>
                 @endif

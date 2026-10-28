@@ -10,7 +10,7 @@ use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
-/** One demo company, provisioned exactly like a real subscription. */
+/** One demo company, provisioned exactly like a real subscription: no fiscal data, the welcome flow asks for it. */
 final class DevelopmentSeeder extends Seeder
 {
     private const LOCAL_PASSWORD = 'FacstoLocal2026!';
@@ -23,11 +23,6 @@ final class DevelopmentSeeder extends Seeder
 
         $result = $provision->execute(new ProvisionCompanyData(
             slug: 'demo',
-            ruc: '1799999999001',
-            mainAddress: 'Quito, Ecuador',
-            legalName: 'Empresa demo FACSTO',
-            email: 'facturacion@facsto.local',
-            phone: null,
             operator: new ProvisionAdministratorData('Operador Condore', 'demo@facsto.local'),
             clientAdmin: new ProvisionAdministratorData('Administrador del cliente', 'cliente@facsto.local'),
         ));

@@ -16,17 +16,12 @@ final class CreateCompanyCommand extends Command
 {
     protected $signature = 'facsto:empresa:crear
         {slug : Identificador y futuro subdominio, p. ej. lavadora-endara}
-        {--ruc= : RUC de 13 dígitos}
-        {--direccion= : Dirección matriz}
-        {--razon-social= : Razón social (opcional, se completa en la bienvenida)}
-        {--correo= : Correo de la empresa}
-        {--telefono= : Teléfono de la empresa}
         {--operador-nombre= : Nombre del administrador operador de Condore}
         {--operador-correo= : Correo del administrador operador de Condore}
         {--cliente-nombre= : Nombre del administrador del cliente}
         {--cliente-correo= : Correo del administrador del cliente}';
 
-    protected $description = 'Activa una empresa suscrita con su estructura de emisión y sus dos administradores.';
+    protected $description = 'Activa una empresa suscrita con sus dos administradores; el cliente llena sus datos fiscales en la bienvenida.';
 
     public function handle(ProvisionCompanyAction $provision): int
     {
@@ -35,11 +30,6 @@ final class CreateCompanyCommand extends Command
         try {
             $result = $provision->execute(new ProvisionCompanyData(
                 slug: $this->argument('slug'),
-                ruc: $this->option('ruc') ?: (string) $this->ask('RUC'),
-                mainAddress: $this->option('direccion') ?: (string) $this->ask('Dirección matriz'),
-                legalName: $this->option('razon-social') ?: null,
-                email: $this->option('correo') ?: null,
-                phone: $this->option('telefono') ?: null,
                 operator: new ProvisionAdministratorData(
                     $this->option('operador-nombre') ?: (string) $this->ask('Nombre del operador de Condore'),
                     $this->option('operador-correo') ?: (string) $this->ask('Correo del operador de Condore'),

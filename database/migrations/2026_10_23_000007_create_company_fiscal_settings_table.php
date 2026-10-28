@@ -14,6 +14,8 @@ return new class extends Migration
             $table->boolean('accounting_required')->default(false);
             $table->string('special_taxpayer_number', 20)->nullable();
             $table->string('withholding_agent_number', 20)->nullable();
+            // Número de calificación artesanal (opcional); se congela en cada comprobante y sale en el RIDE.
+            $table->string('artisan_qualification_number', 30)->nullable();
             $table->string('rimpe_type', 32)->nullable();
             $table->string('sri_environment', 16)->nullable();
             $table->string('emission_type', 16)->nullable();

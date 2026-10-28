@@ -26,7 +26,7 @@ final class InvoiceSriStatusResource extends JsonResource
             'lastSriStatusAt' => $this->last_sri_status_at?->toIso8601String(),
             'lastErrorCode' => $this->last_error_code,
             'transmissionBlockedReason' => $this->status === DocumentStatus::SIGNED
-                ? app(SriTransmissionGate::class)->blockingReason(CompanyFiscalSettings::query()->where('company_id', $this->company_id)->first())
+                ? app(SriTransmissionGate::class)->blockingReason(CompanyFiscalSettings::query()->where('company_id', $this->company_id)->first(), $this->sri_environment)
                 : null,
             'canRetry' => ! in_array($this->status, [DocumentStatus::AUTHORIZED, DocumentStatus::QUEUED], true),
             'timeline' => [

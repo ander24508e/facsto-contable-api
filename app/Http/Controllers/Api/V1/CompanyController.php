@@ -6,8 +6,12 @@ use App\Domains\Companies\Actions\DeleteCompanyLogoAction;
 use App\Domains\Companies\Actions\UpdateCompanyAction;
 use App\Domains\Companies\Actions\UpdateCompanyLogoAction;
 use App\Domains\Companies\Context\CompanyContext;
+use App\Domains\Companies\Fiscal\Actions\SaveCompanyFiscalIdentityAction;
+use App\Domains\Companies\Fiscal\Actions\SetElectronicInvoicingAction;
 use App\Domains\Companies\Models\Company;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Companies\SaveCompanyFiscalIdentityRequest;
+use App\Http\Requests\Companies\SetElectronicInvoicingRequest;
 use App\Http\Requests\Companies\UpdateCompanyRequest;
 use App\Http\Requests\Companies\UploadCompanyLogoRequest;
 use App\Http\Resources\Api\V1\CompanyResource;
@@ -45,6 +49,23 @@ final class CompanyController extends Controller
         }
 
         return $this->resource($update->execute($company, $attributes), $request);
+    }
+
+    /** Company data, RUC and electronic signature in one all-or-nothing save. */
+    public function saveFiscalIdentity(SaveCompanyFiscalIdentityRequest $request, CompanyContext $context, SaveCompanyFiscalIdentityAction $save): CompanyResource
+    {
+        $this->authorize('update', $context->company());
+        $data = $request->safe()->only(['ruc', 'legalName', 'commercialName', 'mainAddress', 'email', 'phone']);
+
+        return $this->resource($save->execute($data, $request->file('certificate'), $request->validated('password'), $request->user()), $request);
+    }
+
+    /** «Activar facturación electrónica»: only with the whole checklist complete. */
+    public function setElectronicInvoicing(SetElectronicInvoicingRequest $request, CompanyContext $context, SetElectronicInvoicingAction $set): CompanyResource
+    {
+        $this->authorize('update', $context->company());
+
+        return $this->resource($set->execute($request->boolean('enabled'), $request->user()), $request);
     }
 
     public function logo(CompanyContext $context): StreamedResponse

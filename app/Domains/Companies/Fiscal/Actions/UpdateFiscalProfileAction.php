@@ -16,7 +16,7 @@ final class UpdateFiscalProfileAction
         private readonly AuditRecorder $audit,
     ) {}
 
-    /** @param array{accountingRequired?: bool, specialTaxpayerNumber?: ?string, withholdingAgentNumber?: ?string, rimpeType?: ?string} $attributes */
+    /** @param array{accountingRequired?: bool, specialTaxpayerNumber?: ?string, withholdingAgentNumber?: ?string, artisanQualificationNumber?: ?string, rimpeType?: ?string} $attributes */
     public function execute(array $attributes, User $actor): CompanyFiscalSettings
     {
         $company = $this->context->company();
@@ -28,6 +28,7 @@ final class UpdateFiscalProfileAction
                 'accountingRequired' => $settings->accounting_required,
                 'specialTaxpayerNumber' => $settings->special_taxpayer_number,
                 'withholdingAgentNumber' => $settings->withholding_agent_number,
+                'artisanQualificationNumber' => $settings->artisan_qualification_number,
                 'rimpeType' => $settings->rimpe_type?->value,
             ];
 
@@ -35,12 +36,14 @@ final class UpdateFiscalProfileAction
                 'accounting_required' => $attributes['accountingRequired'] ?? null,
                 'special_taxpayer_number' => $attributes['specialTaxpayerNumber'] ?? null,
                 'withholding_agent_number' => $attributes['withholdingAgentNumber'] ?? null,
+                'artisan_qualification_number' => $attributes['artisanQualificationNumber'] ?? null,
                 'rimpe_type' => $attributes['rimpeType'] ?? null,
             ];
             foreach ([
                 'accountingRequired' => 'accounting_required',
                 'specialTaxpayerNumber' => 'special_taxpayer_number',
                 'withholdingAgentNumber' => 'withholding_agent_number',
+                'artisanQualificationNumber' => 'artisan_qualification_number',
                 'rimpeType' => 'rimpe_type',
             ] as $input => $column) {
                 if (array_key_exists($input, $attributes)) {
@@ -56,6 +59,7 @@ final class UpdateFiscalProfileAction
                 'accountingRequired' => $settings->accounting_required,
                 'specialTaxpayerNumber' => $settings->special_taxpayer_number,
                 'withholdingAgentNumber' => $settings->withholding_agent_number,
+                'artisanQualificationNumber' => $settings->artisan_qualification_number,
                 'rimpeType' => $settings->rimpe_type?->value,
             ]);
 

@@ -18,8 +18,12 @@ return new class extends Migration
             $table->text('password_ciphertext')->nullable();
             $table->string('issued_to', 255);
             $table->string('subject_identification', 64)->nullable();
-            // Holder RUC read from a recognized X.509 extension; must equal the company RUC to sign.
+            // RUC the certificate vouches for; must equal the company RUC to sign. It comes from a recognized
+            // RUC source, or from the cédula of a persona natural (cédula + 001).
             $table->char('subject_ruc', 13)->nullable();
+            $table->string('identification_source', 120)->nullable();
+            // Diagnosis: every 10/13-digit identification found in the certificate and where it was found.
+            $table->json('identification_candidates')->nullable();
             $table->string('issuer', 255);
             $table->string('serial_number', 100)->nullable();
             $table->timestampTz('valid_from');

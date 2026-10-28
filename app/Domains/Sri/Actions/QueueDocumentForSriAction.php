@@ -36,7 +36,7 @@ final class QueueDocumentForSriAction
             }
 
             $settings = CompanyFiscalSettings::query()->where('company_id', $locked->company_id)->first();
-            if ($this->gate->blockingReason($settings) !== null) {
+            if ($this->gate->blockingReason($settings, $locked->sri_environment) !== null) {
                 return $locked;
             }
 

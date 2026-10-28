@@ -6,6 +6,7 @@ use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Companies\Fiscal\DTOs\IssuerConfigurationData;
 use App\Domains\Companies\Fiscal\Services\EcuadorRucValidator;
 use App\Domains\Companies\Models\Company;
+use App\Domains\FiscalDocuments\Models\ElectronicDocument;
 use App\Models\User;
 use App\Shared\Audit\AuditRecorder;
 use App\Shared\Http\ApiErrorCode;
@@ -31,6 +32,11 @@ final class ConfigureIssuerAction
             $company = Company::query()->whereKey($company->id)->lockForUpdate()->firstOrFail();
             if (Company::query()->where('ruc', $data->ruc)->where('id', '<>', $company->id)->exists()) {
                 throw new ApiException(ApiErrorCode::COMPANY_RUC_ALREADY_REGISTERED, 'El RUC ya está registrado en otra empresa FACSTO.', 409);
+            }
+            // Onboarding only sets the first RUC. Once documents exist, the RUC changes from "Datos de la
+            // empresa" together with the new RUC's signature (SaveCompanyFiscalIdentityAction).
+            if ($company->ruc !== $data->ruc && ElectronicDocument::query()->where('company_id', $company->id)->exists()) {
+                throw new ApiException(ApiErrorCode::COMPANY_RUC_CHANGE_BLOCKED, 'La empresa ya tiene comprobantes: cambia el RUC desde Datos de la empresa junto con la firma electrónica del nuevo RUC.', 409);
             }
 
             $before = ['ruc' => $company->ruc, 'legalName' => $company->legal_name, 'mainAddress' => $company->main_address];

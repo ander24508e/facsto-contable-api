@@ -29,16 +29,19 @@ abstract class SalesTestCase extends CompanyTestCase
 
     protected function makeSale(User $user, Company $company, bool $withPayment = true): Sale
     {
-        $customer = Customer::query()->create([
-            'company_id' => $company->id, 'identification_type' => IdentificationType::CEDULA,
-            'identification' => '0102030405', 'legal_name' => 'Cliente de prueba', 'is_active' => true,
-        ]);
-        $item = Item::query()->create([
-            'company_id' => $company->id, 'type' => 'SERVICE', 'internal_code' => 'SERV-1',
-            'name' => 'Servicio', 'unit' => 'UND', 'sale_price' => '10.000000', 'is_active' => true,
-        ]);
+        // Reused across calls, so one test can make several sales for the same company.
+        $customer = Customer::query()->firstOrCreate(
+            ['company_id' => $company->id, 'identification_type' => IdentificationType::CEDULA, 'identification' => '0102030405'],
+            ['legal_name' => 'Cliente de prueba', 'is_active' => true],
+        );
+        $item = Item::query()->firstOrCreate(
+            ['company_id' => $company->id, 'internal_code' => 'SERV-1'],
+            ['type' => 'SERVICE', 'name' => 'Servicio', 'unit' => 'UND', 'sale_price' => '10.000000', 'is_active' => true],
+        );
         // Every invoiceable line needs exactly one IVA tax; 0 % keeps the helper totals unchanged.
-        $item->taxes()->attach($this->companyIva($company, '0')->id, ['company_id' => $company->id]);
+        if ($item->wasRecentlyCreated) {
+            $item->taxes()->attach($this->companyIva($company, '0')->id, ['company_id' => $company->id]);
+        }
         $body = [
             'customerPublicId' => $customer->public_id,
             'lines' => [['itemPublicId' => $item->public_id, 'quantity' => '1', 'discountAmount' => '0.00']],

@@ -30,6 +30,7 @@ final class FiscalProfileController extends Controller
             'accountingRequired',
             'specialTaxpayerNumber',
             'withholdingAgentNumber',
+            'artisanQualificationNumber',
             'rimpeType',
         ] as $key) {
             if (array_key_exists($key, $request->validated())) {

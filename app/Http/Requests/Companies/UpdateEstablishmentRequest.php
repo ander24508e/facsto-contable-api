@@ -16,8 +16,9 @@ final class UpdateEstablishmentRequest extends FormRequest
         return [
             'code' => ['sometimes', 'required', 'string', 'regex:/^\d{3}$/'],
             'name' => ['sometimes', 'required', 'string', 'max:120'],
-            'address' => ['sometimes', 'required', 'string', 'max:255'],
+            'address' => ['sometimes', 'nullable', 'string', 'max:255'],
             'isActive' => ['sometimes', 'boolean'],
+            'isMain' => ['sometimes', 'boolean'],
         ];
     }
 }

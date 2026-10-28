@@ -15,15 +15,19 @@ trait CreatesTestCertificates
     /** @var array<string, string> generated files, keyed by RUC/validity/password (RSA keygen is slow) */
     private static array $pkcs12Cache = [];
 
-    protected function pkcs12Contents(?string $ruc, string $password = 'test-password', int $days = 30): string
+    /** @param array<string, string> $extensions extra PrintableString extensions, OID => value */
+    protected function pkcs12Contents(?string $ruc, string $password = 'test-password', int $days = 30, array $extensions = []): string
     {
-        $key = ($ruc ?? 'none').'|'.$days.'|'.$password;
+        $key = ($ruc ?? 'none').'|'.$days.'|'.$password.'|'.json_encode($extensions);
         if (isset(self::$pkcs12Cache[$key])) {
             return self::$pkcs12Cache[$key];
         }
 
         $config = tempnam(sys_get_temp_dir(), 'facsto-cnf');
         $extension = $ruc === null ? '' : CertificateInspector::RUC_EXTENSION_OIDS[0]."=ASN1:PRINTABLESTRING:{$ruc}\n";
+        foreach ($extensions as $oid => $value) {
+            $extension .= "{$oid}=ASN1:PRINTABLESTRING:{$value}\n";
+        }
         file_put_contents($config, "[req]\ndistinguished_name=dn\n[dn]\n[facsto_ext]\nbasicConstraints=CA:FALSE\n{$extension}");
         $options = ['digest_alg' => 'sha256', 'config' => $config, 'x509_extensions' => 'facsto_ext'];
         $privateKey = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_RSA, 'private_key_bits' => 2048, 'config' => $config]);
@@ -35,9 +39,10 @@ trait CreatesTestCertificates
         return self::$pkcs12Cache[$key] = $contents;
     }
 
-    protected function pkcs12Upload(?string $ruc, string $password = 'test-password', int $days = 30): UploadedFile
+    /** @param array<string, string> $extensions */
+    protected function pkcs12Upload(?string $ruc, string $password = 'test-password', int $days = 30, array $extensions = []): UploadedFile
     {
-        return UploadedFile::fake()->createWithContent('facsto-test.p12', $this->pkcs12Contents($ruc, $password, $days));
+        return UploadedFile::fake()->createWithContent('facsto-test.p12', $this->pkcs12Contents($ruc, $password, $days, $extensions));
     }
 
     /** Active, readable certificate of the company RUC, as an upload would leave it. */

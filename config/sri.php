@@ -7,6 +7,9 @@ return [
         'xsd_path' => resource_path('sri/xsd/invoice/1.1.0/factura.xsd'),
     ],
 
+    // Ficha técnica: cada comprobante se envía individualmente con un máximo de 320 KB.
+    'max_document_bytes' => 320 * 1024,
+
     'signature' => [
         'standard' => 'XAdES-BES',
         'schema_version' => '1.3.2',
@@ -22,6 +25,22 @@ return [
         'java_binary' => env('SRI_SIGNER_JAVA', 'java'),
         'jar' => env('SRI_SIGNER_JAR', '/opt/facsto/xades-signer.jar'),
         'timeout' => (int) env('SRI_SIGNER_TIMEOUT', 60),
+    ],
+
+    /*
+     * Dónde cada entidad certificadora guarda la identificación del titular. Sólo se agregan fuentes
+     * confirmadas con un certificado real (el diagnóstico del rechazo muestra las que trae cada .p12).
+     * Formato: "extension:<OID>" o "subject:<campo>".
+     */
+    'certificate_identification' => [
+        'ruc_sources' => [
+            'extension:1.3.6.1.4.1.37947.3.11', // ficha técnica SRI v2.34, p. 141
+            'extension:1.3.6.1.4.1.61305.3.11', // FirmaSegura S.A.S., confirmado con certificado real (2026-10-26)
+        ],
+        // La cédula sólo acredita el RUC de una persona natural (cédula + 001).
+        'cedula_sources' => [
+            'extension:1.3.6.1.4.1.61305.3.1', // FirmaSegura S.A.S., confirmado con certificado real (2026-10-26)
+        ],
     ],
 
     'software_provider' => [
@@ -71,10 +90,13 @@ return [
         'delivery' => 'delivery',
     ],
 
+    // Hora oficial de Ecuador: define el fin del día de emisión.
+    'timezone' => 'America/Guayaquil',
+
     'retry' => [
-        // Recepción: reintentos técnicos (red, HTTP 5xx) con espera exponencial, siempre con la misma clave.
-        'submit_tries' => 3,
-        'submit_backoff' => [30, 120, 600],
+        // Recepción: un comprobante que no llegó al SRI (SRI caído, red, HTTP 5xx) se reintenta con la
+        // misma clave hasta las 23:59:59 del día de emisión; la espera crece y luego se repite cada 10 min.
+        'submit_backoff' => [30, 60, 120, 300, 600],
         // Autorización: consultas mientras el SRI responde "en proceso".
         'authorization_delay' => (int) env('SRI_AUTHORIZATION_DELAY', 30),
         'authorization_max_polls' => (int) env('SRI_AUTHORIZATION_MAX_POLLS', 10),

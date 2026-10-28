@@ -18,7 +18,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
-#[Fillable(['slug', 'ruc','legal_name', 'commercial_name', 'main_address', 'email', 'phone', 'logo_path', 'status'])]
+#[Fillable(['slug', 'ruc', 'legal_name', 'commercial_name', 'main_address', 'email', 'phone', 'logo_path', 'status'])]
 class Company extends Model
 {
     protected static function booted(): void

@@ -28,6 +28,7 @@ final class EstablishmentController extends Controller
             'name' => $request->validated('name'),
             'address' => $request->validated('address'),
             'is_active' => $request->validated('isActive', true),
+            'is_main' => $request->validated('isMain'),
         ]));
     }
 
@@ -37,7 +38,7 @@ final class EstablishmentController extends Controller
         $data = $request->validated();
         $attributes = [];
 
-        foreach (['code' => 'code', 'name' => 'name', 'address' => 'address', 'isActive' => 'is_active'] as $input => $attribute) {
+        foreach (['code' => 'code', 'name' => 'name', 'address' => 'address', 'isActive' => 'is_active', 'isMain' => 'is_main'] as $input => $attribute) {
             if (array_key_exists($input, $data)) {
                 $attributes[$attribute] = $data[$input];
             }

@@ -20,11 +20,16 @@ final class SriTransmissionGateTest extends TestCase
         $this->assertSame(SriTransmissionGate::COMPANY_SUBMISSION_DISABLED, $this->gate()->blockingReason($this->settings(false)));
     }
 
-    public function test_an_unregistered_provider_blocks_transmission(): void
+    public function test_an_unregistered_provider_blocks_production_only(): void
     {
         config(['sri.transport_enabled' => true, 'sri.software_provider.registered' => false]);
 
+        $this->assertSame(SriTransmissionGate::PROVIDER_NOT_REGISTERED, $this->gate()->blockingReason($this->settings(true), 'PRODUCTION'));
+        // An unknown environment is treated as production.
         $this->assertSame(SriTransmissionGate::PROVIDER_NOT_REGISTERED, $this->gate()->blockingReason($this->settings(true)));
+        // The test environment has no tax effect: it only needs the global and company switches.
+        $this->assertNull($this->gate()->blockingReason($this->settings(true), 'TEST'));
+        $this->assertNull($this->gate()->blockingReason($this->settings(true, 'TEST')));
     }
 
     public function test_all_three_keys_allow_transmission(): void
@@ -39,8 +44,8 @@ final class SriTransmissionGateTest extends TestCase
         return new SriTransmissionGate;
     }
 
-    private function settings(bool $submissionEnabled): CompanyFiscalSettings
+    private function settings(bool $submissionEnabled, ?string $environment = null): CompanyFiscalSettings
     {
-        return (new CompanyFiscalSettings)->forceFill(['sri_submission_enabled' => $submissionEnabled]);
+        return (new CompanyFiscalSettings)->forceFill(['sri_submission_enabled' => $submissionEnabled, 'sri_environment' => $environment]);
     }
 }

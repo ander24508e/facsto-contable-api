@@ -29,7 +29,7 @@ final class EmissionSetupController extends Controller
         $updatedCompany = $configure->execute(new EmissionStructureData(
             $data['establishmentCode'],
             trim($data['establishmentName']),
-            trim($data['establishmentAddress']),
+            isset($data['establishmentAddress']) ? trim($data['establishmentAddress']) : null,
             $data['emissionPointCode'],
             trim($data['emissionPointName']),
             SriEnvironment::from($data['environment'] ?? SriEnvironment::TEST->value),

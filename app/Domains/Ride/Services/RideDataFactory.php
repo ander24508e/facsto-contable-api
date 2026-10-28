@@ -74,6 +74,7 @@ final class RideDataFactory
                 'specialTaxpayerNumber' => $document->special_taxpayer_number,
                 'accountingRequired' => $document->accounting_required ? 'SI' : 'NO',
                 'withholdingAgentNumber' => $document->withholding_agent_number,
+                'artisanQualificationNumber' => $document->artisan_qualification_number,
                 'rimpe' => match ($document->rimpe_type) {
                     'ENTREPRENEUR' => 'CONTRIBUYENTE RÉGIMEN RIMPE',
                     'POPULAR_BUSINESS' => 'CONTRIBUYENTE NEGOCIO POPULAR - RÉGIMEN RIMPE',

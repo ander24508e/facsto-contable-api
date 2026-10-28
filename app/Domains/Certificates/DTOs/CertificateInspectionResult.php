@@ -6,10 +6,11 @@ use Carbon\CarbonInterface;
 
 final readonly class CertificateInspectionResult
 {
+    /** @param list<array{source: string, value: string, context: string}> $identificationCandidates */
     public function __construct(
         public string $subjectName,
         public ?string $subjectIdentification,
-        public ?string $fiscalIdentification,
+        public array $identificationCandidates,
         public string $issuer,
         public string $serialNumber,
         public CarbonInterface $validFrom,

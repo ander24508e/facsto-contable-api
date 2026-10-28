@@ -20,11 +20,11 @@ abstract class SetupTestCase extends TestCase
         return app(CreateCompanyAction::class)->execute($owner, ['slug' => 'empresa-'.$owner->id]);
     }
 
-    protected function configureIssuer(Company $company): void
+    protected function configureIssuer(Company $company, string $ruc = '1790016919001'): void
     {
         $this->actingAs($company->memberships()->first()->user)
             ->putJson('/api/v1/setup/issuer', [
-                'ruc' => '1790016919001',
+                'ruc' => $ruc,
                 'legalName' => 'Emisor de prueba',
                 'commercialName' => 'FACSTO Test',
                 'mainAddress' => 'Quito, Ecuador',
