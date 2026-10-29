@@ -43,6 +43,10 @@ final class CompanyFiscalReadinessService
             'issuerReady' => $issuerReady,
             'emissionReady' => $emissionReady,
             'certificateReady' => $certificateReady,
+            // For the dashboard banner: where documents go and until when the signature works.
+            'environment' => $company->fiscalSettings?->sri_environment?->value,
+            'certificateValidUntil' => $company->digitalCertificates()->where('is_active', true)
+                ->where('status', CertificateStatus::VALID->value)->value('valid_until'),
         ];
     }
 

@@ -15,6 +15,7 @@ final class CategoryResource extends JsonResource
             'description' => $this->description,
             'isActive' => $this->is_active,
             'taxes' => TaxResource::collection($this->whenLoaded('taxes')),
+            'itemsCount' => $this->whenCounted('items'),
             'createdAt' => $this->created_at?->toIso8601String(),
             'updatedAt' => $this->updated_at?->toIso8601String(),
         ];

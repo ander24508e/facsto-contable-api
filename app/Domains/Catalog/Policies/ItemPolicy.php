@@ -31,6 +31,11 @@ final class ItemPolicy
         return $this->canWrite($user) && $item->company_id === $this->context->company()->id;
     }
 
+    public function delete(User $user, Item $item): bool
+    {
+        return $this->update($user, $item);
+    }
+
     private function activeMember(User $user): bool
     {
         return $this->context->company()->memberships()->where('user_id', $user->id)->where('is_active', true)->exists();

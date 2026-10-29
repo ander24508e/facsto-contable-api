@@ -21,7 +21,7 @@ final class CategoryIsolationTest extends CatalogTestCase
         $this->actingAs($userA)->patchJson('/api/v1/categories/'.$categoryB->public_id, ['name' => 'Exfiltrada'])->assertForbidden();
 
         $this->actingAs($userA)->postJson('/api/v1/items', [
-            'type' => 'PRODUCT', 'internalCode' => 'ITEM-A', 'name' => 'Artículo A', 'unit' => 'UND', 'salePrice' => '10.000000', 'categoryPublicId' => $categoryB->public_id,
+            'type' => 'SERVICE', 'internalCode' => 'ITEM-A', 'name' => 'Artículo A', 'unit' => 'UND', 'salePrice' => '10.000000', 'categoryPublicId' => $categoryB->public_id,
         ])->assertUnprocessable()->assertJsonPath('error.code', 'CATEGORY_NOT_FOUND');
     }
 }

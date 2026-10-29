@@ -34,7 +34,9 @@ final class CertificateIdentitySourcesTest extends SetupTestCase
             ->assertJsonPath('data.status', 'VALID')
             ->assertJsonPath('data.subjectRuc', self::NATURAL_PERSON_RUC)
             ->assertJsonPath('data.identificationSource', 'extension:'.self::TEST_CEDULA_OID);
-        $this->actingAs($owner)->getJson('/api/v1/setup/status')->assertJsonPath('data.canIssueDocuments', true);
+        $status = $this->actingAs($owner)->getJson('/api/v1/setup/status')->assertJsonPath('data.canIssueDocuments', true);
+        $this->assertNotNull($status->json('data.environment'));
+        $this->assertNotNull($status->json('data.certificateValidUntil'));
         $this->assertDatabaseHas('digital_certificates', ['company_id' => $company->id, 'is_active' => true, 'subject_ruc' => self::NATURAL_PERSON_RUC]);
     }
 

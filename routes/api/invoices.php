@@ -18,6 +18,7 @@ Route::middleware(['auth:sanctum', 'company.context'])->group(function (): void 
     Route::post('/sales/{sale}/issue', [InvoiceController::class, 'issue']);
     Route::get('/invoices/{invoice}', [InvoiceController::class, 'show']);
     Route::get('/invoices/{invoice}/sri-status', [InvoiceSriController::class, 'status']);
+    Route::get('/invoices/{invoice}/barcode', [InvoiceSriController::class, 'barcode']);
     Route::post('/invoices/{invoice}/retry-sri', [InvoiceSriController::class, 'retry']);
     Route::post('/invoices/{invoice}/correct', [InvoiceSriController::class, 'correct']);
     Route::get('/invoices/{invoice}/credit-notes', [CreditNoteController::class, 'index']);

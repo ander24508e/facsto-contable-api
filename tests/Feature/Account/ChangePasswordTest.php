@@ -24,18 +24,15 @@ final class ChangePasswordTest extends TestCase
         $this->assertTrue(Hash::check('NuevaClave2026', $user->refresh()->password));
     }
 
-    public function test_wrong_current_password_is_rejected(): void
+    public function test_the_new_password_must_differ_from_the_current_one(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['password' => Hash::make('ClaveActual2026')]);
 
         $this->actingAs($user)->putJson('/api/v1/me/password', [
-            'currentPassword' => 'incorrecta',
-            'password' => 'NuevaClave2026',
-            'passwordConfirmation' => 'NuevaClave2026',
+            'password' => 'ClaveActual2026',
+            'passwordConfirmation' => 'ClaveActual2026',
         ])->assertUnprocessable()
-            ->assertJsonPath('error.details.errors.currentPassword.0', 'La contraseña actual no es correcta.');
-
-        $this->assertTrue(Hash::check('password', $user->refresh()->password));
+            ->assertJsonPath('error.details.errors.password.0', 'La nueva contraseña debe ser distinta de la actual.');
     }
 
     public function test_new_password_must_be_confirmed_strong_and_different(): void

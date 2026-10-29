@@ -37,7 +37,7 @@ final class SaleDraftCalculator
                 }
             }
 
-            $unitPrice = $this->unitPriceWithoutTaxes($item);
+            $unitPrice = $this->unitPriceWithoutTaxes($item, $quantity);
             $gross = $this->round(bcmul($quantity, $unitPrice, 8));
             if (bccomp($gross, '9999999999999999.99', 2) > 0) {
                 throw new ApiException(ApiErrorCode::VALIDATION_FAILED, 'El subtotal de una línea supera el máximo permitido.', 422);
@@ -100,9 +100,9 @@ final class SaleDraftCalculator
      * The SRI receives prices without taxes. When the business types its final price (taxes included),
      * the unit base is that price divided by (1 + the item's tax rates), kept at the XML's 6 decimals.
      */
-    private function unitPriceWithoutTaxes(Item $item): string
+    private function unitPriceWithoutTaxes(Item $item, string $quantity): string
     {
-        $price = (string) $item->sale_price;
+        $price = $this->listPrice($item, $quantity);
         if (! $item->price_includes_tax) {
             return $price;
         }
@@ -115,6 +115,19 @@ final class SaleDraftCalculator
         }
 
         return $this->round(bcdiv(bcmul($price, '100', 12), bcadd('100', $rate, 6), 12), 6);
+    }
+
+    /** The sale price, or the wholesale price of the largest tier the quantity reaches. */
+    private function listPrice(Item $item, string $quantity): string
+    {
+        $price = (string) $item->sale_price;
+        foreach ($item->priceTiers as $tier) {
+            if (bccomp($quantity, (string) $tier->min_quantity, 6) >= 0) {
+                $price = (string) $tier->price;
+            }
+        }
+
+        return $price;
     }
 
     private function round(string $value, int $scale = 2): string

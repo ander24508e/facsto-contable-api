@@ -44,7 +44,7 @@ final class SaleQuoteService
         $items = $company->items()
             ->whereIn('public_id', $itemIds)
             ->where('is_active', true)
-            ->with('taxes.definition')
+            ->with(['taxes.definition', 'priceTiers'])
             ->get()
             ->keyBy('public_id');
 

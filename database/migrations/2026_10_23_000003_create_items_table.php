@@ -23,6 +23,12 @@ return new class extends Migration
             $table->decimal('sale_price', 18, 6);
             // Precio final que cobra el negocio (impuestos incluidos); el motor obtiene la base imponible.
             $table->boolean('price_includes_tax')->default(false);
+            // Costo de compra: solo interno (ganancia), nunca va al XML del SRI.
+            $table->decimal('cost_price', 18, 6)->nullable();
+            // Detalle adicional de la presentación (p. ej. «Botella PET 500 ml»).
+            $table->string('additional_detail', 300)->nullable();
+            // Foto del producto en el disco privado; se sirve solo a miembros de la empresa.
+            $table->string('image_path', 255)->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
             $table->unique(['company_id', 'internal_code']);

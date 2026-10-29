@@ -24,7 +24,7 @@ final class CategoryController extends Controller
     public function index(Request $request, CompanyContext $context): AnonymousResourceCollection
     {
         $this->authorize('viewAny', Category::class);
-        $query = $context->company()->categories()->with('taxes.definition')->orderBy('name');
+        $query = $context->company()->categories()->with('taxes.definition')->withCount('items')->orderBy('name');
         if ($search = trim((string) $request->query('search'))) {
             $query->whereRaw('LOWER(name) LIKE ?', ['%'.mb_strtolower($search).'%']);
         }

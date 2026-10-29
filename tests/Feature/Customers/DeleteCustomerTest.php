@@ -40,7 +40,7 @@ final class DeleteCustomerTest extends SalesTestCase
         $stranger = User::factory()->create();
         $this->createCompany($stranger, '1790016919001');
 
-        $this->actingAs($stranger)->deleteJson('/api/v1/customers/'.$customer['publicId'])->assertNotFound();
+        $this->actingAs($stranger)->deleteJson('/api/v1/customers/'.$customer['publicId'])->assertForbidden();
         $this->assertDatabaseHas('customers', ['public_id' => $customer['publicId']]);
     }
 }

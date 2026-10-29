@@ -67,6 +67,17 @@ final class InvoiceOperationsTest extends InvoiceFeatureTestCase
         $this->getJson('/api/v1/sales?search=001-001-000000001')->assertOk()->assertJsonCount(1, 'data');
     }
 
+    public function test_the_access_key_barcode_is_served_for_the_ride_preview(): void
+    {
+        $invoice = $this->authorizedInvoice();
+
+        $svg = $this->getJson("/api/v1/invoices/{$invoice->public_id}/barcode")->assertOk()
+            ->assertJsonPath('data.accessKey', $invoice->access_key)
+            ->json('data.svg');
+        $this->assertStringStartsWith('<svg xmlns="http://www.w3.org/2000/svg"', $svg);
+        $this->assertStringContainsString('<rect', $svg);
+    }
+
     public function test_bulk_export_zips_the_xml_and_ride_of_authorized_invoices(): void
     {
         $invoice = $this->authorizedInvoice();

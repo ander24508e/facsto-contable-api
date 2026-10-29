@@ -9,6 +9,7 @@ use App\Domains\Companies\Models\Company;
 use App\Domains\Customers\Actions\CreateCustomerAction;
 use App\Domains\Customers\Enums\IdentificationType;
 use App\Domains\Customers\Services\CustomerIdentificationService;
+use App\Domains\Inventory\Models\Warehouse;
 use App\Domains\Taxes\Enums\TaxType;
 use App\Domains\Taxes\Models\CompanyTax;
 use App\Models\User;
@@ -160,6 +161,9 @@ final class CatalogImportService
         $existing = $company->items()->pluck('internal_code')->map(fn ($code) => mb_strtolower($code))->flip();
         $ivaRates = $company->taxes()->with('definition')->get()
             ->filter(fn (CompanyTax $tax): bool => $tax->definition->tax_type === TaxType::IVA && $tax->isUsableOn(today()));
+        // Imported products go to the warehouse of the main establishment, like the form does.
+        $mainWarehouse = Warehouse::query()->where('company_id', $company->id)->where('is_active', true)
+            ->whereHas('establishment', fn ($query) => $query->where('is_main', true))->first();
         $seen = [];
         $result = [];
         foreach ($rows as $index => $raw) {
@@ -171,8 +175,8 @@ final class CatalogImportService
                 $errors[] = 'El código ya existe.';
             }
             $name = (string) ($raw['nombre'] ?? '');
-            if ($name === '' || mb_strlen($name) > 180) {
-                $errors[] = 'El nombre es obligatorio (máximo 180 caracteres).';
+            if ($name === '' || mb_strlen($name) > 60) {
+                $errors[] = 'El nombre es obligatorio (máximo 60 caracteres).';
             }
             $price = str_replace(',', '.', (string) ($raw['precio'] ?? ''));
             if (preg_match('/^\d{1,12}(\.\d{1,6})?$/', $price) !== 1) {
@@ -181,6 +185,17 @@ final class CatalogImportService
             $kind = strtoupper(Str::ascii((string) ($raw['tipo'] ?? 'PRODUCTO')));
             if (! in_array($kind, ['PRODUCTO', 'SERVICIO', 'PRODUCT', 'SERVICE'], true)) {
                 $errors[] = 'El tipo debe ser PRODUCTO o SERVICIO.';
+            }
+            $isService = in_array($kind, ['SERVICIO', 'SERVICE'], true);
+            $stock = str_replace(',', '.', (string) ($raw['stock'] ?? ''));
+            if (! $isService && (preg_match('/^\d{1,12}(\.\d{1,6})?$/', $stock) !== 1 || bccomp($stock, '0', 6) <= 0)) {
+                $errors[] = 'El stock del producto es obligatorio y mayor que cero.';
+            } elseif (! $isService && ! $mainWarehouse) {
+                $errors[] = 'Crea la bodega del establecimiento principal antes de importar productos.';
+            }
+            $cost = str_replace(',', '.', (string) ($raw['costo'] ?? ''));
+            if ($cost !== '' && preg_match('/^\d{1,12}(\.\d{1,6})?$/', $cost) !== 1) {
+                $errors[] = 'El costo debe ser un número positivo.';
             }
             $tax = $this->ivaRate($ivaRates, (string) ($raw['iva'] ?? ''));
             if (! $tax) {
@@ -193,6 +208,7 @@ final class CatalogImportService
                 'unidad' => (string) (($raw['unidad'] ?? '') ?: 'UND'), 'precio' => $price,
                 'precio_incluye_iva' => in_array(mb_strtolower(Str::ascii((string) ($raw['precio_incluye_iva'] ?? ''))), ['si', 'yes', '1', 'true'], true) ? 'SI' : 'NO',
                 'iva' => (string) ($raw['iva'] ?? ''), 'iva_public_id' => $tax?->public_id, 'categoria' => (string) ($raw['categoria'] ?? ''),
+                'stock' => $isService ? '' : $stock, 'costo' => $cost, 'bodega_public_id' => $isService ? null : $mainWarehouse?->public_id,
             ]];
         }
 
@@ -229,7 +245,9 @@ final class CatalogImportService
             'type' => $data['tipo'] === 'SERVICIO' ? 'SERVICE' : 'PRODUCT', 'internal_code' => $data['codigo'],
             'auxiliary_code' => $data['codigo_auxiliar'] ?: null, 'name' => $data['nombre'], 'unit' => mb_substr($data['unidad'], 0, 32),
             'sale_price' => $data['precio'], 'price_includes_tax' => $data['precio_incluye_iva'] === 'SI',
+            'cost_price' => ($data['costo'] ?? '') !== '' ? $data['costo'] : null,
             'category_public_id' => $category?->public_id,
+            'stock' => ($data['bodega_public_id'] ?? null) ? ['warehousePublicId' => $data['bodega_public_id'], 'quantity' => $data['stock']] : null,
         ], $actor);
         $this->syncTaxes->execute($item, [$data['iva_public_id']], $actor);
     }

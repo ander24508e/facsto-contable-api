@@ -14,10 +14,10 @@ final class UpdateProfileTest extends TestCase
     {
         $user = User::factory()->create(['email' => 'ana@example.com']);
 
-        $this->actingAs($user)->patchJson('/api/v1/me', ['name' => 'Ana Endara', 'phone' => '+593981234546'])
+        $this->actingAs($user)->patchJson('/api/v1/me', ['name' => 'Ana Endara', 'phone' => '0981234546'])
             ->assertOk()
             ->assertJsonPath('data.name', 'Ana Endara')
-            ->assertJsonPath('data.phone', '+593981234546')
+            ->assertJsonPath('data.phone', '0981234546')
             ->assertJsonPath('data.email', 'ana@example.com')
             ->assertJsonPath('data.hasProfilePhoto', false);
     }

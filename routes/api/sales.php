@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth:sanctum', 'company.context'])->group(function (): void {
     Route::get('/dashboard/summary', DashboardSummaryController::class);
     Route::get('/dashboard/fiscal-status', [FiscalDashboardController::class, 'status']);
+    Route::get('/dashboard/trend', [FiscalDashboardController::class, 'trend']);
     Route::get('/dashboard/actions', [FiscalDashboardController::class, 'actions']);
     Route::get('/reports/tax-summary', [FiscalDashboardController::class, 'taxSummary']);
     Route::get('/sales', [SaleController::class, 'index']);

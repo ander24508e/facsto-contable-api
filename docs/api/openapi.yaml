@@ -737,6 +737,14 @@ paths:
         "200": { description: Trazabilidad F06/F07, content: { application/json: { schema: { $ref: "#/components/schemas/InvoiceSriStatusResponse" } } } }
         "403": { $ref: "#/components/responses/CompanyAccessError" }
         "404": { $ref: "#/components/responses/NotFoundError" }
+  /api/v1/invoices/{invoice}/barcode:
+    get:
+      tags: [Invoices]
+      summary: Código de barras Code 128 (SVG) de la clave de acceso, el mismo del RIDE.
+      operationId: getInvoiceBarcode
+      security: [{ sessionCookie: [] }]
+      parameters: [{ name: invoice, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Código de barras, content: { application/json: { schema: { type: object, properties: { data: { type: object, properties: { accessKey: { type: string }, svg: { type: string } } } } } } } }, "403": { $ref: "#/components/responses/CompanyAccessError" } }
   /api/v1/invoices/{invoice}/retry-sri:
     post:
       tags: [FiscalDocuments]
@@ -1353,6 +1361,8 @@ paths:
             in: query,
             schema: { $ref: "#/components/schemas/ItemType" },
           }
+        - { name: category, in: query, description: publicId de la categoría, schema: { type: string, format: uuid } }
+        - { name: stock, in: query, description: "low: productos con 5 unidades o menos", schema: { type: string, enum: [low] } }
         - {
             name: status,
             in: query,
@@ -1449,6 +1459,12 @@ paths:
           }
         "403": { $ref: "#/components/responses/CompanyAccessError" }
         "409": { $ref: "#/components/responses/ConflictError" }
+    delete:
+      tags: [Catalog]
+      summary: Elimina un artículo que no está en ninguna venta, con su stock, precios alternos y foto; si está en ventas solo se puede desactivar (ITEM_IN_USE).
+      operationId: deleteItem
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      responses: { "204": { description: Artículo eliminado }, "403": { $ref: "#/components/responses/CompanyAccessError" }, "409": { $ref: "#/components/responses/ConflictError" } }
   /api/v1/items/{item}/activate:
     post:
       tags: [Catalog]
@@ -1503,6 +1519,110 @@ paths:
                 },
             },
         }
+  /api/v1/items/next-code:
+    get:
+      tags: [Catalog]
+      summary: Código principal sugerido (3 letras de la categoría, 3 del nombre y el siguiente número, p. ej. BEB-AGU-001).
+      operationId: suggestItemCode
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: name, in: query, required: true, schema: { type: string, maxLength: 60 } }
+        - { name: category, in: query, schema: { type: string, format: uuid } }
+      responses: { "200": { description: Código sugerido, content: { application/json: { schema: { type: object, properties: { data: { type: object, properties: { code: { type: string } } } } } } } } }
+  /api/v1/units:
+    get:
+      tags: [Catalog]
+      summary: Unidades de medida de la empresa; la primera consulta crea UND, KG, LT, M, CAJA y PAQUETE.
+      operationId: listUnits
+      security: [{ sessionCookie: [] }]
+      responses: { "200": { description: Unidades activas } }
+    post:
+      tags: [Catalog]
+      summary: Crea una unidad (se guarda en mayúsculas; UNIT_DUPLICATE si ya existe).
+      operationId: createUnit
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string, maxLength: 32 } } } } } }
+      responses: { "201": { description: Unidad creada }, "409": { $ref: "#/components/responses/ConflictError" } }
+  /api/v1/units/{unit}:
+    patch:
+      tags: [Catalog]
+      summary: Renombra una unidad.
+      operationId: updateUnit
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters: [{ name: unit, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string, maxLength: 32 } } } } } }
+      responses: { "200": { description: Unidad actualizada }, "409": { $ref: "#/components/responses/ConflictError" } }
+  /api/v1/warehouses:
+    get:
+      tags: [Catalog]
+      summary: Bodegas activas (una por establecimiento); filtro opcional por establecimiento.
+      operationId: listWarehouses
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: establishment, in: query, schema: { type: string, format: uuid } }
+        - { name: status, in: query, description: "ACTIVE (por defecto), INACTIVE o vacío para todas", schema: { type: string } }
+        - { name: search, in: query, schema: { type: string } }
+      responses: { "200": { description: Bodegas con productsCount (productos con stock) y unitsTotal } }
+    post:
+      tags: [Catalog]
+      summary: Crea la bodega de un establecimiento (WAREHOUSE_ALREADY_EXISTS si ya tiene una).
+      operationId: createWarehouse
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [establishmentPublicId, name], properties: { establishmentPublicId: { type: string, format: uuid }, name: { type: string, maxLength: 80 } } } } } }
+      responses: { "201": { description: Bodega creada }, "409": { $ref: "#/components/responses/ConflictError" } }
+  /api/v1/warehouses/{warehouse}:
+    get:
+      tags: [Catalog]
+      summary: Consulta una bodega con su establecimiento, productos y unidades.
+      operationId: getWarehouse
+      security: [{ sessionCookie: [] }]
+      parameters: [{ name: warehouse, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Bodega }, "404": { $ref: "#/components/responses/NotFoundError" } }
+    patch:
+      tags: [Catalog]
+      summary: Renombra una bodega.
+      operationId: updateWarehouse
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters: [{ name: warehouse, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string, maxLength: 80 } } } } } }
+      responses: { "200": { description: Bodega actualizada } }
+  /api/v1/warehouses/{warehouse}/activate:
+    post:
+      tags: [Catalog]
+      summary: Activa una bodega.
+      operationId: activateWarehouse
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters: [{ name: warehouse, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Bodega activada } }
+  /api/v1/warehouses/{warehouse}/deactivate:
+    post:
+      tags: [Catalog]
+      summary: Desactiva una bodega sin stock (WAREHOUSE_IN_USE si aún tiene unidades).
+      operationId: deactivateWarehouse
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters: [{ name: warehouse, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Bodega desactivada }, "409": { $ref: "#/components/responses/ConflictError" } }
+  /api/v1/items/{item}/image:
+    parameters: [{ name: item, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      tags: [Catalog]
+      summary: Foto privada del artículo (solo miembros de la empresa, sin caché).
+      operationId: getItemImage
+      security: [{ sessionCookie: [] }]
+      responses: { "200": { description: Imagen, content: { image/*: {} } }, "403": { $ref: "#/components/responses/CompanyAccessError" }, "404": { $ref: "#/components/responses/NotFoundError" } }
+    post:
+      tags: [Catalog]
+      summary: Sube o reemplaza la foto del artículo (PNG, JPG o WebP, hasta 3 MB y 4096 px).
+      operationId: uploadItemImage
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [image], properties: { image: { type: string, format: binary } } } } } }
+      responses: { "200": { description: Artículo con hasImage true }, "403": { $ref: "#/components/responses/CompanyAccessError" }, "422": { $ref: "#/components/responses/ValidationError" } }
+    delete:
+      tags: [Catalog]
+      summary: Quita la foto del artículo.
+      operationId: deleteItemImage
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      responses: { "200": { description: Artículo con hasImage false }, "403": { $ref: "#/components/responses/CompanyAccessError" } }
   /api/v1/items/{item}/taxes:
     put:
       tags: [Catalog]
@@ -1937,6 +2057,14 @@ paths:
       security: [{ sessionCookie: [] }]
       responses:
         "200": { description: "{ date, authorized, inProcess, retrying, problems, retryDeadline, usage{ documentsThisMonth, limit } }" }
+  /api/v1/dashboard/trend:
+    get:
+      tags: [Dashboard]
+      summary: Datos de los gráficos del dashboard. Incluye el total facturado y acreditado por día del mes (solo autorizados) y los comprobantes de los últimos 7 días por estado.
+      operationId: getDashboardTrend
+      security: [{ sessionCookie: [] }]
+      parameters: [{ name: period, in: query, required: false, schema: { type: string, example: "2026-10" } }]
+      responses: { "200": { description: Serie diaria del mes y de los últimos 7 días }, "422": { $ref: "#/components/responses/ValidationError" } }
   /api/v1/dashboard/actions:
     get:
       tags: [Dashboard]
@@ -2139,6 +2267,12 @@ components:
         publicId: { type: string, format: uuid }
         type: { $ref: "#/components/schemas/ItemType" }
         internalCode: { type: string, maxLength: 25 }
+        hasImage: { type: boolean }
+        costPrice: { type: [string, "null"], description: Costo interno (no va al SRI). }
+        additionalDetail: { type: [string, "null"], maxLength: 300 }
+        stock: { type: [object, "null"], description: Existencia en su bodega (solo productos), properties: { quantity: { type: string }, warehousePublicId: { type: string, format: uuid }, warehouseName: { type: string }, establishmentPublicId: { type: string, format: uuid } } }
+        priceTiers: { type: array, description: Precios alternos desde una cantidad (mayorista), items: { type: object, properties: { minQuantity: { type: string }, price: { type: string } } } }
+        finalPrice: { type: string, description: Precio por unidad con impuestos (el mismo precio si ya los incluye), redondeado a centavos. }
         auxiliaryCode: { type: [string, "null"], maxLength: 25 }
         name: { type: string, maxLength: 180 }
         description: { type: [string, "null"] }
@@ -2320,7 +2454,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/CategoryInput"
         - type: object
-          properties: { publicId: { type: string, format: uuid }, isActive: { type: boolean } }
+          properties: { publicId: { type: string, format: uuid }, isActive: { type: boolean }, itemsCount: { type: integer, description: Artículos de la categoría (solo en el listado). } }
     CategoryResponse:
       type: object
       properties: { data: { $ref: "#/components/schemas/Category" } }

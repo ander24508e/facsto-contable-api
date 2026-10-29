@@ -27,6 +27,15 @@ final class FiscalDashboardController extends Controller
         return response()->json(['data' => $dashboard->taxSummary($context->company(), $period)]);
     }
 
+    /** GET /dashboard/trend?period=YYYY-MM — data of the dashboard charts. */
+    public function trend(Request $request, CompanyContext $context, FiscalDashboard $dashboard): JsonResponse
+    {
+        $this->authorize('viewAny', Sale::class);
+        $period = $request->validate(['period' => ['sometimes', 'date_format:Y-m']])['period'] ?? now((string) config('sri.timezone'))->format('Y-m');
+
+        return response()->json(['data' => $dashboard->trend($context->company(), $period)]);
+    }
+
     public function actions(CompanyContext $context, FiscalDashboard $dashboard): JsonResponse
     {
         $this->authorize('viewAny', Sale::class);

@@ -44,6 +44,24 @@ final class FiscalDashboardTest extends InvoiceFeatureTestCase
         $this->getJson('/api/v1/reports/tax-summary?period=2026-13')->assertUnprocessable();
     }
 
+    public function test_the_trend_gives_daily_totals_of_the_month_and_the_last_seven_days(): void
+    {
+        $user = User::factory()->create();
+        $company = $this->readyCompany($user);
+        $invoice = $this->issue($user, $company);
+        $invoice->forceFill(['status' => DocumentStatus::AUTHORIZED])->save();
+        $this->issue($user, $company)->forceFill(['status' => DocumentStatus::RETURNED])->save();
+        $today = now((string) config('sri.timezone'))->toDateString();
+
+        $data = $this->getJson('/api/v1/dashboard/trend?period='.substr($today, 0, 7))->assertOk()->json('data');
+
+        $this->assertCount((int) now((string) config('sri.timezone'))->daysInMonth, $data['days']);
+        $this->assertSame(['date' => $today, 'invoiced' => '10.00', 'credited' => '0.00'], collect($data['days'])->firstWhere('date', $today));
+        $this->assertCount(7, $data['lastSevenDays']);
+        $this->assertSame(['date' => $today, 'authorized' => 1, 'inProcess' => 0, 'retrying' => 0, 'problems' => 1], end($data['lastSevenDays']));
+        $this->getJson('/api/v1/dashboard/trend?period=2026-13')->assertUnprocessable();
+    }
+
     private function issue(User $user, $company): ElectronicDocument
     {
         $sale = $this->makeSale($user, $company);

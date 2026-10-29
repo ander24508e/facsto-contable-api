@@ -2,6 +2,7 @@
 
 namespace App\Domains\Dashboard\Services;
 
+use App\Domains\Catalog\Models\Item;
 use App\Domains\Companies\Fiscal\Services\ElectronicInvoicingRequirements;
 use App\Domains\Companies\Models\Company;
 use App\Domains\FiscalDocuments\Enums\DocumentStatus;
@@ -47,6 +48,65 @@ final class FiscalDashboard
                 'limit' => null,
             ],
         ];
+    }
+
+    /**
+     * For the dashboard charts: authorized invoiced and credited totals per day of a month, and the
+     * documents of the last 7 days per bucket (same buckets as the fiscal status).
+     *
+     * @return array<string, mixed>
+     */
+    public function trend(Company $company, string $period): array
+    {
+        $timezone = (string) config('sri.timezone', 'America/Guayaquil');
+        $start = CarbonImmutable::createFromFormat('Y-m-d', $period.'-01', $timezone)->startOfDay();
+        $end = $start->endOfMonth();
+
+        $totals = ElectronicDocument::query()->where('company_id', $company->id)
+            ->where('status', DocumentStatus::AUTHORIZED->value)
+            ->whereDate('issue_date', '>=', $start->toDateString())
+            ->whereDate('issue_date', '<=', $end->toDateString())
+            ->groupBy('issue_date', 'document_type')
+            ->selectRaw('issue_date, document_type, SUM(total) as amount')
+            ->get();
+        $days = [];
+        for ($day = $start; $day <= $end; $day = $day->addDay()) {
+            $days[$day->toDateString()] = ['date' => $day->toDateString(), 'invoiced' => '0.00', 'credited' => '0.00'];
+        }
+        foreach ($totals as $row) {
+            // SQLite returns the date with a time part; PostgreSQL without it.
+            $date = substr((string) $row->getRawOriginal('issue_date'), 0, 10);
+            $key = $row->getRawOriginal('document_type') === DocumentType::CREDIT_NOTE->value ? 'credited' : 'invoiced';
+            $days[$date][$key] = bcadd($days[$date][$key], (string) $row->getRawOriginal('amount'), 2);
+        }
+
+        $today = CarbonImmutable::now($timezone)->startOfDay();
+        $weekStart = $today->subDays(6);
+        $counts = ElectronicDocument::query()->where('company_id', $company->id)
+            ->whereDate('issue_date', '>=', $weekStart->toDateString())
+            ->groupBy('issue_date', 'status')
+            ->selectRaw('issue_date, status, COUNT(*) as total')
+            ->get();
+        $week = [];
+        for ($day = $weekStart; $day <= $today; $day = $day->addDay()) {
+            $week[$day->toDateString()] = ['date' => $day->toDateString(), 'authorized' => 0, 'inProcess' => 0, 'retrying' => 0, 'problems' => 0];
+        }
+        foreach ($counts as $row) {
+            $date = substr((string) $row->getRawOriginal('issue_date'), 0, 10);
+            $status = (string) $row->getRawOriginal('status');
+            $bucket = match (true) {
+                $status === DocumentStatus::AUTHORIZED->value => 'authorized',
+                in_array($status, self::IN_PROCESS, true) => 'inProcess',
+                $status === DocumentStatus::FAILED->value => 'retrying',
+                in_array($status, [DocumentStatus::RETURNED->value, DocumentStatus::NOT_AUTHORIZED->value], true) => 'problems',
+                default => null,
+            };
+            if ($bucket !== null && isset($week[$date])) {
+                $week[$date][$bucket] += (int) $row->getRawOriginal('total');
+            }
+        }
+
+        return ['period' => $period, 'days' => array_values($days), 'lastSevenDays' => array_values($week)];
     }
 
     /**
@@ -122,6 +182,11 @@ final class FiscalDashboard
             $actions[] = ['code' => 'ELECTRONIC_INVOICING_INCOMPLETE', 'count' => count($pending), 'date' => null, 'to' => '/companies'];
         } elseif (! $company->fiscalSettings?->sri_submission_enabled) {
             $actions[] = ['code' => 'ELECTRONIC_INVOICING_OFF', 'count' => null, 'date' => null, 'to' => '/companies'];
+        }
+        $lowStock = $company->items()->where('type', 'PRODUCT')->where('is_active', true)
+            ->whereHas('stocks', fn ($query) => $query->where('quantity', '<=', Item::LOW_STOCK))->count();
+        if ($lowStock > 0) {
+            $actions[] = ['code' => 'LOW_STOCK', 'count' => $lowStock, 'date' => null, 'to' => '/catalog/items?stock=low'];
         }
         $staleDrafts = $company->sales()->where('status', SaleStatus::DRAFT->value)->where('updated_at', '<', now()->subDays(7))->count();
         if ($staleDrafts > 0) {
