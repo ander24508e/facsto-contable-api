@@ -32,7 +32,10 @@ return new class extends Migration
             $table->id();
             $table->uuid('public_id')->unique();
             $table->foreignId('company_id')->constrained()->restrictOnDelete();
-            $table->foreignId('sale_id');
+            // Una factura nace de una venta; una nota de crédito nace de la factura que modifica.
+            $table->foreignId('sale_id')->nullable();
+            $table->foreignId('modified_document_id')->nullable();
+            $table->string('reason', 300)->nullable();
             $table->foreignId('customer_id');
             $table->foreignId('establishment_id');
             $table->foreignId('emission_point_id');
@@ -43,6 +46,8 @@ return new class extends Migration
             $table->char('full_number', 17);
             $table->char('numeric_code', 8);
             $table->char('access_key', 49)->unique();
+            // Claves de intentos anteriores: una corrección conserva el número y genera una clave nueva.
+            $table->json('previous_access_keys')->nullable();
             $table->date('issue_date');
             $table->string('status', 32)->default('NUMBERED');
             $table->char('issuer_ruc', 13)->nullable();
@@ -89,6 +94,7 @@ return new class extends Migration
             $table->unique(['company_id', 'id']);
             $table->foreign(['company_id', 'sale_id'])->references(['company_id', 'id'])->on('sales')->restrictOnDelete();
             $table->foreign(['company_id', 'customer_id'])->references(['company_id', 'id'])->on('customers')->restrictOnDelete();
+            $table->index(['company_id', 'modified_document_id']);
             $table->foreign(['company_id', 'establishment_id'])->references(['company_id', 'id'])->on('establishments')->restrictOnDelete();
             $table->foreign(['company_id', 'emission_point_id'])->references(['company_id', 'id'])->on('emission_points')->restrictOnDelete();
             $table->index(['company_id', 'status', 'issue_date']);
@@ -99,6 +105,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('company_id')->constrained()->restrictOnDelete();
             $table->foreignId('electronic_document_id');
+            // En una nota de crédito: la línea de la factura que se devuelve (límite de cantidades).
+            $table->foreignId('source_line_id')->nullable();
             $table->string('item_code', 25);
             $table->string('auxiliary_code', 25)->nullable();
             $table->string('description', 180);
@@ -143,6 +151,9 @@ return new class extends Migration
         if (DB::getDriverName() === 'pgsql') {
             DB::statement('ALTER TABLE document_sequences ADD CONSTRAINT document_sequences_number_check CHECK (current_number BETWEEN 0 AND 999999999)');
             DB::statement('ALTER TABLE document_sequences ADD CONSTRAINT document_sequences_initial_check CHECK (initial_number BETWEEN 1 AND 999999999)');
+            DB::statement('ALTER TABLE electronic_documents ADD CONSTRAINT electronic_documents_modified_document_fk FOREIGN KEY (company_id, modified_document_id) REFERENCES electronic_documents (company_id, id) ON DELETE RESTRICT');
+            DB::statement("ALTER TABLE electronic_documents ADD CONSTRAINT electronic_documents_type_check CHECK (document_type IN ('INVOICE','CREDIT_NOTE'))");
+            DB::statement("ALTER TABLE electronic_documents ADD CONSTRAINT electronic_documents_origin_check CHECK ((document_type = 'INVOICE' AND sale_id IS NOT NULL) OR (document_type = 'CREDIT_NOTE' AND modified_document_id IS NOT NULL AND reason IS NOT NULL))");
             DB::statement("ALTER TABLE electronic_documents ADD CONSTRAINT electronic_documents_status_check CHECK (status IN ('DRAFT','NUMBERED','XML_BUILT','SIGNED','QUEUED','RECEIVED','RETURNED','PENDING_AUTHORIZATION','AUTHORIZED','NOT_AUTHORIZED','FAILED'))");
         }
     }

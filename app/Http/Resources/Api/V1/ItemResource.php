@@ -11,7 +11,7 @@ final class ItemResource extends JsonResource
     {
         return ['publicId' => $this->public_id, 'type' => $this->type->value, 'internalCode' => $this->internal_code,
             'auxiliaryCode' => $this->auxiliary_code, 'name' => $this->name, 'description' => $this->description,
-            'unit' => $this->unit, 'salePrice' => $this->sale_price, 'isActive' => $this->is_active,
+            'unit' => $this->unit, 'salePrice' => $this->sale_price, 'priceIncludesTax' => (bool) $this->price_includes_tax, 'isActive' => $this->is_active,
             'categoryPublicId' => $this->whenLoaded('category', fn () => $this->category?->public_id),
             'categoryName' => $this->whenLoaded('category', fn () => $this->category?->name),
             'taxes' => TaxResource::collection($this->whenLoaded('taxes'))];

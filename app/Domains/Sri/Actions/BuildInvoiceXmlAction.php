@@ -68,7 +68,7 @@ final class BuildInvoiceXmlAction
                 $data = $this->dataFactory->make($document);
                 $xml = $this->builder->build($data);
                 try {
-                    $this->xsd->validate($xml, (string) config('sri.invoice.xsd_path'));
+                    $this->xsd->validate($xml, $document->document_type->xsdPath());
                 } catch (XmlSchemaValidationException $exception) {
                     Log::warning('Invoice unsigned XML did not pass SRI XSD validation.', [
                         'invoice_public_id' => $document->public_id,

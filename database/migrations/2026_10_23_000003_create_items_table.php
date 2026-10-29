@@ -21,6 +21,8 @@ return new class extends Migration
             $table->text('description')->nullable();
             $table->string('unit', 32);
             $table->decimal('sale_price', 18, 6);
+            // Precio final que cobra el negocio (impuestos incluidos); el motor obtiene la base imponible.
+            $table->boolean('price_includes_tax')->default(false);
             $table->boolean('is_active')->default(true);
             $table->timestamps();
             $table->unique(['company_id', 'internal_code']);

@@ -8,7 +8,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\Storage;
 use Tests\Feature\Sales\InvoiceFeatureTestCase;
 
-/** "Datos de la empresa": data + RUC + electronic signature in one all-or-nothing save. */
+/** "Datos de la empresa": every field optional; a signature is checked against the RUC and, if rejected, nothing is saved. */
 final class CompanyFiscalIdentityTest extends InvoiceFeatureTestCase
 {
     private const NEW_RUC = '1710034065001';

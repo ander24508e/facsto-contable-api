@@ -30,7 +30,8 @@ final class SaleController extends Controller
         if ($search = trim((string) ($filters['search'] ?? ''))) {
             $pattern = '%'.mb_strtolower($search).'%';
             $query->where(fn ($builder) => $builder->whereRaw('LOWER(customer_name) LIKE ?', [$pattern])
-                ->orWhereRaw('LOWER(customer_identification) LIKE ?', [$pattern]));
+                ->orWhereRaw('LOWER(customer_identification) LIKE ?', [$pattern])
+                ->orWhereHas('electronicDocument', fn ($document) => $document->where('full_number', 'like', '%'.$search.'%')->orWhere('access_key', $search)));
         }
         if ($status = $filters['status'] ?? null) {
             $query->where('status', $status);
@@ -45,7 +46,15 @@ final class SaleController extends Controller
             $query->whereDate('created_at', '<=', $to);
         }
 
-        return SaleResource::collection($query->paginate($filters['per_page'] ?? 15));
+        // The tabs where something is waiting show how many, whatever the current search or tab.
+        $stageCounts = [];
+        foreach (['draft', 'prepared', 'problems'] as $countedStage) {
+            $counted = $context->company()->sales();
+            SaleStageFilter::apply($counted, $countedStage);
+            $stageCounts[$countedStage] = $counted->count();
+        }
+
+        return SaleResource::collection($query->paginate($filters['per_page'] ?? 15))->additional(['meta' => ['stageCounts' => $stageCounts]]);
     }
 
     public function store(CreateSaleDraftRequest $request, CreateSaleDraftAction $create): JsonResponse

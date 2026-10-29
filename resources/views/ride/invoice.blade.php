@@ -74,6 +74,15 @@
             <td><span class="label">Fecha de emisión:</span> {{ $ride->issueDate }}</td>
             <td><span class="label">Dirección:</span> {{ $ride->customer['address'] }}</td>
         </tr>
+        @if ($ride->modifiedDocument)
+            <tr>
+                <td><span class="label">Comprobante que se modifica:</span> {{ $ride->modifiedDocument['type'] }} {{ $ride->modifiedDocument['number'] }}</td>
+                <td><span class="label">Fecha de emisión (comprobante a modificar):</span> {{ $ride->modifiedDocument['date'] }}</td>
+            </tr>
+            <tr>
+                <td colspan="2"><span class="label">Razón de modificación:</span> {{ $ride->modifiedDocument['reason'] }}</td>
+            </tr>
+        @endif
     </table>
 </div>
 
@@ -115,6 +124,7 @@
                     <div><span class="label">{{ $name }}:</span> {{ $value }}</div>
                 @endforeach
             </div>
+            @if ($ride->payments)
             <div class="spacer"></div>
             <table class="grid">
                 <thead><tr><th>Forma de pago</th><th>Valor</th><th>Plazo</th></tr></thead>
@@ -128,6 +138,7 @@
                     @endforeach
                 </tbody>
             </table>
+            @endif
         </td>
         <td style="width: 42%; vertical-align: top;">
             <table class="grid">

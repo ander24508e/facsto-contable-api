@@ -72,7 +72,7 @@ final class SignElectronicDocumentAction
 
                 return $signed;
             });
-            $this->xsd->validate($signedXml, (string) config('sri.invoice.xsd_path'));
+            $this->xsd->validate($signedXml, $document->document_type->xsdPath());
         } catch (RuntimeException $exception) {
             throw $this->signingError($document, $exception);
         }

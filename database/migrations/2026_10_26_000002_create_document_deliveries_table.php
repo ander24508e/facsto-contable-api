@@ -16,7 +16,8 @@ return new class extends Migration
             $table->foreignId('company_id')->constrained()->restrictOnDelete();
             $table->foreignId('electronic_document_id');
             $table->string('channel', 16);
-            $table->string('recipient', 254)->nullable();
+            // Destinatarios del último envío, separados por coma.
+            $table->string('recipient', 1000)->nullable();
             $table->string('status', 40);
             $table->unsignedInteger('attempts')->default(0);
             $table->string('last_error_code', 64)->nullable();

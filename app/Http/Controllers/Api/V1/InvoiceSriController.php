@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Domains\FiscalDocuments\Actions\ContinueInvoiceIssuanceAction;
+use App\Domains\FiscalDocuments\Actions\StartInvoiceCorrectionAction;
 use App\Domains\FiscalDocuments\Models\ElectronicDocument;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\ElectronicDocumentResource;
 use App\Http\Resources\Api\V1\InvoiceSriStatusResource;
+use App\Http\Resources\Api\V1\SaleResource;
 use Illuminate\Http\Request;
 
 final class InvoiceSriController extends Controller
@@ -30,5 +32,13 @@ final class InvoiceSriController extends Controller
         $this->authorize('process', $invoice);
 
         return new ElectronicDocumentResource($continue->retry($invoice, $request->user()));
+    }
+
+    /** Opens the sale of a returned / not authorized invoice for correction; issuing it again keeps the number. */
+    public function correct(ElectronicDocument $invoice, StartInvoiceCorrectionAction $start, Request $request): SaleResource
+    {
+        $this->authorize('process', $invoice);
+
+        return new SaleResource($start->execute($invoice, $request->user()));
     }
 }

@@ -23,6 +23,7 @@ final class UpdateItemRequest extends FormRequest
             'description' => ['sometimes', 'nullable', 'string'],
             'unit' => ['sometimes', 'string', 'max:32'],
             'salePrice' => ['sometimes', 'string', 'regex:/^\d{1,12}(\.\d{1,6})?$/'],
+            'priceIncludesTax' => ['sometimes', 'boolean'],
             'categoryPublicId' => ['sometimes', 'nullable', 'uuid'],
         ];
     }

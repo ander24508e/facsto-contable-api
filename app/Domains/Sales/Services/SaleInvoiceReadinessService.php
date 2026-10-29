@@ -16,7 +16,7 @@ final class SaleInvoiceReadinessService
     public function summary(Sale $sale): array
     {
         $pending = [];
-        if ($sale->status !== SaleStatus::DRAFT) {
+        if (! in_array($sale->status, [SaleStatus::DRAFT, SaleStatus::IN_CORRECTION], true)) {
             $pending[] = 'sale_draft';
         }
         if (! $sale->customer_id) {

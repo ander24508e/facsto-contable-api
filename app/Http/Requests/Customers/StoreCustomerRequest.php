@@ -21,6 +21,8 @@ final class StoreCustomerRequest extends FormRequest
             'legalName' => ['required', 'string', 'max:180'],
             'commercialName' => ['nullable', 'string', 'max:180'],
             'email' => ['nullable', 'email', 'max:254'],
+            'additionalEmails' => ['nullable', 'array', 'max:5'],
+            'additionalEmails.*' => ['email', 'max:254', 'distinct'],
             'phone' => ['nullable', 'string', 'max:40'],
             'address' => ['nullable', 'string', 'max:255'],
         ];

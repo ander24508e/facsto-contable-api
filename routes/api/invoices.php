@@ -1,18 +1,30 @@
 <?php
 
+use App\Http\Controllers\Api\V1\CreditNoteController;
 use App\Http\Controllers\Api\V1\InvoiceArtifactController;
+use App\Http\Controllers\Api\V1\InvoiceBulkController;
 use App\Http\Controllers\Api\V1\InvoiceController;
+use App\Http\Controllers\Api\V1\InvoiceDeliveryController;
 use App\Http\Controllers\Api\V1\InvoiceProcessingController;
 use App\Http\Controllers\Api\V1\InvoiceSriController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.context'])->group(function (): void {
     Route::get('/invoices', [InvoiceController::class, 'index']);
+    Route::get('/invoices/lookup', [InvoiceController::class, 'lookup']);
+    Route::post('/invoices/bulk/retry-sri', [InvoiceBulkController::class, 'retry']);
+    Route::post('/invoices/bulk/export', [InvoiceBulkController::class, 'export']);
     // Único comando de negocio: F04 → F05 → cola F06, reanudable desde el estado actual.
     Route::post('/sales/{sale}/issue', [InvoiceController::class, 'issue']);
     Route::get('/invoices/{invoice}', [InvoiceController::class, 'show']);
     Route::get('/invoices/{invoice}/sri-status', [InvoiceSriController::class, 'status']);
     Route::post('/invoices/{invoice}/retry-sri', [InvoiceSriController::class, 'retry']);
+    Route::post('/invoices/{invoice}/correct', [InvoiceSriController::class, 'correct']);
+    Route::get('/invoices/{invoice}/credit-notes', [CreditNoteController::class, 'index']);
+    Route::post('/invoices/{invoice}/credit-notes', [CreditNoteController::class, 'store']);
+    Route::get('/invoices/{invoice}/timeline', [InvoiceDeliveryController::class, 'timeline']);
+    Route::post('/invoices/{invoice}/deliveries', [InvoiceDeliveryController::class, 'resend']);
+    Route::post('/invoices/{invoice}/share-link', [InvoiceDeliveryController::class, 'shareLink']);
     Route::get('/invoices/{invoice}/artifacts', [InvoiceArtifactController::class, 'index']);
     Route::get('/invoices/{invoice}/artifacts/{type}', [InvoiceArtifactController::class, 'download'])
         ->where('type', '[A-Za-z_-]+');

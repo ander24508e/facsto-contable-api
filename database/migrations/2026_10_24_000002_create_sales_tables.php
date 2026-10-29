@@ -32,9 +32,16 @@ return new class extends Migration
             $table->decimal('tip_amount', 18, 2)->default(0);
             $table->decimal('total', 18, 2)->default(0);
             $table->char('currency', 3)->default('USD');
+            // Venta recibida de un módulo por API: quién la envió, su referencia y la clave de idempotencia.
+            $table->foreignId('api_client_id')->nullable();
+            $table->string('source_module', 40)->nullable();
+            $table->string('source_reference', 120)->nullable();
+            $table->string('idempotency_key', 120)->nullable();
             $table->timestamps();
             $table->unique(['company_id', 'id']);
             $table->unique(['company_id', 'number']);
+            $table->unique(['company_id', 'api_client_id', 'idempotency_key'], 'sales_idempotency_unique');
+            $table->foreign(['company_id', 'api_client_id'])->references(['company_id', 'id'])->on('api_clients')->restrictOnDelete();
             $table->foreign(['company_id', 'customer_id'])->references(['company_id', 'id'])->on('customers')->restrictOnDelete();
             $table->index(['company_id', 'status', 'created_at']);
             $table->index(['company_id', 'customer_id', 'created_at']);
@@ -95,7 +102,7 @@ return new class extends Migration
         });
 
         if (DB::getDriverName() === 'pgsql') {
-            DB::statement("ALTER TABLE sales ADD CONSTRAINT sales_status_check CHECK (status IN ('DRAFT', 'DOCUMENT_PREPARED', 'CANCELLED'))");
+            DB::statement("ALTER TABLE sales ADD CONSTRAINT sales_status_check CHECK (status IN ('DRAFT', 'IN_CORRECTION', 'DOCUMENT_PREPARED', 'CANCELLED'))");
             DB::statement('ALTER TABLE sales ADD CONSTRAINT sales_totals_nonnegative_check CHECK (subtotal >= 0 AND discount_total >= 0 AND tax_total >= 0 AND tip_amount >= 0 AND total >= 0)');
             DB::statement('ALTER TABLE sale_details ADD CONSTRAINT sale_details_quantity_positive_check CHECK (quantity > 0)');
             DB::statement('ALTER TABLE sale_details ADD CONSTRAINT sale_details_amounts_nonnegative_check CHECK (unit_price >= 0 AND discount_amount >= 0 AND subtotal >= 0 AND taxable_base >= 0 AND tax_total >= 0 AND total >= 0)');

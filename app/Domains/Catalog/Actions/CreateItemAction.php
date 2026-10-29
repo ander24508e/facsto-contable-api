@@ -5,6 +5,7 @@ namespace App\Domains\Catalog\Actions;
 use App\Domains\Catalog\Enums\ItemType;
 use App\Domains\Catalog\Models\Item;
 use App\Domains\Companies\Context\CompanyContext;
+use App\Domains\Taxes\Services\ItemTaxService;
 use App\Models\User;
 use App\Shared\Audit\AuditRecorder;
 use App\Shared\Http\ApiErrorCode;
@@ -13,7 +14,7 @@ use Illuminate\Support\Facades\DB;
 
 final class CreateItemAction
 {
-    public function __construct(private readonly CompanyContext $context, private readonly AuditRecorder $audit) {}
+    public function __construct(private readonly CompanyContext $context, private readonly AuditRecorder $audit, private readonly ItemTaxService $taxes) {}
 
     public function execute(array $attributes, User $actor): Item
     {
@@ -33,8 +34,10 @@ final class CreateItemAction
         $attributes['type'] = ItemType::from($attributes['type']);
 
         return DB::transaction(function () use ($company, $attributes, $actor): Item {
-            $item = $company->items()->create($attributes)->load(['taxes.definition', 'category']);
-            $this->audit->record($actor, $company, 'item.created', $item, null, $item->only(['type', 'internal_code', 'auxiliary_code', 'name', 'description', 'unit', 'sale_price', 'is_active', 'category_id']));
+            $item = $company->items()->create($attributes);
+            $this->taxes->inheritFromCategory($item);
+            $item->load(['taxes.definition', 'category']);
+            $this->audit->record($actor, $company, 'item.created', $item, null, $item->only(['type', 'internal_code', 'auxiliary_code', 'name', 'description', 'unit', 'sale_price', 'price_includes_tax', 'is_active', 'category_id']));
 
             return $item;
         });

@@ -17,6 +17,12 @@ final class ElectronicDocumentResource extends JsonResource
             'salePublicId' => $this->sale?->public_id,
             'documentType' => $this->document_type->value,
             'fullNumber' => $this->full_number,
+            'reason' => $this->reason,
+            'modifiedDocument' => $this->modified_document_id === null ? null : [
+                'publicId' => $this->modifiedDocument?->public_id,
+                'fullNumber' => $this->modifiedDocument?->full_number,
+                'issueDate' => $this->modifiedDocument?->issue_date?->toDateString(),
+            ],
             'sequential' => $this->sequential,
             'accessKey' => $this->access_key,
             'issueDate' => $this->issue_date?->toDateString(),

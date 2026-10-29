@@ -72,7 +72,7 @@ final class TaxController extends Controller
     public function previewReplacement(ReplaceCompanyTaxRequest $request, ReplaceCompanyTaxOnItemsAction $replace): JsonResponse
     {
         $this->authorize('manage', CompanyTax::class);
-        $preview = $replace->preview($request->validated('fromPublicId'), $request->validated('toPublicId'));
+        $preview = $replace->preview($request->validated('fromPublicId'), $request->validated('toPublicId'), $request->validated('categoryPublicId'));
 
         return response()->json(['data' => [
             'from' => new TaxResource($preview['from']),
@@ -86,7 +86,7 @@ final class TaxController extends Controller
         $this->authorize('manage', CompanyTax::class);
 
         return response()->json(['data' => [
-            'itemCount' => $replace->execute($request->validated('fromPublicId'), $request->validated('toPublicId'), $request->user()),
+            'itemCount' => $replace->execute($request->validated('fromPublicId'), $request->validated('toPublicId'), $request->user(), $request->validated('categoryPublicId')),
         ]]);
     }
 }

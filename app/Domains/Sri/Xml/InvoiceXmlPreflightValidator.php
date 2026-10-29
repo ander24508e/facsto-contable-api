@@ -24,14 +24,15 @@ final class InvoiceXmlPreflightValidator
 
     public function validate(ElectronicDocument $document): void
     {
-        $document->loadMissing(['lines.taxes', 'taxes', 'paymentMethods']);
+        $document->loadMissing(['lines.taxes', 'taxes', 'paymentMethods', 'modifiedDocument']);
 
         // NUMBERED, or RETURNED / NOT_AUTHORIZED / FAILED rebuilt with the same number and access key.
         if (! $this->states->canTransition($document->status, DocumentStatus::XML_BUILT)) {
             $this->fail('DOCUMENT_NOT_BUILDABLE');
         }
-        if ($document->document_type !== DocumentType::INVOICE) {
-            $this->fail('DOCUMENT_TYPE_UNSUPPORTED');
+        $isCreditNote = $document->document_type === DocumentType::CREDIT_NOTE;
+        if ($isCreditNote && ($document->modifiedDocument === null || blank($document->reason))) {
+            $this->fail('CREDIT_NOTE_REFERENCE_REQUIRED');
         }
         if ($document->xml_version !== '1.1.0') {
             $this->fail('XML_VERSION_UNSUPPORTED');
@@ -82,18 +83,21 @@ final class InvoiceXmlPreflightValidator
             }
         }
 
-        if ($document->paymentMethods->isEmpty()) {
-            $this->fail('INVOICE_PAYMENT_METHODS_REQUIRED');
-        }
-        $paymentTotal = '0.00';
-        foreach ($document->paymentMethods as $payment) {
-            if (! $this->isDecimal($payment->amount)) {
-                $this->fail('INVOICE_PAYMENT_AMOUNT_INVALID');
+        // A credit note has no payments: it returns value against the invoice it modifies.
+        if (! $isCreditNote) {
+            if ($document->paymentMethods->isEmpty()) {
+                $this->fail('INVOICE_PAYMENT_METHODS_REQUIRED');
             }
-            $paymentTotal = bcadd($paymentTotal, (string) $payment->amount, 2);
-        }
-        if (! $this->isDecimal($document->total) || bccomp($paymentTotal, (string) $document->total, 2) !== 0) {
-            $this->fail('INVOICE_PAYMENT_TOTAL_MISMATCH');
+            $paymentTotal = '0.00';
+            foreach ($document->paymentMethods as $payment) {
+                if (! $this->isDecimal($payment->amount)) {
+                    $this->fail('INVOICE_PAYMENT_AMOUNT_INVALID');
+                }
+                $paymentTotal = bcadd($paymentTotal, (string) $payment->amount, 2);
+            }
+            if (! $this->isDecimal($document->total) || bccomp($paymentTotal, (string) $document->total, 2) !== 0) {
+                $this->fail('INVOICE_PAYMENT_TOTAL_MISMATCH');
+            }
         }
 
         if (! preg_match('/^\d{13}$/', (string) $document->provider_ruc)) {

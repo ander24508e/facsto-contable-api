@@ -16,6 +16,7 @@ final class CustomerResource extends JsonResource
             'legalName' => $this->legal_name,
             'commercialName' => $this->commercial_name,
             'email' => $this->email,
+            'additionalEmails' => $this->additional_emails ?? [],
             'phone' => $this->phone,
             'address' => $this->address,
             'isActive' => $this->is_active,

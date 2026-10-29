@@ -41,5 +41,9 @@ final readonly class InvoiceXmlData
         public ?string $rimpeType,
         public string $providerRuc,
         public DocumentType $documentType,
+        public ?string $modifiedDocumentCode = null,
+        public ?string $modifiedDocumentNumber = null,
+        public ?string $modifiedDocumentDate = null,
+        public ?string $reason = null,
     ) {}
 }

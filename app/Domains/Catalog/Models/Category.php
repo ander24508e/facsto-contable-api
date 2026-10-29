@@ -3,9 +3,11 @@
 namespace App\Domains\Catalog\Models;
 
 use App\Domains\Companies\Models\Company;
+use App\Domains\Taxes\Models\CompanyTax;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
@@ -25,6 +27,12 @@ class Category extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    /** Default rates inherited by new items of the category. */
+    public function taxes(): BelongsToMany
+    {
+        return $this->belongsToMany(CompanyTax::class, 'category_taxes')->withPivot('company_id')->withTimestamps();
     }
 
     public function items(): HasMany

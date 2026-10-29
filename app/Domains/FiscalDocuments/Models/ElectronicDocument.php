@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
-#[Fillable(['company_id', 'sale_id', 'customer_id', 'establishment_id', 'emission_point_id', 'document_type', 'establishment_code', 'emission_point_code', 'sequential', 'full_number', 'numeric_code', 'access_key', 'issue_date', 'status', 'issuer_ruc', 'issuer_legal_name', 'issuer_commercial_name', 'issuer_main_address', 'establishment_address', 'accounting_required', 'special_taxpayer_number', 'withholding_agent_number', 'artisan_qualification_number', 'rimpe_type', 'sri_environment', 'emission_type', 'xml_version', 'provider_ruc', 'provider_name', 'customer_identification_type', 'customer_identification', 'customer_name', 'customer_address', 'customer_email', 'total_without_taxes', 'subtotal_without_tax', 'subtotal_zero', 'subtotal_taxed', 'discount_total', 'tax_total', 'tip_amount', 'total', 'currency', 'created_by', 'numbered_at', 'xml_built_at', 'signed_at', 'authorization_number', 'authorized_at', 'last_sri_status_at', 'last_error_code'])]
+#[Fillable(['company_id', 'sale_id', 'modified_document_id', 'reason', 'customer_id', 'establishment_id', 'emission_point_id', 'document_type', 'establishment_code', 'emission_point_code', 'sequential', 'full_number', 'numeric_code', 'access_key', 'previous_access_keys', 'issue_date', 'status', 'issuer_ruc', 'issuer_legal_name', 'issuer_commercial_name', 'issuer_main_address', 'establishment_address', 'accounting_required', 'special_taxpayer_number', 'withholding_agent_number', 'artisan_qualification_number', 'rimpe_type', 'sri_environment', 'emission_type', 'xml_version', 'provider_ruc', 'provider_name', 'customer_identification_type', 'customer_identification', 'customer_name', 'customer_address', 'customer_email', 'total_without_taxes', 'subtotal_without_tax', 'subtotal_zero', 'subtotal_taxed', 'discount_total', 'tax_total', 'tip_amount', 'total', 'currency', 'created_by', 'numbered_at', 'xml_built_at', 'signed_at', 'authorization_number', 'authorized_at', 'last_sri_status_at', 'last_error_code'])]
 class ElectronicDocument extends Model
 {
     protected static function booted(): void
@@ -31,6 +31,17 @@ class ElectronicDocument extends Model
     public function sale(): BelongsTo
     {
         return $this->belongsTo(Sale::class);
+    }
+
+    /** The invoice a credit note modifies. */
+    public function modifiedDocument(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'modified_document_id');
+    }
+
+    public function creditNotes(): HasMany
+    {
+        return $this->hasMany(self::class, 'modified_document_id');
     }
 
     /** Automatic SRI submission retries stop at 23:59:59 (Ecuador) of the issue date. */
@@ -94,6 +105,7 @@ class ElectronicDocument extends Model
             'tax_total' => 'decimal:2',
             'tip_amount' => 'decimal:2',
             'total' => 'decimal:2',
+            'previous_access_keys' => 'array',
             'numbered_at' => 'immutable_datetime',
             'xml_built_at' => 'immutable_datetime',
             'signed_at' => 'immutable_datetime',

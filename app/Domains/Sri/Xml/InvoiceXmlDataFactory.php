@@ -26,7 +26,8 @@ final class InvoiceXmlDataFactory
 
     public function make(ElectronicDocument $document): InvoiceXmlData
     {
-        $document->loadMissing(['lines.taxes', 'taxes', 'paymentMethods']);
+        $document->loadMissing(['lines.taxes', 'taxes', 'paymentMethods', 'modifiedDocument']);
+        $modified = $document->modifiedDocument;
 
         $lines = $document->lines->map(fn ($line): InvoiceLineXmlData => new InvoiceLineXmlData(
             itemCode: (string) $line->item_code,
@@ -94,6 +95,10 @@ final class InvoiceXmlDataFactory
             rimpeType: $document->rimpe_type,
             providerRuc: (string) $document->provider_ruc,
             documentType: $document->document_type,
+            modifiedDocumentCode: $modified ? $this->documentTypes->map($modified->document_type) : null,
+            modifiedDocumentNumber: $modified?->full_number,
+            modifiedDocumentDate: $modified?->issue_date->format('d/m/Y'),
+            reason: $document->reason,
         );
     }
 }

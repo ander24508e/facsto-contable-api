@@ -13,4 +13,16 @@ final class ListSalesTest extends SalesTestCase
         $this->makeSale($user, $company);
         $this->actingAs($user)->getJson('/api/v1/sales?per_page=1')->assertOk()->assertJsonPath('meta.per_page', 1)->assertJsonCount(1, 'data');
     }
+
+    public function test_the_list_counts_the_tabs_waiting_for_action(): void
+    {
+        $user = User::factory()->create();
+        $company = $this->createCompany($user, '1799999999001');
+        $this->makeSale($user, $company);
+        $this->makeSale($user, $company);
+
+        $this->actingAs($user)->getJson('/api/v1/sales?stage=authorized')->assertOk()
+            ->assertJsonCount(0, 'data')
+            ->assertJsonPath('meta.stageCounts', ['draft' => 2, 'prepared' => 0, 'problems' => 0]);
+    }
 }

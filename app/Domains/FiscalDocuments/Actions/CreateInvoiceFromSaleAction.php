@@ -3,6 +3,7 @@
 namespace App\Domains\FiscalDocuments\Actions;
 
 use App\Domains\Companies\Context\CompanyContext;
+use App\Domains\Companies\Models\Company;
 use App\Domains\FiscalDocuments\Enums\DocumentStatus;
 use App\Domains\FiscalDocuments\Enums\DocumentType;
 use App\Domains\FiscalDocuments\Models\ElectronicDocument;
@@ -48,6 +49,11 @@ final class CreateInvoiceFromSaleAction
                 if ($existing && $sale->status === SaleStatus::DOCUMENT_PREPARED) {
                     return $existing;
                 }
+                if ($existing && $sale->status === SaleStatus::IN_CORRECTION) {
+                    $this->issuance->assertCanIssue($company, $sale);
+
+                    return $this->correct($existing, $sale, $actor);
+                }
                 if ($sale->status !== SaleStatus::DRAFT) {
                     throw new ApiException(ApiErrorCode::SALE_NOT_EDITABLE, 'Solo se puede preparar una factura desde un borrador.', 409);
                 }
@@ -61,8 +67,6 @@ final class CreateInvoiceFromSaleAction
                     throw new ApiException(ApiErrorCode::FISCAL_SETUP_INCOMPLETE, 'La estructura fiscal de emisión no está lista.', 409);
                 }
 
-                $providerRuc = (string) config('sri.software_provider.ruc');
-
                 $type = DocumentType::INVOICE;
                 $number = $this->sequences->next($company->id, $establishment->id, $point->id, $type, (string) $company->ruc);
                 $sequential = $this->sequentialFormatter->format($number);
@@ -72,34 +76,7 @@ final class CreateInvoiceFromSaleAction
                 $issueDate = $issuedAt->toDateString();
                 $accessKey = $this->accessKeys->generate($issuedAt, $type, $company->ruc, $settings->sri_environment, $establishment->code, $point->code, $sequential, $numericCode, $settings->emission_type);
 
-                $taxGroups = [];
-                $totalWithoutTaxes = '0.00';
-                $subtotalWithoutTax = '0.00';
-                $subtotalZero = '0.00';
-                $subtotalTaxed = '0.00';
-                foreach ($sale->details as $line) {
-                    $totalWithoutTaxes = bcadd($totalWithoutTaxes, (string) $line->taxable_base, 2);
-                    $iva = $line->taxes->firstWhere('tax_type', 'IVA');
-                    // Tabla 17: 6 = no objeto de IVA, 7 = exento; both are reported apart from the 0 % rate.
-                    if (in_array($iva?->percentage_code, ['6', '7'], true)) {
-                        $subtotalWithoutTax = bcadd($subtotalWithoutTax, $line->taxable_base, 2);
-                    } elseif (bccomp((string) $iva?->percentage, '0', 6) === 0) {
-                        $subtotalZero = bcadd($subtotalZero, $line->taxable_base, 2);
-                    } else {
-                        $subtotalTaxed = bcadd($subtotalTaxed, $line->taxable_base, 2);
-                    }
-                    foreach ($line->taxes as $tax) {
-                        $key = $tax->sri_code.'|'.$tax->percentage_code;
-                        $taxGroups[$key] ??= ['tax_code' => $tax->sri_code, 'percentage_code' => $tax->percentage_code, 'percentage' => $tax->percentage, 'taxable_base' => '0.00', 'tax_amount' => '0.00'];
-                        $taxGroups[$key]['taxable_base'] = bcadd($taxGroups[$key]['taxable_base'], $tax->taxable_base, 2);
-                        $taxGroups[$key]['tax_amount'] = bcadd($taxGroups[$key]['tax_amount'], $tax->tax_amount, 2);
-                    }
-                }
-
-                // <totalSinImpuestos> is the whole document before taxes; it must match the sale header exactly.
-                if (bccomp($totalWithoutTaxes, bcsub((string) $sale->subtotal, (string) $sale->discount_total, 2), 2) !== 0) {
-                    throw new RuntimeException('INVOICE_TOTAL_WITHOUT_TAXES_MISMATCH');
-                }
+                $totals = $this->totals($sale);
 
                 $document = ElectronicDocument::query()->create([
                     'company_id' => $company->id, 'sale_id' => $sale->id, 'customer_id' => $sale->customer_id,
@@ -107,43 +84,13 @@ final class CreateInvoiceFromSaleAction
                     'establishment_code' => $establishment->code, 'emission_point_code' => $point->code,
                     'sequential' => $sequential, 'full_number' => $fullNumber, 'numeric_code' => $numericCode,
                     'access_key' => $accessKey, 'issue_date' => $issueDate, 'status' => DocumentStatus::NUMBERED,
-                    'issuer_ruc' => $company->ruc,
-                    'issuer_legal_name' => $company->legal_name,
-                    'issuer_commercial_name' => $company->commercial_name,
-                    'issuer_main_address' => $company->main_address,
-                    'establishment_address' => $establishment->address,
-                    'accounting_required' => $settings->accounting_required,
-                    'special_taxpayer_number' => $settings->special_taxpayer_number,
-                    'withholding_agent_number' => $settings->withholding_agent_number,
-                    'artisan_qualification_number' => $settings->artisan_qualification_number,
-                    'rimpe_type' => $settings->rimpe_type?->value,
+                    ...$this->issuerSnapshot($company, $establishment->address),
+                    ...$this->saleSnapshot($sale, $totals),
                     'sri_environment' => $settings->sri_environment->value,
                     'emission_type' => $settings->emission_type->value,
-                    'xml_version' => config('sri.invoice.xml_version', '1.1.0'),
-                    'provider_ruc' => $providerRuc,
-                    'provider_name' => config('sri.software_provider.name', 'Condore Software'),
-                    'customer_identification_type' => $sale->customer_identification_type, 'customer_identification' => $sale->customer_identification,
-                    'customer_name' => $sale->customer_name, 'customer_address' => $sale->customer_address, 'customer_email' => $sale->customer_email,
-                    'total_without_taxes' => $totalWithoutTaxes, 'subtotal_without_tax' => $subtotalWithoutTax, 'subtotal_zero' => $subtotalZero, 'subtotal_taxed' => $subtotalTaxed,
-                    'discount_total' => $sale->discount_total, 'tax_total' => $sale->tax_total, 'tip_amount' => $sale->tip_amount, 'total' => $sale->total,
-                    'currency' => $sale->currency, 'created_by' => $actor->id, 'numbered_at' => $issuedAt,
+                    'created_by' => $actor->id, 'numbered_at' => $issuedAt,
                 ]);
-                foreach ($sale->details as $line) {
-                    $documentLine = $document->lines()->create([
-                        'company_id' => $company->id, 'item_code' => $line->item_code, 'auxiliary_code' => $line->auxiliary_code, 'description' => $line->item_name,
-                        'quantity' => $line->quantity, 'unit_price' => $line->unit_price, 'discount' => $line->discount_amount,
-                        'subtotal' => $line->subtotal, 'price_total_without_tax' => $line->taxable_base, 'total' => $line->total,
-                    ]);
-                    $documentLine->taxes()->createMany($line->taxes->map(fn ($tax): array => [
-                        'company_id' => $company->id, 'tax_code' => $tax->sri_code, 'percentage_code' => $tax->percentage_code,
-                        'percentage' => $tax->percentage, 'taxable_base' => $tax->taxable_base, 'tax_amount' => $tax->tax_amount,
-                    ])->all());
-                }
-                $document->taxes()->createMany(array_map(fn (array $tax): array => ['company_id' => $company->id, ...$tax], array_values($taxGroups)));
-                $document->paymentMethods()->createMany($sale->paymentMethods->map(fn ($method): array => [
-                    'company_id' => $company->id, 'method_code' => $method->method_code, 'method_name' => $method->method_name,
-                    'amount' => $method->amount, 'term' => $method->term, 'time_unit' => $method->time_unit, 'reference' => $method->reference,
-                ])->all());
+                $this->writeContent($document, $sale, $totals['tax_groups']);
                 $sale->forceFill(['status' => SaleStatus::DOCUMENT_PREPARED, 'issue_date' => $issueDate])->save();
                 $this->audit->record($actor, $company, 'invoice.numbered', $document, null, ['fullNumber' => $fullNumber, 'status' => DocumentStatus::NUMBERED->value]);
 
@@ -155,5 +102,151 @@ final class CreateInvoiceFromSaleAction
             }
             throw $exception;
         }
+    }
+
+    /**
+     * The invoice was returned or not authorized and its sale was corrected: the same number is kept, the
+     * content is taken again from the sale and a new numeric code and access key are generated (the SRI may
+     * have registered the previous one). Previous keys are kept for the history.
+     */
+    private function correct(ElectronicDocument $document, Sale $sale, User $actor): ElectronicDocument
+    {
+        $company = $this->context->company();
+        if (! in_array($document->status, [DocumentStatus::RETURNED, DocumentStatus::NOT_AUTHORIZED], true)) {
+            throw new ApiException(ApiErrorCode::INVALID_DOCUMENT_TRANSITION, 'Sólo una factura devuelta o no autorizada se puede corregir.', 409);
+        }
+        if ($document->issuer_ruc !== $company->ruc) {
+            throw new ApiException(ApiErrorCode::INVALID_DOCUMENT_TRANSITION, 'La factura pertenece a otro RUC del emisor y no se puede corregir.', 409);
+        }
+        $settings = $company->fiscalSettings;
+        $establishment = $company->establishments()->whereKey($document->establishment_id)->firstOrFail();
+        $totals = $this->totals($sale);
+        $numericCode = $this->numericCodes->generate();
+        $issuedAt = now();
+        $accessKey = $this->accessKeys->generate($issuedAt, DocumentType::INVOICE, $company->ruc, $settings->sri_environment, $document->establishment_code, $document->emission_point_code, $document->sequential, $numericCode, $settings->emission_type);
+        $previousKey = $document->access_key;
+
+        $document->lines()->delete();
+        $document->taxes()->delete();
+        $document->paymentMethods()->delete();
+        $document->forceFill([
+            ...$this->issuerSnapshot($company, $establishment->address),
+            ...$this->saleSnapshot($sale, $totals),
+            'customer_id' => $sale->customer_id,
+            'numeric_code' => $numericCode,
+            'access_key' => $accessKey,
+            'previous_access_keys' => [...($document->previous_access_keys ?? []), $previousKey],
+            'issue_date' => $issuedAt->toDateString(),
+            'sri_environment' => $settings->sri_environment->value,
+            'emission_type' => $settings->emission_type->value,
+            'numbered_at' => $issuedAt,
+            'xml_built_at' => null,
+            'signed_at' => null,
+            'last_error_code' => null,
+        ])->save();
+        $this->writeContent($document, $sale, $totals['tax_groups']);
+        $sale->forceFill(['status' => SaleStatus::DOCUMENT_PREPARED, 'issue_date' => $issuedAt->toDateString()])->save();
+        $this->audit->record($actor, $company, 'invoice.corrected', $document, ['accessKey' => $previousKey], [
+            'fullNumber' => $document->full_number, 'accessKey' => $accessKey, 'status' => $document->status->value,
+        ]);
+
+        return $document->refresh()->load(['lines.taxes', 'taxes', 'paymentMethods']);
+    }
+
+    /** @return array<string, mixed> */
+    private function totals(Sale $sale): array
+    {
+        $taxGroups = [];
+        $totalWithoutTaxes = '0.00';
+        $subtotalWithoutTax = '0.00';
+        $subtotalZero = '0.00';
+        $subtotalTaxed = '0.00';
+        foreach ($sale->details as $line) {
+            $totalWithoutTaxes = bcadd($totalWithoutTaxes, (string) $line->taxable_base, 2);
+            $iva = $line->taxes->firstWhere('tax_type', 'IVA');
+            // Tabla 17: 6 = no objeto de IVA, 7 = exento; both are reported apart from the 0 % rate.
+            if (in_array($iva?->percentage_code, ['6', '7'], true)) {
+                $subtotalWithoutTax = bcadd($subtotalWithoutTax, $line->taxable_base, 2);
+            } elseif (bccomp((string) $iva?->percentage, '0', 6) === 0) {
+                $subtotalZero = bcadd($subtotalZero, $line->taxable_base, 2);
+            } else {
+                $subtotalTaxed = bcadd($subtotalTaxed, $line->taxable_base, 2);
+            }
+            foreach ($line->taxes as $tax) {
+                $key = $tax->sri_code.'|'.$tax->percentage_code;
+                $taxGroups[$key] ??= ['tax_code' => $tax->sri_code, 'percentage_code' => $tax->percentage_code, 'percentage' => $tax->percentage, 'taxable_base' => '0.00', 'tax_amount' => '0.00'];
+                $taxGroups[$key]['taxable_base'] = bcadd($taxGroups[$key]['taxable_base'], $tax->taxable_base, 2);
+                $taxGroups[$key]['tax_amount'] = bcadd($taxGroups[$key]['tax_amount'], $tax->tax_amount, 2);
+            }
+        }
+
+        // <totalSinImpuestos> is the whole document before taxes; it must match the sale header exactly.
+        if (bccomp($totalWithoutTaxes, bcsub((string) $sale->subtotal, (string) $sale->discount_total, 2), 2) !== 0) {
+            throw new RuntimeException('INVOICE_TOTAL_WITHOUT_TAXES_MISMATCH');
+        }
+
+        return [
+            'tax_groups' => array_values($taxGroups),
+            'total_without_taxes' => $totalWithoutTaxes,
+            'subtotal_without_tax' => $subtotalWithoutTax,
+            'subtotal_zero' => $subtotalZero,
+            'subtotal_taxed' => $subtotalTaxed,
+        ];
+    }
+
+    /** @return array<string, mixed> issuer data frozen in the document */
+    private function issuerSnapshot(Company $company, ?string $establishmentAddress): array
+    {
+        $settings = $company->fiscalSettings;
+
+        return [
+            'issuer_ruc' => $company->ruc,
+            'issuer_legal_name' => $company->legal_name,
+            'issuer_commercial_name' => $company->commercial_name,
+            'issuer_main_address' => $company->main_address,
+            'establishment_address' => $establishmentAddress,
+            'accounting_required' => $settings->accounting_required,
+            'special_taxpayer_number' => $settings->special_taxpayer_number,
+            'withholding_agent_number' => $settings->withholding_agent_number,
+            'artisan_qualification_number' => $settings->artisan_qualification_number,
+            'rimpe_type' => $settings->rimpe_type?->value,
+            'xml_version' => config('sri.invoice.xml_version', '1.1.0'),
+            'provider_ruc' => (string) config('sri.software_provider.ruc'),
+            'provider_name' => config('sri.software_provider.name', 'Condore Software'),
+        ];
+    }
+
+    /** @return array<string, mixed> buyer and amounts frozen in the document */
+    private function saleSnapshot(Sale $sale, array $totals): array
+    {
+        return [
+            'customer_identification_type' => $sale->customer_identification_type, 'customer_identification' => $sale->customer_identification,
+            'customer_name' => $sale->customer_name, 'customer_address' => $sale->customer_address, 'customer_email' => $sale->customer_email,
+            'total_without_taxes' => $totals['total_without_taxes'], 'subtotal_without_tax' => $totals['subtotal_without_tax'],
+            'subtotal_zero' => $totals['subtotal_zero'], 'subtotal_taxed' => $totals['subtotal_taxed'],
+            'discount_total' => $sale->discount_total, 'tax_total' => $sale->tax_total, 'tip_amount' => $sale->tip_amount, 'total' => $sale->total,
+            'currency' => $sale->currency,
+        ];
+    }
+
+    private function writeContent(ElectronicDocument $document, Sale $sale, array $taxGroups): void
+    {
+        $companyId = $document->company_id;
+        foreach ($sale->details as $line) {
+            $documentLine = $document->lines()->create([
+                'company_id' => $companyId, 'item_code' => $line->item_code, 'auxiliary_code' => $line->auxiliary_code, 'description' => $line->item_name,
+                'quantity' => $line->quantity, 'unit_price' => $line->unit_price, 'discount' => $line->discount_amount,
+                'subtotal' => $line->subtotal, 'price_total_without_tax' => $line->taxable_base, 'total' => $line->total,
+            ]);
+            $documentLine->taxes()->createMany($line->taxes->map(fn ($tax): array => [
+                'company_id' => $companyId, 'tax_code' => $tax->sri_code, 'percentage_code' => $tax->percentage_code,
+                'percentage' => $tax->percentage, 'taxable_base' => $tax->taxable_base, 'tax_amount' => $tax->tax_amount,
+            ])->all());
+        }
+        $document->taxes()->createMany(array_map(fn (array $tax): array => ['company_id' => $companyId, ...$tax], $taxGroups));
+        $document->paymentMethods()->createMany($sale->paymentMethods->map(fn ($method): array => [
+            'company_id' => $companyId, 'method_code' => $method->method_code, 'method_name' => $method->method_name,
+            'amount' => $method->amount, 'term' => $method->term, 'time_unit' => $method->time_unit, 'reference' => $method->reference,
+        ])->all());
     }
 }

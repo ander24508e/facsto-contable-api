@@ -2,9 +2,11 @@
 
 namespace App\Domains\Sri\Xml;
 
+use App\Domains\FiscalDocuments\Enums\DocumentType;
 use App\Domains\Sri\DTOs\InvoiceXmlData;
 use App\Domains\Sri\Xml\Builders\AdditionalInformationBuilder;
 use App\Domains\Sri\Xml\Builders\InfoFacturaBuilder;
+use App\Domains\Sri\Xml\Builders\InfoNotaCreditoBuilder;
 use App\Domains\Sri\Xml\Builders\InfoTributariaBuilder;
 use App\Domains\Sri\Xml\Builders\InvoiceDetailsBuilder;
 use DOMDocument;
@@ -14,6 +16,7 @@ final class InvoiceXmlBuilder
     public function __construct(
         private readonly InfoTributariaBuilder $tributaria,
         private readonly InfoFacturaBuilder $factura,
+        private readonly InfoNotaCreditoBuilder $creditNote,
         private readonly InvoiceDetailsBuilder $details,
         private readonly AdditionalInformationBuilder $additional,
     ) {}
@@ -24,13 +27,14 @@ final class InvoiceXmlBuilder
         $document->formatOutput = false;
         $document->preserveWhiteSpace = false;
 
-        $root = $document->createElement('factura');
+        $isCreditNote = $data->documentType === DocumentType::CREDIT_NOTE;
+        $root = $document->createElement($isCreditNote ? 'notaCredito' : 'factura');
         $root->setAttribute('id', 'comprobante');
         $root->setAttribute('version', $data->xmlVersion);
         $document->appendChild($root);
 
         $this->tributaria->append($document, $root, $data);
-        $this->factura->append($document, $root, $data);
+        $isCreditNote ? $this->creditNote->append($document, $root, $data) : $this->factura->append($document, $root, $data);
         $this->details->append($document, $root, $data);
         $this->additional->append($document, $root, $data);
 

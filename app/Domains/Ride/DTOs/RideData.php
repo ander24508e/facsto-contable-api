@@ -33,5 +33,7 @@ final readonly class RideData
         public array $payments,
         public array $additionalInformation,
         public string $barcodeSvg,
+        /** @var array{type: string, number: string, date: string, reason: string}|null credit note: the invoice it modifies */
+        public ?array $modifiedDocument = null,
     ) {}
 }

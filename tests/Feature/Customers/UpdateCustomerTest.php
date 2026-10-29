@@ -12,7 +12,7 @@ final class UpdateCustomerTest extends CompanyTestCase
         $owner = User::factory()->create();
         $company = $this->createCompany($owner, '1799999999001');
         $customer = $this->actingAs($owner)
-            ->postJson('/api/v1/customers', ['identificationType' => 'CEDULA', 'identification' => '0123456789', 'legalName' => 'Antes'])
+            ->postJson('/api/v1/customers', ['identificationType' => 'CEDULA', 'identification' => '0123456782', 'legalName' => 'Antes'])
             ->assertCreated()->json('data');
 
         $this->patchJson('/api/v1/customers/'.$customer['publicId'], ['legalName' => 'Después'])

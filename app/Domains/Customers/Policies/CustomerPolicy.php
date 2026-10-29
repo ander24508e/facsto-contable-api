@@ -31,6 +31,11 @@ final class CustomerPolicy
         return $this->canWrite($user) && $customer->company_id === $this->context->company()->id;
     }
 
+    public function delete(User $user, Customer $customer): bool
+    {
+        return $this->update($user, $customer);
+    }
+
     private function activeMember(User $user): bool
     {
         return $this->context->company()->memberships()->where('user_id', $user->id)->where('is_active', true)->exists();

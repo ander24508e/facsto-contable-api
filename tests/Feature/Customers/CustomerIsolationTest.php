@@ -14,7 +14,7 @@ final class CustomerIsolationTest extends CompanyTestCase
         $companyA = $this->createCompany($userA, '1799999999001');
         $companyB = $this->createCompany($userB, '1799999999002');
         $customer = $this->actingAs($userA)->postJson('/api/v1/customers', [
-            'identificationType' => 'CEDULA', 'identification' => '0123456789', 'legalName' => 'Cliente A',
+            'identificationType' => 'CEDULA', 'identification' => '0123456782', 'legalName' => 'Cliente A',
         ])->assertCreated()->json('data');
 
         $this->actingAs($userB)->getJson('/api/v1/customers/'.$customer['publicId'])->assertForbidden();

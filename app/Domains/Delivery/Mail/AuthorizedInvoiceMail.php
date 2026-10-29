@@ -16,16 +16,17 @@ final class AuthorizedInvoiceMail extends Mailable
         public readonly string $accessKey,
         private readonly string $authorizedXml,
         private readonly string $ridePdf,
+        public readonly string $documentLabel = 'Factura electrónica',
     ) {}
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: 'Factura electrónica '.$this->fullNumber.' - '.$this->issuerName);
+        return new Envelope(subject: $this->documentLabel.' '.$this->fullNumber.' - '.$this->issuerName);
     }
 
     public function content(): Content
     {
-        return new Content(htmlString: '<p>Adjuntamos la factura electrónica <strong>'.e($this->fullNumber).'</strong> emitida por '
+        return new Content(htmlString: '<p>Adjuntamos la '.e(mb_strtolower($this->documentLabel)).' <strong>'.e($this->fullNumber).'</strong> emitida por '
             .e($this->issuerName).', autorizada por el SRI.</p><p>Clave de acceso: '.e($this->accessKey).'</p>');
     }
 

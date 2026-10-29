@@ -26,7 +26,7 @@ final class RideDataFactory
         if ($document->status !== DocumentStatus::AUTHORIZED || blank($document->authorization_number) || $document->authorized_at === null) {
             throw new LogicException('A RIDE is only generated for an authorized document.');
         }
-        $document->loadMissing(['lines', 'taxes', 'paymentMethods']);
+        $document->loadMissing(['lines', 'taxes', 'paymentMethods', 'modifiedDocument']);
 
         $lines = $document->lines->map(fn ($line): array => [
             'code' => $line->item_code,
@@ -81,7 +81,7 @@ final class RideDataFactory
                     default => null,
                 },
             ],
-            documentLabel: 'FACTURA',
+            documentLabel: $document->document_type->label(),
             fullNumber: $document->full_number,
             accessKey: $document->access_key,
             authorizationNumber: (string) $document->authorization_number,
@@ -106,6 +106,12 @@ final class RideDataFactory
             ])->values()->all(),
             additionalInformation: $additional,
             barcodeSvg: $this->barcode->svg($document->access_key, 0.75, 34),
+            modifiedDocument: $document->modifiedDocument === null ? null : [
+                'type' => $document->modifiedDocument->document_type->label(),
+                'number' => $document->modifiedDocument->full_number,
+                'date' => $document->modifiedDocument->issue_date->format('d/m/Y'),
+                'reason' => (string) $document->reason,
+            ],
         );
     }
 

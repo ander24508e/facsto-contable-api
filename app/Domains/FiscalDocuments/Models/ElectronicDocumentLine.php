@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['company_id', 'electronic_document_id', 'item_code', 'auxiliary_code', 'description', 'quantity', 'unit_price', 'discount', 'subtotal', 'price_total_without_tax', 'total'])]
+#[Fillable(['company_id', 'electronic_document_id', 'source_line_id', 'item_code', 'auxiliary_code', 'description', 'quantity', 'unit_price', 'discount', 'subtotal', 'price_total_without_tax', 'total'])]
 class ElectronicDocumentLine extends Model
 {
     public function taxes(): HasMany

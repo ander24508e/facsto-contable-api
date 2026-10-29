@@ -2,6 +2,7 @@
 
 use App\Domains\Companies\Models\Company;
 use App\Domains\Sri\Commands\SchedulePendingSriDocumentsCommand;
+use App\Http\Middleware\AuthenticateApiClient;
 use App\Http\Middleware\ResolveCompanyContext;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
@@ -29,6 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->trimStrings(except: ['password', 'password_confirmation']);
         $middleware->alias([
             'company.context' => ResolveCompanyContext::class,
+            'api.client' => AuthenticateApiClient::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

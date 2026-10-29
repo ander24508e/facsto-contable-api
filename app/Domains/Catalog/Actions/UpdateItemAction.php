@@ -42,10 +42,10 @@ final class UpdateItemAction
         }
 
         return DB::transaction(function () use ($item, $attributes, $actor, $company): Item {
-            $before = $item->only(['type', 'internal_code', 'auxiliary_code', 'name', 'description', 'unit', 'sale_price', 'is_active', 'category_id']);
+            $before = $item->only(['type', 'internal_code', 'auxiliary_code', 'name', 'description', 'unit', 'sale_price', 'price_includes_tax', 'is_active', 'category_id']);
             $item->fill($attributes)->save();
             $item->refresh();
-            $this->audit->record($actor, $company, 'item.updated', $item, $before, $item->only(['type', 'internal_code', 'auxiliary_code', 'name', 'description', 'unit', 'sale_price', 'is_active', 'category_id']));
+            $this->audit->record($actor, $company, 'item.updated', $item, $before, $item->only(['type', 'internal_code', 'auxiliary_code', 'name', 'description', 'unit', 'sale_price', 'price_includes_tax', 'is_active', 'category_id']));
 
             return $item->load(['taxes.definition', 'category']);
         });

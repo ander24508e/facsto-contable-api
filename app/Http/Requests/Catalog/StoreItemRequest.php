@@ -23,6 +23,7 @@ final class StoreItemRequest extends FormRequest
             'description' => ['nullable', 'string'],
             'unit' => ['required', 'string', 'max:32'],
             'salePrice' => ['required', 'string', 'regex:/^\d{1,12}(\.\d{1,6})?$/'],
+            'priceIncludesTax' => ['sometimes', 'boolean'],
             'categoryPublicId' => ['nullable', 'uuid'],
         ];
     }

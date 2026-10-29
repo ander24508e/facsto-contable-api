@@ -13,7 +13,7 @@ final class ListCustomersTest extends CompanyTestCase
         $company = $this->createCompany($owner, '1799999999001');
         $this->actingAs($owner);
         foreach (['Ana Pérez', 'Luis Mora'] as $index => $name) {
-            $this->postJson('/api/v1/customers', ['identificationType' => 'CEDULA', 'identification' => '012345678'.($index + 1), 'legalName' => $name])->assertCreated();
+            $this->postJson('/api/v1/customers', ['identificationType' => 'CEDULA', 'identification' => ['0123456782', '1710034065'][$index], 'legalName' => $name])->assertCreated();
         }
 
         $this->getJson('/api/v1/customers?search=ana&per_page=1')->assertOk()->assertJsonPath('meta.per_page', 1)->assertJsonCount(1, 'data');

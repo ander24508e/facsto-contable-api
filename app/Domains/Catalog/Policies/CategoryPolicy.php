@@ -31,6 +31,11 @@ final class CategoryPolicy
         return $this->canWrite($user) && $category->company_id === $this->context->company()->id;
     }
 
+    public function delete(User $user, Category $category): bool
+    {
+        return $this->update($user, $category);
+    }
+
     private function activeMember(User $user): bool
     {
         return $this->context->company()->memberships()->where('user_id', $user->id)->where('is_active', true)->exists();

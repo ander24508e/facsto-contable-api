@@ -9,6 +9,7 @@ use App\Domains\Sri\DTOs\InvoiceTaxXmlData;
 use App\Domains\Sri\DTOs\InvoiceXmlData;
 use App\Domains\Sri\Xml\Builders\AdditionalInformationBuilder;
 use App\Domains\Sri\Xml\Builders\InfoFacturaBuilder;
+use App\Domains\Sri\Xml\Builders\InfoNotaCreditoBuilder;
 use App\Domains\Sri\Xml\Builders\InfoTributariaBuilder;
 use App\Domains\Sri\Xml\Builders\InvoiceDetailsBuilder;
 use App\Domains\Sri\Xml\Builders\InvoicePaymentsBuilder;
@@ -69,6 +70,7 @@ final class InvoiceXmlBuilderTest extends TestCase
         return new InvoiceXmlBuilder(
             new InfoTributariaBuilder($text, new WithholdingAgentRequirement($text), new RimpeRequirement($text)),
             new InfoFacturaBuilder($text, $decimals, $payments),
+            new InfoNotaCreditoBuilder($text, $decimals),
             new InvoiceDetailsBuilder($text, $decimals),
             new AdditionalInformationBuilder($text, new ProviderRucRequirement($text)),
         );

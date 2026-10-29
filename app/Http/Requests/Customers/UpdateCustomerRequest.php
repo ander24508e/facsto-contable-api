@@ -21,6 +21,8 @@ final class UpdateCustomerRequest extends FormRequest
             'legalName' => ['sometimes', 'string', 'max:180'],
             'commercialName' => ['sometimes', 'nullable', 'string', 'max:180'],
             'email' => ['sometimes', 'nullable', 'email', 'max:254'],
+            'additionalEmails' => ['sometimes', 'nullable', 'array', 'max:5'],
+            'additionalEmails.*' => ['email', 'max:254', 'distinct'],
             'phone' => ['sometimes', 'nullable', 'string', 'max:40'],
             'address' => ['sometimes', 'nullable', 'string', 'max:255'],
         ];

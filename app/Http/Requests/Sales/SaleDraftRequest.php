@@ -27,7 +27,7 @@ abstract class SaleDraftRequest extends FormRequest
             'paymentMethods.*.amount' => ['required', 'string', 'regex:/^\d{1,16}(\.\d{1,2})?$/'],
             'paymentMethods.*.reference' => ['nullable', 'string', 'max:120'],
             'paymentMethods.*.term' => ['nullable', 'string', 'regex:/^\d{1,10}(\.\d{1,2})?$/'],
-            'paymentMethods.*.timeUnit' => ['nullable', Rule::in(['DAY', 'MONTH'])],
+            'paymentMethods.*.timeUnit' => ['nullable', 'required_with:paymentMethods.*.term', Rule::in(['DAY', 'MONTH'])],
         ];
     }
 }

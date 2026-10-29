@@ -2,6 +2,7 @@
 
 namespace App\Domains\Sri\Xml\Builders;
 
+use App\Domains\FiscalDocuments\Enums\DocumentType;
 use App\Domains\Sri\DTOs\InvoiceXmlData;
 use App\Domains\Sri\Xml\DecimalFormatter;
 use App\Domains\Sri\Xml\XmlTextNormalizer;
@@ -17,14 +18,18 @@ final class InvoiceDetailsBuilder
 
     public function append(DOMDocument $document, DOMElement $root, InvoiceXmlData $data): void
     {
+        // The credit note schema names the codes codigoInterno / codigoAdicional.
+        [$mainCode, $auxiliaryCode] = $data->documentType === DocumentType::CREDIT_NOTE
+            ? ['codigoInterno', 'codigoAdicional']
+            : ['codigoPrincipal', 'codigoAuxiliar'];
         $details = $document->createElement('detalles');
         $root->appendChild($details);
         foreach ($data->lines as $line) {
             $detail = $document->createElement('detalle');
             $details->appendChild($detail);
-            $this->text->appendElement($document, $detail, 'codigoPrincipal', $line->itemCode);
+            $this->text->appendElement($document, $detail, $mainCode, $line->itemCode);
             if (filled($line->auxiliaryCode)) {
-                $this->text->appendElement($document, $detail, 'codigoAuxiliar', $line->auxiliaryCode);
+                $this->text->appendElement($document, $detail, $auxiliaryCode, $line->auxiliaryCode);
             }
             $this->text->appendElement($document, $detail, 'descripcion', $line->description);
             $this->text->appendElement($document, $detail, 'cantidad', $this->decimals->quantity($line->quantity));

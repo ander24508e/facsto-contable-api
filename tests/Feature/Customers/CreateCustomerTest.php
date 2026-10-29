@@ -12,7 +12,7 @@ final class CreateCustomerTest extends CompanyTestCase
         $owner = User::factory()->create();
         $company = $this->createCompany($owner, '1799999999001');
         $this->actingAs($owner)->postJson('/api/v1/customers', [
-            'identificationType' => 'CEDULA', 'identification' => '0123456789', 'legalName' => 'Cliente de prueba',
+            'identificationType' => 'CEDULA', 'identification' => '0123456782', 'legalName' => 'Cliente de prueba',
         ])->assertCreated()->assertJsonPath('data.identificationType', 'CEDULA');
         $this->assertDatabaseHas('audit_logs', ['company_id' => $company->id, 'actor_id' => $owner->id, 'action' => 'customer.created']);
     }

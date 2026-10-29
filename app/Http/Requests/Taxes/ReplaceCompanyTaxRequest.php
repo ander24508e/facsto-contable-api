@@ -16,6 +16,7 @@ final class ReplaceCompanyTaxRequest extends FormRequest
         return [
             'fromPublicId' => ['required', 'uuid'],
             'toPublicId' => ['required', 'uuid', 'different:fromPublicId'],
+            'categoryPublicId' => ['sometimes', 'nullable', 'uuid'],
         ];
     }
 }

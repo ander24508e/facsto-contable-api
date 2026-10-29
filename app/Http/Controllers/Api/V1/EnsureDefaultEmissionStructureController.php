@@ -7,8 +7,8 @@ use App\Domains\Companies\Context\CompanyContext;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\EmissionPointResource;
 use App\Http\Resources\Api\V1\EstablishmentResource;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 final class EnsureDefaultEmissionStructureController extends Controller
 {

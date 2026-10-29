@@ -4,6 +4,7 @@ namespace App\Domains\FiscalDocuments\Services;
 
 use App\Domains\FiscalDocuments\Enums\DocumentStatus;
 use App\Domains\FiscalDocuments\Models\ElectronicDocument;
+use App\Domains\Integrations\Services\ModuleWebhookDispatcher;
 use App\Shared\Http\ApiErrorCode;
 use App\Shared\Http\ApiException;
 
@@ -65,6 +66,10 @@ final class DocumentStateMachine
         }
 
         $document->forceFill(['status' => $to, ...$attributes])->save();
+        // Final SRI answers are pushed to the module that sent the sale (when it has a webhook).
+        if (ModuleWebhookDispatcher::notifies($to)) {
+            app(ModuleWebhookDispatcher::class)->documentChanged($document);
+        }
 
         return $document->refresh();
     }

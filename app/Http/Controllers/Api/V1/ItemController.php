@@ -16,6 +16,7 @@ use App\Http\Requests\Catalog\UpdateItemRequest;
 use App\Http\Resources\Api\V1\ItemResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 
 final class ItemController extends Controller
 {
@@ -37,6 +38,29 @@ final class ItemController extends Controller
         }
 
         return ItemResource::collection($query->paginate(min(max((int) $request->query('per_page', 15), 1), 100)));
+    }
+
+    /** GET /items/frequent — the active items sold most in the last 90 days first (quick sale buttons). */
+    public function frequent(Request $request, CompanyContext $context): AnonymousResourceCollection
+    {
+        $this->authorize('viewAny', Item::class);
+        $limit = min(max((int) $request->query('limit', 12), 1), 48);
+        $company = $context->company();
+        $sold = DB::table('sale_details')
+            ->join('sales', 'sales.id', '=', 'sale_details.sale_id')
+            ->where('sale_details.company_id', $company->id)
+            ->where('sales.created_at', '>=', now()->subDays(90))
+            ->groupBy('sale_details.item_id')
+            ->selectRaw('sale_details.item_id, COUNT(*) as uses');
+
+        $items = $company->items()->where('is_active', true)->with(['taxes.definition', 'category'])
+            ->leftJoinSub($sold, 'sold', 'sold.item_id', '=', 'items.id')
+            ->orderByRaw('COALESCE(sold.uses, 0) DESC')
+            ->orderBy('items.name')
+            ->limit($limit)
+            ->get(['items.*']);
+
+        return ItemResource::collection($items);
     }
 
     public function store(StoreItemRequest $request, CreateItemAction $create): ItemResource
@@ -83,7 +107,7 @@ final class ItemController extends Controller
 
     private function attributes(array $data): array
     {
-        foreach (['internalCode' => 'internal_code', 'auxiliaryCode' => 'auxiliary_code', 'salePrice' => 'sale_price', 'categoryPublicId' => 'category_public_id'] as $source => $target) {
+        foreach (['internalCode' => 'internal_code', 'auxiliaryCode' => 'auxiliary_code', 'salePrice' => 'sale_price', 'priceIncludesTax' => 'price_includes_tax', 'categoryPublicId' => 'category_public_id'] as $source => $target) {
             if (array_key_exists($source, $data)) {
                 $data[$target] = $data[$source];
             }

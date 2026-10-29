@@ -2,6 +2,12 @@
 
 return [
 
+    // Nota de crédito (codDoc 04), esquema oficial 1.1.0.
+    'credit_note' => [
+        'xml_version' => '1.1.0',
+        'xsd_path' => resource_path('sri/xsd/credit_note/1.1.0/notaCredito.xsd'),
+    ],
+
     'invoice' => [
         'xml_version' => env('SRI_INVOICE_XML_VERSION', '1.1.0'),
         'xsd_path' => resource_path('sri/xsd/invoice/1.1.0/factura.xsd'),
@@ -93,6 +99,9 @@ return [
     // Hora oficial de Ecuador: define el fin del día de emisión.
     'timezone' => 'America/Guayaquil',
 
+    // Días antes del vencimiento de la firma en que el Dashboard pide renovarla.
+    'certificate_expiry_warning_days' => (int) env('CERTIFICATE_EXPIRY_WARNING_DAYS', 30),
+
     'retry' => [
         // Recepción: un comprobante que no llegó al SRI (SRI caído, red, HTTP 5xx) se reintenta con la
         // misma clave hasta las 23:59:59 del día de emisión; la espera crece y luego se repite cada 10 min.
@@ -110,5 +119,7 @@ return [
      */
     'delivery' => [
         'email_enabled' => (bool) env('DELIVERY_EMAIL_ENABLED', false),
+        // Vigencia del enlace firmado al RIDE que se comparte por WhatsApp u otro chat.
+        'share_link_days' => (int) env('RIDE_SHARE_LINK_DAYS', 7),
     ],
 ];

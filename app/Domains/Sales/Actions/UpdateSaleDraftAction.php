@@ -28,7 +28,7 @@ final class UpdateSaleDraftAction
             if (! $sale) {
                 throw new ApiException(ApiErrorCode::SALE_NOT_FOUND, 'El borrador no existe en la empresa activa.', 404);
             }
-            if ($sale->status !== SaleStatus::DRAFT) {
+            if (! in_array($sale->status, [SaleStatus::DRAFT, SaleStatus::IN_CORRECTION], true)) {
                 throw new ApiException(ApiErrorCode::SALE_NOT_EDITABLE, 'Sólo se pueden editar borradores activos.', 409);
             }
 

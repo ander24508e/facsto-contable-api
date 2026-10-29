@@ -31,7 +31,14 @@ final class SaleDraftCalculator
                 throw new ApiException(ApiErrorCode::VALIDATION_FAILED, 'La cantidad debe ser mayor que cero.', 422);
             }
 
-            $gross = $this->round(bcmul($quantity, $item->sale_price, 8));
+            foreach ($item->taxes as $tax) {
+                if (! $tax->isUsableOn(today())) {
+                    throw new ApiException(ApiErrorCode::TAX_NOT_AVAILABLE, 'El artículo tiene una tasa que ya no está vigente. Actualiza su configuración antes de continuar.', 422);
+                }
+            }
+
+            $unitPrice = $this->unitPriceWithoutTaxes($item);
+            $gross = $this->round(bcmul($quantity, $unitPrice, 8));
             if (bccomp($gross, '9999999999999999.99', 2) > 0) {
                 throw new ApiException(ApiErrorCode::VALIDATION_FAILED, 'El subtotal de una línea supera el máximo permitido.', 422);
             }
@@ -45,10 +52,6 @@ final class SaleDraftCalculator
             $lineTaxTotal = '0.00';
 
             foreach ($item->taxes as $tax) {
-                if (! $tax->isUsableOn(today())) {
-                    throw new ApiException(ApiErrorCode::TAX_NOT_AVAILABLE, 'El artículo tiene una tasa que ya no está vigente. Actualiza su configuración antes de continuar.', 422);
-                }
-
                 // Code and percentage always come from the official definition, never from the company.
                 $definition = $tax->definition;
                 $amount = $this->round(bcdiv(bcmul($base, (string) $definition->fixed_percentage, 8), '100', 8));
@@ -69,7 +72,7 @@ final class SaleDraftCalculator
             $details[] = [
                 'item' => $item,
                 'quantity' => bcadd($quantity, '0', 6),
-                'unit_price' => $item->sale_price,
+                'unit_price' => $unitPrice,
                 'discount_amount' => $discount,
                 'subtotal' => $gross,
                 'taxable_base' => $base,
@@ -91,6 +94,27 @@ final class SaleDraftCalculator
         }
 
         return compact('details', 'subtotal', 'discountTotal', 'taxTotal', 'tipAmount', 'total');
+    }
+
+    /**
+     * The SRI receives prices without taxes. When the business types its final price (taxes included),
+     * the unit base is that price divided by (1 + the item's tax rates), kept at the XML's 6 decimals.
+     */
+    private function unitPriceWithoutTaxes(Item $item): string
+    {
+        $price = (string) $item->sale_price;
+        if (! $item->price_includes_tax) {
+            return $price;
+        }
+        $rate = '0';
+        foreach ($item->taxes as $tax) {
+            $rate = bcadd($rate, (string) $tax->definition->fixed_percentage, 6);
+        }
+        if (bccomp($rate, '0', 6) === 0) {
+            return $price;
+        }
+
+        return $this->round(bcdiv(bcmul($price, '100', 12), bcadd('100', $rate, 6), 12), 6);
     }
 
     private function round(string $value, int $scale = 2): string

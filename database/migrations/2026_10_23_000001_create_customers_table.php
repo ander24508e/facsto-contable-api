@@ -18,6 +18,8 @@ return new class extends Migration
             $table->string('legal_name', 180);
             $table->string('commercial_name', 180)->nullable();
             $table->string('email', 254)->nullable();
+            // Otros destinatarios del comprobante autorizado (contabilidad, compras…).
+            $table->json('additional_emails')->nullable();
             $table->string('phone', 40)->nullable();
             $table->string('address', 255)->nullable();
             $table->boolean('is_active')->default(true);

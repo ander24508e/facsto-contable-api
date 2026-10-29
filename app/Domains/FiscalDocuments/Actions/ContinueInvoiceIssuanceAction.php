@@ -4,6 +4,7 @@ namespace App\Domains\FiscalDocuments\Actions;
 
 use App\Domains\FiscalDocuments\Enums\DocumentStatus;
 use App\Domains\FiscalDocuments\Models\ElectronicDocument;
+use App\Domains\Sales\Enums\SaleStatus;
 use App\Domains\Sri\Actions\BuildInvoiceXmlAction;
 use App\Domains\Sri\Actions\QueueDocumentForSriAction;
 use App\Domains\Sri\Actions\SignElectronicDocumentAction;
@@ -55,6 +56,10 @@ final class ContinueInvoiceIssuanceAction
     /** POST /invoices/{invoice}/retry-sri: a controlled retry that keeps number and access key. */
     public function retry(ElectronicDocument $document, User $actor): ElectronicDocument
     {
+        if ($document->sale?->status === SaleStatus::IN_CORRECTION) {
+            throw new ApiException(ApiErrorCode::INVOICE_RETRY_NOT_ALLOWED, 'La venta está en corrección: guárdala y emítela de nuevo.', 409);
+        }
+
         return match ($document->status) {
             DocumentStatus::AUTHORIZED => throw new ApiException(ApiErrorCode::INVOICE_RETRY_NOT_ALLOWED, 'El comprobante ya fue autorizado por el SRI.', 409),
             DocumentStatus::RECEIVED, DocumentStatus::PENDING_AUTHORIZATION => $this->askAuthorization($document),

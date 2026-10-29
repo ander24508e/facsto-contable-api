@@ -680,6 +680,39 @@ paths:
       responses:
         "200": { description: Página de comprobantes fiscales, content: { application/json: { schema: { $ref: "#/components/schemas/ElectronicDocumentPage" } } } }
         "403": { $ref: "#/components/responses/CompanyAccessError" }
+    post:
+      tags: [Modules]
+      summary: Un módulo (Taller, Lavadora…) factura en una llamada; idempotente por Idempotency-Key.
+      description: >-
+        Token "Bearer fct_…" de Configuración → Integraciones. Las líneas usan el código del catálogo de FACSTO; el
+        cliente se crea si no existe (sin cliente, CONSUMIDOR FINAL); sin pagos, todo el total va al código 01. La
+        misma clave devuelve la misma venta (200, meta.replayed); la misma clave con otra sourceReference responde
+        409 IDEMPOTENCY_KEY_REUSED. 201 emitida, 202 venta guardada con error de emisión (data.error).
+      operationId: issueModuleInvoice
+      security: [{ moduleToken: [] }]
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, maxLength: 120 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lines]
+              properties:
+                sourceReference: { type: string, maxLength: 120 }
+                customer: { type: object, properties: { identificationType: { type: string, enum: [RUC, CEDULA, PASSPORT, FOREIGN_IDENTIFICATION] }, identification: { type: string }, legalName: { type: string }, email: { type: string }, address: { type: string }, phone: { type: string } } }
+                lines: { type: array, items: { type: object, required: [itemCode, quantity], properties: { itemCode: { type: string }, quantity: { type: string }, discountAmount: { type: string } } } }
+                payments: { type: array, items: { type: object, required: [code], properties: { code: { type: string }, amount: { type: string }, reference: { type: string }, term: { type: string }, timeUnit: { type: string, enum: [DAY, MONTH] } } } }
+                tipAmount: { type: string }
+                notes: { type: string }
+      responses:
+        "200": { description: Repetición de una clave ya usada }
+        "201": { description: "{ salePublicId, sourceReference, invoice, error: null }" }
+        "202": { description: Venta guardada; la emisión se detuvo (data.error) }
+        "401": { description: Token inválido o revocado (API_CLIENT_INVALID) }
+        "409": { $ref: "#/components/responses/ConflictError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
   /api/v1/invoices/{invoice}:
     get:
       tags: [FiscalDocuments]
@@ -788,6 +821,12 @@ paths:
       security: [{ sessionCookie: [], csrfHeader: [] }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CategoryInput" } } } }
       responses: { "200": { description: Categoría actualizada, content: { application/json: { schema: { $ref: "#/components/schemas/CategoryResponse" } } } }, "403": { $ref: "#/components/responses/CompanyAccessError" }, "404": { $ref: "#/components/responses/NotFoundError" }, "409": { $ref: "#/components/responses/ConflictError" } }
+    delete:
+      tags: [Catalog]
+      summary: Elimina una categoría sin productos; con productos solo se puede desactivar (CATEGORY_IN_USE).
+      operationId: deleteCategory
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      responses: { "204": { description: Categoría eliminada }, "403": { $ref: "#/components/responses/CompanyAccessError" }, "404": { $ref: "#/components/responses/NotFoundError" }, "409": { $ref: "#/components/responses/ConflictError" } }
   /api/v1/categories/{category}/activate:
     post:
       tags: [Catalog]
@@ -1243,6 +1282,12 @@ paths:
         "403": { $ref: "#/components/responses/CompanyAccessError" }
         "409": { $ref: "#/components/responses/ConflictError" }
         "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Customers]
+      summary: Elimina un cliente sin ventas ni comprobantes; si los tiene solo se puede desactivar (CUSTOMER_IN_USE).
+      operationId: deleteCustomer
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      responses: { "204": { description: Cliente eliminado }, "403": { $ref: "#/components/responses/CompanyAccessError" }, "404": { $ref: "#/components/responses/NotFoundError" }, "409": { $ref: "#/components/responses/ConflictError" } }
   /api/v1/customers/{customer}/activate:
     post:
       tags: [Customers]
@@ -1592,6 +1637,338 @@ paths:
       security: [{ sessionCookie: [] }]
       responses:
         "200": { description: Reglas fiscales, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/FiscalRule" } } } } } } }
+  /api/v1/sales/quote:
+    post:
+      tags: [Sales]
+      summary: Cálculo fiscal de una venta sin guardarla (misma matemática del borrador y del XML).
+      description: >-
+        Mismo cuerpo que POST /sales. Devuelve líneas, subtotal, descuento, base, impuestos por tarifa (taxSummary),
+        propina, total, suma de pagos, diferencia por asignar y lo que falta para facturar (pending: customer, lines,
+        payment_methods, payment_total, final_consumer_limit). Un artículo con priceIncludesTax obtiene su base
+        dividiendo el precio para (1 + tarifas).
+      operationId: quoteSale
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      responses:
+        "200": { description: Cálculo de la venta }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/customers/lookup:
+    get:
+      tags: [Customers]
+      summary: Detecta el tipo de una cédula/RUC escrita, valida su dígito y busca el cliente y su duplicado (cédula ↔ RUC 001).
+      operationId: lookupCustomer
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: identification, in: query, required: true, schema: { type: string, maxLength: 20 } }
+      responses:
+        "200": { description: "{ identification, detectedType, valid, customer, relatedCustomers }" }
+  /api/v1/customers/final-consumer:
+    post:
+      tags: [Customers]
+      summary: Obtiene (o crea una vez) el CONSUMIDOR FINAL 9999999999999 de la empresa.
+      operationId: ensureFinalConsumer
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      responses:
+        "200": { description: Cliente consumidor final }
+  /api/v1/customers/{customer}/merge:
+    post:
+      tags: [Customers]
+      summary: Une un cliente duplicado (sourcePublicId) en éste; ventas y documentos pasan al que queda y el duplicado se desactiva.
+      operationId: mergeCustomers
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - { name: customer, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [sourcePublicId], properties: { sourcePublicId: { type: string, format: uuid } } } } }
+      responses:
+        "200": { description: Cliente que queda }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/customers/{customer}/fiscal-summary:
+    get:
+      tags: [Customers]
+      summary: Ficha fiscal del año (facturado, notas de crédito, correos no entregados, últimos documentos).
+      operationId: customerFiscalSummary
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: customer, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Ficha fiscal }
+  /api/v1/items/frequent:
+    get:
+      tags: [Catalog]
+      summary: Artículos activos, primero los más vendidos en 90 días (botones de la venta rápida).
+      operationId: frequentItems
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 48, default: 12 } }
+      responses:
+        "200": { description: Artículos }
+  /api/v1/categories/{category}/taxes:
+    put:
+      tags: [Catalog]
+      summary: Tarifas por defecto de la categoría; los artículos nuevos de la categoría las heredan.
+      description: Lista vacía para quitarlas. Con tarifas, exactamente una de IVA. POST /taxes/replacements acepta categoryPublicId para mover sólo esa categoría.
+      operationId: syncCategoryTaxes
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - { name: category, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [taxPublicIds], properties: { taxPublicIds: { type: array, items: { type: string, format: uuid } } } } } }
+      responses:
+        "200": { description: Categoría con sus tarifas }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/imports/preview:
+    post:
+      tags: [Imports]
+      summary: Sube un CSV de clientes o artículos y valida cada fila (vista previa válida 30 minutos).
+      description: >-
+        Separador coma o punto y coma, con encabezados. Clientes - tipo_identificacion (vacío detecta cédula/RUC),
+        identificacion, razon_social, nombre_comercial, correo, telefono, direccion. Artículos - tipo (PRODUCTO/SERVICIO),
+        codigo, codigo_auxiliar, nombre, unidad, precio, precio_incluye_iva (si/no), iva (0, 5, 15, NO_OBJETO, EXENTO), categoria.
+      operationId: previewImport
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { type: object, required: [type, file], properties: { type: { type: string, enum: [customers, items] }, file: { type: string, format: binary } } }
+      responses:
+        "200": { description: "{ id, type, rows[{ row, data, errors }], valid, invalid }" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/imports/{import}/commit:
+    post:
+      tags: [Imports]
+      summary: Crea sólo las filas válidas de la vista previa (se vuelven a validar).
+      operationId: commitImport
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - { name: import, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [type], properties: { type: { type: string, enum: [customers, items] } } } } }
+      responses:
+        "200": { description: "{ created, skipped, errors }" }
+        "410": { description: La vista previa venció }
+  /api/v1/invoices/lookup:
+    get:
+      tags: [FiscalDocuments]
+      summary: Abre un comprobante por clave de acceso (también una anterior de una corrección), número 001-001-000000123 o secuencial.
+      operationId: lookupInvoice
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, maxLength: 60 } }
+      responses:
+        "200": { description: Comprobante, content: { application/json: { schema: { $ref: "#/components/schemas/ElectronicDocumentResponse" } } } }
+        "404": { $ref: "#/components/responses/NotFoundError" }
+  /api/v1/invoices/{invoice}/correct:
+    post:
+      tags: [FiscalDocuments]
+      summary: Abre la venta de una factura RETURNED / NOT_AUTHORIZED para corregirla (estado IN_CORRECTION).
+      description: >-
+        Al emitirla de nuevo (POST /sales/{sale}/issue) conserva el número, toma otra vez el contenido de la venta y
+        genera un código numérico y una clave de acceso nuevos; las claves anteriores quedan en el historial. Mientras
+        está en corrección, retry-sri responde INVOICE_RETRY_NOT_ALLOWED.
+      operationId: startInvoiceCorrection
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Venta en corrección }
+        "409": { $ref: "#/components/responses/ConflictError" }
+  /api/v1/invoices/{invoice}/timeline:
+    get:
+      tags: [FiscalDocuments]
+      summary: Historial fiscal ordenado (etapas, intentos al SRI con sus mensajes, entregas, correcciones y reenvíos).
+      operationId: invoiceTimeline
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: "[{ type, at, status, detail, messages }]" }
+  /api/v1/invoices/{invoice}/deliveries:
+    post:
+      tags: [FiscalDocuments]
+      summary: Reenvía el comprobante autorizado al comprador o a otros correos (hasta 5).
+      operationId: resendInvoice
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { emails: { type: array, maxItems: 5, items: { type: string, format: email } } } } } }
+      responses:
+        "202": { description: "{ recipients }" }
+        "409": { $ref: "#/components/responses/ConflictError" }
+  /api/v1/invoices/{invoice}/share-link:
+    post:
+      tags: [FiscalDocuments]
+      summary: Enlace firmado y temporal (RIDE_SHARE_LINK_DAYS, 7 por defecto) al RIDE de un comprobante autorizado.
+      operationId: shareInvoiceLink
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: "{ url, expiresAt }" }
+  /api/v1/invoices/{invoice}/credit-notes:
+    get:
+      tags: [FiscalDocuments]
+      summary: Notas de crédito de la factura.
+      operationId: listCreditNotes
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Notas de crédito }
+    post:
+      tags: [FiscalDocuments]
+      summary: Nota de crédito (codDoc 04) total o parcial de una factura autorizada; sigue XML → firma → SRI.
+      description: >-
+        Cada línea devuelve una cantidad de una línea de la factura (lineNumber, base 1) sin superar lo que queda por
+        devolver; descuento e impuestos son proporcionales. No se admite para consumidor final. Se numera en el punto
+        de emisión de la factura con su propia secuencia.
+      operationId: createCreditNote
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason, lines]
+              properties:
+                reason: { type: string, minLength: 3, maxLength: 300 }
+                lines: { type: array, minItems: 1, items: { type: object, required: [lineNumber, quantity], properties: { lineNumber: { type: integer, minimum: 1 }, quantity: { type: string } } } }
+      responses:
+        "201": { description: Nota de crédito, content: { application/json: { schema: { $ref: "#/components/schemas/ElectronicDocumentResponse" } } } }
+        "409": { $ref: "#/components/responses/ConflictError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/invoices/bulk/retry-sri:
+    post:
+      tags: [FiscalDocuments]
+      summary: Reintenta hasta 100 comprobantes; cada uno por su cuenta.
+      operationId: bulkRetryInvoices
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [invoicePublicIds], properties: { invoicePublicIds: { type: array, maxItems: 100, items: { type: string, format: uuid } } } } } }
+      responses:
+        "200": { description: "data[{ publicId, fullNumber, ok, status, errorCode }], meta{ succeeded, failed }" }
+  /api/v1/invoices/bulk/export:
+    post:
+      tags: [FiscalDocuments]
+      summary: ZIP con el XML autorizado y el RIDE de los comprobantes autorizados seleccionados.
+      operationId: bulkExportInvoices
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [invoicePublicIds], properties: { invoicePublicIds: { type: array, maxItems: 100, items: { type: string, format: uuid } } } } } }
+      responses:
+        "200": { description: Archivo ZIP, content: { application/zip: { schema: { type: string, format: binary } } } }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/module/invoices/{invoice}:
+    get:
+      tags: [Modules]
+      summary: Estado de un comprobante enviado por el módulo (o de sus notas de crédito).
+      operationId: moduleInvoice
+      security: [{ moduleToken: [] }]
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Comprobante, content: { application/json: { schema: { $ref: "#/components/schemas/ElectronicDocumentResponse" } } } }
+        "404": { $ref: "#/components/responses/NotFoundError" }
+  /api/v1/module/invoices/{invoice}/ride:
+    get:
+      tags: [Modules]
+      summary: RIDE en PDF de un comprobante autorizado del módulo.
+      operationId: moduleInvoiceRide
+      security: [{ moduleToken: [] }]
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: PDF, content: { application/pdf: { schema: { type: string, format: binary } } } }
+  /api/v1/api-clients:
+    get:
+      tags: [Modules]
+      summary: Integraciones de la empresa (OWNER/ADMIN).
+      operationId: listApiClients
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200": { description: Integraciones }
+    post:
+      tags: [Modules]
+      summary: Crea el token de un módulo; el token y el secreto del webhook se muestran sólo en esta respuesta.
+      description: >-
+        Webhooks - POST JSON { id, event, createdAt, data } con X-Facsto-Event (invoice.authorized, invoice.returned,
+        invoice.not_authorized, credit_note.*), X-Facsto-Delivery, X-Facsto-Timestamp y X-Facsto-Signature =
+        "sha256=" + HMAC-SHA256("{timestamp}.{body}", secreto). Se reintenta hasta 6 veces si no responde 2xx.
+      operationId: createApiClient
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [name, module], properties: { name: { type: string }, module: { type: string, pattern: "^[a-z0-9_-]+$" }, webhookUrl: { type: string, format: uri } } } } }
+      responses:
+        "201": { description: "Integración con token y webhookSecret" }
+  /api/v1/api-clients/{apiClient}:
+    patch:
+      tags: [Modules]
+      summary: Cambia el nombre o el webhook (https).
+      operationId: updateApiClient
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - { name: apiClient, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Integración }
+    delete:
+      tags: [Modules]
+      summary: Revoca el token de inmediato y para siempre.
+      operationId: revokeApiClient
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - { name: apiClient, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Integración revocada }
+  /api/v1/dashboard/fiscal-status:
+    get:
+      tags: [Dashboard]
+      summary: Comprobantes de hoy por estado, cierre de reintentos (23:59:59) y comprobantes del mes.
+      operationId: fiscalStatus
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200": { description: "{ date, authorized, inProcess, retrying, problems, retryDeadline, usage{ documentsThisMonth, limit } }" }
+  /api/v1/dashboard/actions:
+    get:
+      tags: [Dashboard]
+      summary: Sólo lo que requiere acción (firma por vencer, devueltos, facturación incompleta o apagada, borradores viejos).
+      operationId: dashboardActions
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200": { description: "[{ code, count, date, to }]" }
+  /api/v1/reports/tax-summary:
+    get:
+      tags: [Dashboard]
+      summary: IVA del mes (autorizados) por tarifa - ventas menos notas de crédito, base del formulario 104.
+      operationId: taxSummary
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: period, in: query, schema: { type: string, pattern: "^\\d{4}-\\d{2}$" } }
+      responses:
+        "200": { description: "{ period, invoiceCount, creditNoteCount, invoicedTotal, creditedTotal, rates[] }" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /public/ride/{invoice}:
+    get:
+      tags: [FiscalDocuments]
+      summary: RIDE detrás de un enlace firmado (sin sesión); 403 si la firma no coincide o venció.
+      operationId: publicRide
+      security: []
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: expires, in: query, required: true, schema: { type: integer } }
+        - { name: signature, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: PDF, content: { application/pdf: { schema: { type: string, format: binary } } } }
+        "403": { description: Firma inválida o vencida }
 components:
   securitySchemes:
     sessionCookie:
@@ -1604,6 +1981,10 @@ components:
       in: header
       name: X-XSRF-TOKEN
       description: Valor URL-decoded de la cookie XSRF-TOKEN.
+    moduleToken:
+      type: http
+      scheme: bearer
+      description: Token "fct_…" de un módulo (Configuración → Integraciones); sólo se guarda su SHA-256.
   responses:
     AuthenticationError:
       description: La sesión no está autenticada.
@@ -1896,7 +2277,13 @@ components:
       properties:
         data: { type: array, items: { $ref: "#/components/schemas/Sale" } }
         links: { type: object }
-        meta: { type: object }
+        meta:
+          type: object
+          properties:
+            stageCounts:
+              type: object
+              description: Ventas de toda la empresa en las pestañas que esperan acción, sin aplicar búsqueda ni pestaña.
+              properties: { draft: { type: integer }, prepared: { type: integer }, problems: { type: integer } }
     DashboardSummaryResponse:
       type: object
       properties:
