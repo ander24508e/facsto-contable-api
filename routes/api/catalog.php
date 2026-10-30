@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\CategoryController;
+use App\Http\Controllers\Api\V1\BrandController;
 use App\Http\Controllers\Api\V1\FiscalPaymentMethodController;
 use App\Http\Controllers\Api\V1\ItemController;
 use App\Http\Controllers\Api\V1\TaxController;
@@ -39,6 +40,13 @@ Route::middleware(['auth:sanctum', 'company.context'])->group(function (): void 
     Route::put('/categories/{category}/taxes', [CategoryController::class, 'syncTaxes']);
     Route::post('/categories/{category}/activate', [CategoryController::class, 'activate']);
     Route::post('/categories/{category}/deactivate', [CategoryController::class, 'deactivate']);
+    Route::get('/brands', [BrandController::class, 'index']);
+    Route::post('/brands', [BrandController::class, 'store']);
+    Route::get('/brands/{brand}', [BrandController::class, 'show']);
+    Route::patch('/brands/{brand}', [BrandController::class, 'update']);
+    Route::delete('/brands/{brand}', [BrandController::class, 'destroy']);
+    Route::post('/brands/{brand}/activate', [BrandController::class, 'activate']);
+    Route::post('/brands/{brand}/deactivate', [BrandController::class, 'deactivate']);
     Route::get('/taxes', [TaxController::class, 'index']);
     Route::post('/taxes', [TaxController::class, 'activate']);
     Route::post('/taxes/{companyTax}/deactivate', [TaxController::class, 'deactivate']);

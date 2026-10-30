@@ -34,6 +34,7 @@ final class DeleteItemAction
         DB::transaction(function () use ($item, $actor, $company): void {
             $before = $item->only(['type', 'internal_code', 'name', 'sale_price', 'is_active']);
             $item->taxes()->detach();
+            $item->catalogMetadata()->delete();
             $item->delete();
             $this->audit->record($actor, $company, 'item.deleted', $item, $before, []);
         });

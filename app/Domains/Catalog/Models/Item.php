@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
 #[Fillable(['company_id', 'category_id', 'type', 'internal_code', 'auxiliary_code', 'name', 'description', 'unit', 'sale_price', 'price_includes_tax', 'cost_price', 'additional_detail', 'is_active'])]
@@ -43,6 +44,11 @@ class Item extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
+    }
+
+    public function catalogMetadata(): HasOne
+    {
+        return $this->hasOne(ItemCatalogMetadata::class);
     }
 
     public function stocks(): HasMany

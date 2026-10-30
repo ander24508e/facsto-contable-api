@@ -25,6 +25,8 @@ final class UpdateItemRequest extends FormRequest
             'salePrice' => ['sometimes', 'string', 'regex:/^\d{1,12}(\.\d{1,6})?$/'],
             'priceIncludesTax' => ['sometimes', 'boolean'],
             'categoryPublicId' => ['sometimes', 'nullable', 'uuid'],
+            'brandPublicId' => ['sometimes', 'nullable', 'uuid'],
+            'barcode' => ['sometimes', 'nullable', 'string', 'max:64'],
             'costPrice' => ['sometimes', 'nullable', 'string', 'regex:/^\d{1,12}(\.\d{1,6})?$/'],
             'additionalDetail' => ['sometimes', 'nullable', 'string', 'max:300'],
             'stock' => ['sometimes', 'array'],
@@ -58,6 +60,17 @@ final class UpdateItemRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $this->merge(array_filter(['internal_code' => $this->input('internalCode'), 'auxiliary_code' => $this->input('auxiliaryCode'), 'sale_price' => $this->input('salePrice'), 'category_public_id' => $this->input('categoryPublicId')], fn ($value) => $value !== null || array_key_exists('categoryPublicId', $this->all())));
+        $mapped = [
+            'internal_code' => $this->input('internalCode'),
+            'auxiliary_code' => $this->input('auxiliaryCode'),
+            'sale_price' => $this->input('salePrice'),
+            'category_public_id' => $this->input('categoryPublicId'),
+            'brand_public_id' => $this->input('brandPublicId'),
+            'barcode' => $this->input('barcode') === null ? null : trim((string) $this->input('barcode')),
+        ];
+        $this->merge(array_filter($mapped, fn ($value, $key) => $value !== null || array_key_exists(match ($key) {
+            'internal_code' => 'internalCode', 'auxiliary_code' => 'auxiliaryCode', 'sale_price' => 'salePrice',
+            'category_public_id' => 'categoryPublicId', 'brand_public_id' => 'brandPublicId', default => 'barcode',
+        }, $this->all()), ARRAY_FILTER_USE_BOTH));
     }
 }

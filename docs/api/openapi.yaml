@@ -849,6 +849,56 @@ paths:
       operationId: deactivateCategory
       security: [{ sessionCookie: [], csrfHeader: [] }]
       responses: { "200": { description: Categoría desactivada, content: { application/json: { schema: { $ref: "#/components/schemas/CategoryResponse" } } } }, "403": { $ref: "#/components/responses/CompanyAccessError" } }
+  /api/v1/brands:
+    get:
+      tags: [Catalog]
+      summary: Lista las marcas de la empresa activa con búsqueda, estado y paginación.
+      operationId: listBrands
+      security: [{ sessionCookie: [] }]
+      responses: { "200": { description: Marcas, content: { application/json: { schema: { $ref: "#/components/schemas/BrandPage" } } } } }
+    post:
+      tags: [Catalog]
+      summary: Crea una marca en la empresa activa.
+      operationId: createBrand
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BrandInput" } } } }
+      responses: { "201": { description: Marca creada, content: { application/json: { schema: { $ref: "#/components/schemas/BrandResponse" } } } }, "403": { $ref: "#/components/responses/CompanyAccessError" }, "409": { $ref: "#/components/responses/ConflictError" }, "422": { $ref: "#/components/responses/ValidationError" } }
+  /api/v1/brands/{brand}:
+    parameters:
+      - { name: brand, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Catalog]
+      summary: Consulta una marca de la empresa activa.
+      operationId: getBrand
+      security: [{ sessionCookie: [] }]
+      responses: { "200": { description: Marca, content: { application/json: { schema: { $ref: "#/components/schemas/BrandResponse" } } } }, "403": { $ref: "#/components/responses/CompanyAccessError" }, "404": { $ref: "#/components/responses/NotFoundError" } }
+    patch:
+      tags: [Catalog]
+      summary: Actualiza una marca de la empresa activa.
+      operationId: updateBrand
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BrandInput" } } } }
+      responses: { "200": { description: Marca actualizada, content: { application/json: { schema: { $ref: "#/components/schemas/BrandResponse" } } } }, "403": { $ref: "#/components/responses/CompanyAccessError" }, "404": { $ref: "#/components/responses/NotFoundError" }, "409": { $ref: "#/components/responses/ConflictError" } }
+    delete:
+      tags: [Catalog]
+      summary: Elimina una marca no asignada a artículos; las asignadas solo se pueden desactivar.
+      operationId: deleteBrand
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      responses: { "204": { description: Marca eliminada }, "403": { $ref: "#/components/responses/CompanyAccessError" }, "404": { $ref: "#/components/responses/NotFoundError" }, "409": { $ref: "#/components/responses/ConflictError" } }
+  /api/v1/brands/{brand}/activate:
+    post:
+      tags: [Catalog]
+      summary: Activa una marca existente.
+      operationId: activateBrand
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      responses: { "200": { description: Marca activada, content: { application/json: { schema: { $ref: "#/components/schemas/BrandResponse" } } } }, "403": { $ref: "#/components/responses/CompanyAccessError" } }
+  /api/v1/brands/{brand}/deactivate:
+    post:
+      tags: [Catalog]
+      summary: Desactiva una marca sin borrar sus asociaciones históricas.
+      operationId: deactivateBrand
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      responses: { "200": { description: Marca desactivada, content: { application/json: { schema: { $ref: "#/components/schemas/BrandResponse" } } } }, "403": { $ref: "#/components/responses/CompanyAccessError" } }
   /api/v1/fiscal-payment-methods:
     get:
       tags: [Catalog]
@@ -2274,6 +2324,11 @@ components:
         priceTiers: { type: array, description: Precios alternos desde una cantidad (mayorista), items: { type: object, properties: { minQuantity: { type: string }, price: { type: string } } } }
         finalPrice: { type: string, description: Precio por unidad con impuestos (el mismo precio si ya los incluye), redondeado a centavos. }
         auxiliaryCode: { type: [string, "null"], maxLength: 25 }
+        categoryPublicId: { type: [string, "null"], format: uuid }
+        categoryName: { type: [string, "null"] }
+        brandPublicId: { type: [string, "null"], format: uuid }
+        brandName: { type: [string, "null"] }
+        barcode: { type: [string, "null"], maxLength: 64 }
         name: { type: string, maxLength: 180 }
         description: { type: [string, "null"] }
         unit: { type: string, maxLength: 32 }
@@ -2291,6 +2346,9 @@ components:
         description: { type: [string, "null"] }
         unit: { type: string, maxLength: 32 }
         salePrice: { type: string, pattern: '^\d{1,12}(\.\d{1,6})?$' }
+        categoryPublicId: { type: [string, "null"], format: uuid }
+        brandPublicId: { type: [string, "null"], format: uuid }
+        barcode: { type: [string, "null"], maxLength: 64 }
     UpdateItemRequest:
       type: object
       properties:
@@ -2301,6 +2359,9 @@ components:
         description: { type: [string, "null"] }
         unit: { type: string, maxLength: 32 }
         salePrice: { type: string, pattern: '^\d{1,12}(\.\d{1,6})?$' }
+        categoryPublicId: { type: [string, "null"], format: uuid }
+        brandPublicId: { type: [string, "null"], format: uuid }
+        barcode: { type: [string, "null"], maxLength: 64 }
     ItemResponse:
       type: object
       properties: { data: { $ref: "#/components/schemas/Item" } }
@@ -2461,6 +2522,23 @@ components:
     CategoryPage:
       type: object
       properties: { data: { type: array, items: { $ref: "#/components/schemas/Category" } }, meta: { type: object }, links: { type: object } }
+    BrandInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 120 }
+        description: { type: [string, "null"], maxLength: 2000 }
+    Brand:
+      allOf:
+        - $ref: "#/components/schemas/BrandInput"
+        - type: object
+          properties: { publicId: { type: string, format: uuid }, isActive: { type: boolean }, itemsCount: { type: integer } }
+    BrandResponse:
+      type: object
+      properties: { data: { $ref: "#/components/schemas/Brand" } }
+    BrandPage:
+      type: object
+      properties: { data: { type: array, items: { $ref: "#/components/schemas/Brand" } }, meta: { type: object }, links: { type: object } }
     FiscalPaymentMethod:
       type: object
       properties: { publicId: { type: string, format: uuid }, code: { type: string }, name: { type: string }, validFrom: { type: string, format: date }, validUntil: { type: [string, "null"], format: date } }

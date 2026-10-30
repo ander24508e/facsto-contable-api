@@ -3,8 +3,10 @@
 namespace App\Providers;
 
 use App\Domains\Catalog\Models\Category;
+use App\Domains\Catalog\Models\Brand;
 use App\Domains\Catalog\Models\Item;
 use App\Domains\Catalog\Policies\CategoryPolicy;
+use App\Domains\Catalog\Policies\BrandPolicy;
 use App\Domains\Catalog\Policies\ItemPolicy;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Companies\Models\Company;
@@ -45,6 +47,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Customer::class, CustomerPolicy::class);
         Gate::policy(Item::class, ItemPolicy::class);
         Gate::policy(Category::class, CategoryPolicy::class);
+        Gate::policy(Brand::class, BrandPolicy::class);
         Gate::policy(ElectronicDocument::class, InvoicePolicy::class);
         Gate::policy(CompanyTax::class, CompanyTaxPolicy::class);
         Gate::policy(Sale::class, SalePolicy::class);

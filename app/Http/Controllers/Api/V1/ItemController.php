@@ -41,9 +41,11 @@ final class ItemController extends Controller
     public function index(Request $request, CompanyContext $context): AnonymousResourceCollection
     {
         $this->authorize('viewAny', Item::class);
-        $query = $context->company()->items()->with(['taxes.definition', 'category', 'stocks.warehouse.establishment'])->orderBy('name');
+        $query = $context->company()->items()->with(['taxes.definition', 'category', 'catalogMetadata.brand', 'stocks.warehouse.establishment', 'priceTiers'])->orderBy('name');
         if ($search = trim((string) $request->query('search'))) {
-            $query->where(fn ($q) => $q->whereRaw('LOWER(name) LIKE ?', ['%'.strtolower($search).'%'])->orWhereRaw('LOWER(internal_code) LIKE ?', ['%'.strtolower($search).'%']));
+            $query->where(fn ($q) => $q->whereRaw('LOWER(name) LIKE ?', ['%'.strtolower($search).'%'])
+                ->orWhereRaw('LOWER(internal_code) LIKE ?', ['%'.strtolower($search).'%'])
+                ->orWhereHas('catalogMetadata', fn ($metadata) => $metadata->whereRaw('LOWER(barcode) LIKE ?', ['%'.strtolower($search).'%'])));
         }
         if ($type = $request->query('type')) {
             $query->where('type', $type);
@@ -81,7 +83,7 @@ final class ItemController extends Controller
             ->groupBy('sale_details.item_id')
             ->selectRaw('sale_details.item_id, COUNT(*) as uses');
 
-        $items = $company->items()->where('is_active', true)->with(['taxes.definition', 'category'])
+        $items = $company->items()->where('is_active', true)->with(['taxes.definition', 'category', 'catalogMetadata.brand'])
             ->leftJoinSub($sold, 'sold', 'sold.item_id', '=', 'items.id')
             ->orderByRaw('COALESCE(sold.uses, 0) DESC')
             ->orderBy('items.name')
@@ -102,7 +104,7 @@ final class ItemController extends Controller
     {
         $this->authorize('view', $item);
 
-        return new ItemResource($item->load(['taxes.definition', 'category', 'stocks.warehouse.establishment', 'priceTiers']));
+        return new ItemResource($item->load(['taxes.definition', 'category', 'catalogMetadata.brand', 'stocks.warehouse.establishment', 'priceTiers']));
     }
 
     public function update(UpdateItemRequest $request, Item $item, UpdateItemAction $update): ItemResource
@@ -174,7 +176,7 @@ final class ItemController extends Controller
 
     private function attributes(array $data): array
     {
-        foreach (['internalCode' => 'internal_code', 'auxiliaryCode' => 'auxiliary_code', 'salePrice' => 'sale_price', 'priceIncludesTax' => 'price_includes_tax', 'categoryPublicId' => 'category_public_id', 'costPrice' => 'cost_price', 'additionalDetail' => 'additional_detail', 'priceTiers' => 'price_tiers'] as $source => $target) {
+        foreach (['internalCode' => 'internal_code', 'auxiliaryCode' => 'auxiliary_code', 'salePrice' => 'sale_price', 'priceIncludesTax' => 'price_includes_tax', 'categoryPublicId' => 'category_public_id', 'brandPublicId' => 'brand_public_id', 'barcode' => 'barcode', 'costPrice' => 'cost_price', 'additionalDetail' => 'additional_detail', 'priceTiers' => 'price_tiers'] as $source => $target) {
             if (array_key_exists($source, $data)) {
                 $data[$target] = $data[$source];
             }

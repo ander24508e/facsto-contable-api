@@ -25,6 +25,8 @@ final class StoreItemRequest extends FormRequest
             'salePrice' => ['required', 'string', 'regex:/^\d{1,12}(\.\d{1,6})?$/'],
             'priceIncludesTax' => ['sometimes', 'boolean'],
             'categoryPublicId' => ['nullable', 'uuid'],
+            'brandPublicId' => ['nullable', 'uuid'],
+            'barcode' => ['nullable', 'string', 'max:64'],
             'costPrice' => ['sometimes', 'nullable', 'string', 'regex:/^\d{1,12}(\.\d{1,6})?$/'],
             'additionalDetail' => ['sometimes', 'nullable', 'string', 'max:300'],
             'stock' => ['required_if:type,PRODUCT', 'array'],
@@ -58,6 +60,13 @@ final class StoreItemRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $this->merge(['internal_code' => $this->input('internalCode'), 'auxiliary_code' => $this->input('auxiliaryCode'), 'sale_price' => $this->input('salePrice'), 'category_public_id' => $this->input('categoryPublicId')]);
+        $this->merge([
+            'internal_code' => $this->input('internalCode'),
+            'auxiliary_code' => $this->input('auxiliaryCode'),
+            'sale_price' => $this->input('salePrice'),
+            'category_public_id' => $this->input('categoryPublicId'),
+            'brand_public_id' => $this->input('brandPublicId'),
+            'barcode' => $this->input('barcode') === null ? null : trim((string) $this->input('barcode')),
+        ]);
     }
 }

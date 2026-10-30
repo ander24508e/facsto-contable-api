@@ -3,6 +3,7 @@
 namespace App\Domains\Companies\Models;
 
 use App\Domains\Catalog\Models\Category;
+use App\Domains\Catalog\Models\Brand;
 use App\Domains\Catalog\Models\Item;
 use App\Domains\Certificates\Models\DigitalCertificate;
 use App\Domains\Companies\Enums\CompanyStatus;
@@ -76,6 +77,11 @@ class Company extends Model
     public function categories(): HasMany
     {
         return $this->hasMany(Category::class);
+    }
+
+    public function brands(): HasMany
+    {
+        return $this->hasMany(Brand::class);
     }
 
     public function sales(): HasMany

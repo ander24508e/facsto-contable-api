@@ -29,6 +29,9 @@ final class ItemResource extends JsonResource
             'priceTiers' => $this->whenLoaded('priceTiers', fn () => $this->priceTiers->map(fn ($tier): array => ['minQuantity' => $tier->min_quantity, 'price' => $tier->price])->values()),
             'categoryPublicId' => $this->whenLoaded('category', fn () => $this->category?->public_id),
             'categoryName' => $this->whenLoaded('category', fn () => $this->category?->name),
+            'barcode' => $this->whenLoaded('catalogMetadata', fn () => $this->catalogMetadata?->barcode),
+            'brandPublicId' => $this->whenLoaded('catalogMetadata', fn () => $this->catalogMetadata?->brand?->public_id),
+            'brandName' => $this->whenLoaded('catalogMetadata', fn () => $this->catalogMetadata?->brand?->name),
             'finalPrice' => $this->whenLoaded('taxes', fn () => $this->finalPrice()),
             'taxes' => TaxResource::collection($this->whenLoaded('taxes'))];
     }
