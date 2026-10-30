@@ -10,6 +10,7 @@ use App\Domains\Customers\Actions\DeleteCustomerAction;
 use App\Domains\Customers\Actions\EnsureFinalConsumerAction;
 use App\Domains\Customers\Actions\MergeCustomersAction;
 use App\Domains\Customers\Actions\UpdateCustomerAction;
+use App\Domains\Customers\Enums\IdentificationType;
 use App\Domains\Customers\Models\Customer;
 use App\Domains\Delivery\Enums\DeliveryStatus;
 use App\Domains\Delivery\Models\DocumentDelivery;
@@ -30,7 +31,8 @@ final class CustomerController extends Controller
     public function index(Request $request, CompanyContext $context): AnonymousResourceCollection
     {
         $this->authorize('viewAny', Customer::class);
-        $query = $context->company()->customers()->orderBy('legal_name');
+        // CONSUMIDOR FINAL exists only for sales (POST /customers/final-consumer): it is never listed.
+        $query = $context->company()->customers()->where('identification_type', '<>', IdentificationType::FINAL_CONSUMER->value)->orderBy('legal_name');
         if ($search = trim((string) $request->query('search'))) {
             $pattern = '%'.strtolower($search).'%';
             $query->where(fn ($builder) => $builder->whereRaw('LOWER(legal_name) LIKE ?', [$pattern])

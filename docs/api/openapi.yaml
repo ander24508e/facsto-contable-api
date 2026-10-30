@@ -905,6 +905,10 @@ paths:
       summary: Lista las formas fiscales de pago vigentes; no procesa transacciones.
       operationId: listFiscalPaymentMethods
       security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: search, in: query, schema: { type: string }, description: Busca por código o nombre. }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 15 } }
       responses: { "200": { description: Catálogo fiscal global vigente, content: { application/json: { schema: { $ref: "#/components/schemas/FiscalPaymentMethodPage" } } } } }
   /api/v1/fiscal-profile:
     get:
