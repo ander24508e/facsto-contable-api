@@ -15,6 +15,7 @@ final class UserResource extends JsonResource
             'email' => $this->email,
             'phone' => $this->phone,
             'hasProfilePhoto' => $this->profile_photo_path !== null,
+            'theme' => $this->theme ?? 'light',
         ];
     }
 }

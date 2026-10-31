@@ -18,6 +18,8 @@ return new class extends Migration
             $table->string('email')->unique();
             $table->string('phone', 40)->nullable();
             $table->string('profile_photo_path')->nullable();
+            // Modo de la interfaz que eligió el usuario: light o dark.
+            $table->string('theme', 8)->default('light');
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->string('status', 16)->default('ACTIVE')->index();

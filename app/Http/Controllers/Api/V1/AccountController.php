@@ -37,6 +37,16 @@ final class AccountController extends Controller
         return new UserResource($user);
     }
 
+    /** PUT /me/theme — the light or dark mode the user chose; it follows them to any device. */
+    public function updateTheme(Request $request): UserResource
+    {
+        $data = $request->validate(['theme' => ['required', 'in:light,dark']]);
+        $user = $request->user();
+        $user->forceFill(['theme' => $data['theme']])->save();
+
+        return new UserResource($user);
+    }
+
     public function changePassword(ChangePasswordRequest $request, ChangeUserPasswordAction $change): JsonResponse
     {
         $change->execute($request->user(), $request->string('password')->toString());
