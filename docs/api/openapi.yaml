@@ -1639,6 +1639,95 @@ paths:
       parameters: [{ name: unit, in: path, required: true, schema: { type: string, format: uuid } }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string, maxLength: 32 } } } } } }
       responses: { "200": { description: Unidad actualizada }, "409": { $ref: "#/components/responses/ConflictError" } }
+  /api/v1/cash-sessions:
+    get:
+      tags: [Sales]
+      summary: Aperturas de caja (las 100 más recientes); filtros por estado y por caja (punto de emisión).
+      operationId: listCashSessions
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: status, in: query, description: "OPEN o CLOSED", schema: { type: string } }
+        - { name: emissionPoint, in: query, schema: { type: string, format: uuid } }
+      responses: { "200": { description: "Aperturas con caja, bodega, quién abrió, fecha, modo, monto y conteo" } }
+    post:
+      tags: [Sales]
+      summary: "Abre una caja. La fecha la pone el servidor; con COUNTED el total se calcula aquí desde los billetes y monedas. 409 CASH_SESSION_ALREADY_OPEN si la caja ya está abierta; 422 si la caja o la bodega no están activas o la bodega es de otro establecimiento."
+      operationId: openCashSession
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [emissionPointPublicId, warehousePublicId, mode]
+              properties:
+                emissionPointPublicId: { type: string, format: uuid }
+                warehousePublicId: { type: string, format: uuid }
+                mode: { type: string, enum: [MANUAL, COUNTED] }
+                amount: { type: string, pattern: '^\d{1,9}(\.\d{1,2})?$', description: Obligatorio con MANUAL }
+                denominations:
+                  type: object
+                  description: "Obligatorio con COUNTED: cantidad por denominación, p. ej. { bills: { '20': 2 }, coins: { '0.25': 4 } }"
+                  properties:
+                    bills: { type: object, additionalProperties: { type: integer, minimum: 0 } }
+                    coins: { type: object, additionalProperties: { type: integer, minimum: 0 } }
+                notes: { type: string, maxLength: 255 }
+      responses: { "201": { description: Caja abierta }, "409": { $ref: "#/components/responses/ConflictError" }, "422": { $ref: "#/components/responses/ValidationError" } }
+  /api/v1/cash-sessions/denominations:
+    get:
+      tags: [Sales]
+      summary: Billetes y monedas que ofrece el contador de dinero (dólares en Ecuador).
+      operationId: listCashDenominations
+      security: [{ sessionCookie: [] }]
+      responses: { "200": { description: "{ bills: [...], coins: [...] }" } }
+  /api/v1/cash-sessions/{session}:
+    get:
+      tags: [Sales]
+      summary: "Reporte de una sesión de caja: datos, balance { opening, in, out, expected } y movimientos en orden."
+      operationId: getCashSession
+      security: [{ sessionCookie: [] }]
+      parameters: [{ name: session, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Sesión con balance y movimientos }, "404": { $ref: "#/components/responses/NotFoundError" } }
+  /api/v1/cash-sessions/{session}/movements:
+    post:
+      tags: [Sales]
+      summary: "Registra un ingreso (IN) o egreso (OUT) de dinero en una caja abierta. 409 CASH_SESSION_NOT_OPEN si está cerrada; 409 CASH_INSUFFICIENT si el egreso supera lo que hay en caja."
+      operationId: registerCashMovement
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters: [{ name: session, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, amount, concept]
+              properties:
+                type: { type: string, enum: [IN, OUT] }
+                amount: { type: string, pattern: '^\d{1,9}(\.\d{1,2})?$' }
+                concept: { type: string, maxLength: 120 }
+      responses: { "201": { description: Movimiento registrado }, "409": { $ref: "#/components/responses/ConflictError" }, "422": { $ref: "#/components/responses/ValidationError" } }
+  /api/v1/cash-sessions/{session}/close:
+    post:
+      tags: [Sales]
+      summary: "Cierra la caja con lo contado (MANUAL o COUNTED, como la apertura). Guarda lo esperado (apertura + ingresos − egresos) y la diferencia (+ sobrante, − faltante). 409 CASH_SESSION_NOT_OPEN si ya está cerrada."
+      operationId: closeCashSession
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters: [{ name: session, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode]
+              properties:
+                mode: { type: string, enum: [MANUAL, COUNTED] }
+                amount: { type: string, pattern: '^\d{1,9}(\.\d{1,2})?$', description: Obligatorio con MANUAL }
+                denominations: { type: object, description: "Obligatorio con COUNTED: { bills: {...}, coins: {...} }" }
+                notes: { type: string, maxLength: 255 }
+      responses: { "200": { description: Caja cerrada con esperado, contado y diferencia }, "409": { $ref: "#/components/responses/ConflictError" }, "422": { $ref: "#/components/responses/ValidationError" } }
   /api/v1/warehouses:
     get:
       tags: [Catalog]

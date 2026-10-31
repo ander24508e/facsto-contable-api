@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\CashSessionController;
 use App\Http\Controllers\Api\V1\DashboardSummaryController;
 use App\Http\Controllers\Api\V1\FiscalDashboardController;
 use App\Http\Controllers\Api\V1\SaleController;
@@ -18,4 +19,10 @@ Route::middleware(['auth:sanctum', 'company.context'])->group(function (): void 
     Route::get('/sales/{sale}', [SaleController::class, 'show']);
     Route::patch('/sales/{sale}', [SaleController::class, 'update']);
     Route::post('/sales/{sale}/cancel', [SaleController::class, 'cancel']);
+    Route::get('/cash-sessions', [CashSessionController::class, 'index']);
+    Route::get('/cash-sessions/denominations', [CashSessionController::class, 'denominations']);
+    Route::post('/cash-sessions', [CashSessionController::class, 'store']);
+    Route::get('/cash-sessions/{session}', [CashSessionController::class, 'show']);
+    Route::post('/cash-sessions/{session}/movements', [CashSessionController::class, 'storeMovement']);
+    Route::post('/cash-sessions/{session}/close', [CashSessionController::class, 'close']);
 });
