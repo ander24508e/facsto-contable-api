@@ -17,7 +17,7 @@ final class SaleIndexRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'search' => ['sometimes', 'string', 'max:120'],
+            'search' => ['sometimes', 'nullable', 'string', 'max:120'],
             'status' => ['sometimes', 'nullable', Rule::enum(SaleStatus::class)],
             'stage' => ['sometimes', 'nullable', Rule::in(array_keys(SaleStageFilter::STAGES))],
             'from' => ['sometimes', 'nullable', 'date_format:Y-m-d'],

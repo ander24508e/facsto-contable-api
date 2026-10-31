@@ -43,6 +43,10 @@ final class UpdateEstablishmentAction
                     $establishment->is_active = true;
                 }
             }
+            // The main establishment is the one the system uses by default: it cannot be turned off.
+            if ($establishment->is_main && ! $establishment->is_active) {
+                throw new ApiException(ApiErrorCode::PRIMARY_MUST_STAY_ACTIVE, 'El establecimiento principal no se puede inactivar; elige otro principal primero.', 409);
+            }
             $establishment->save();
 
             if ($isMain === true && ! $establishment->emissionPoints()->where('is_default', true)->exists()) {

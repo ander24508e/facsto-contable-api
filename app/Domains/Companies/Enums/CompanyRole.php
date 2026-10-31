@@ -17,4 +17,24 @@ enum CompanyRole: string
             self::BILLER, self::VIEWER => false,
         };
     }
+
+    public function label(): string
+    {
+        return match ($this) {
+            self::OWNER => 'Propietario',
+            self::ADMIN => 'Administrador',
+            self::BILLER => 'Facturador',
+            self::VIEWER => 'Consulta',
+        };
+    }
+
+    public function description(): string
+    {
+        return match ($this) {
+            self::OWNER => 'Administra todos los roles y la empresa.',
+            self::ADMIN => 'Administra usuarios con rol Facturador o Consulta.',
+            self::BILLER => 'Realiza operaciones comerciales y fiscales permitidas.',
+            self::VIEWER => 'Consulta la información disponible.',
+        };
+    }
 }

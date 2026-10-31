@@ -25,4 +25,14 @@ final class ListSalesTest extends SalesTestCase
             ->assertJsonCount(0, 'data')
             ->assertJsonPath('meta.stageCounts', ['draft' => 2, 'prepared' => 0, 'problems' => 0]);
     }
+
+    public function test_an_empty_search_and_stage_list_everything(): void
+    {
+        $user = User::factory()->create();
+        $company = $this->createCompany($user, '1799999999001');
+        $this->makeSale($user, $company);
+
+        // The list sends the empty search box as `search=`; it must not be a validation error.
+        $this->actingAs($user)->getJson('/api/v1/sales?search=&stage=&page=1&per_page=15')->assertOk()->assertJsonCount(1, 'data');
+    }
 }

@@ -13,6 +13,7 @@ final class CompanyMembershipResource extends JsonResource
             'userPublicId' => $this->user->public_id,
             'name' => $this->user->name,
             'email' => $this->user->email,
+            'phone' => $this->user->phone,
             'role' => $this->role->value,
             'isActive' => $this->is_active,
             'joinedAt' => $this->joined_at?->toIso8601String(),

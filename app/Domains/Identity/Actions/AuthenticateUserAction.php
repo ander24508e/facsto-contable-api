@@ -17,7 +17,7 @@ final class AuthenticateUserAction
             return null;
         }
 
-        Auth::login($user, $remember);
+        Auth::guard('web')->login($user, $remember);
         $user->forceFill(['last_login_at' => now()])->save();
 
         return $user;

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\CompanyController;
 use App\Http\Controllers\Api\V1\CompanyMemberController;
+use App\Http\Controllers\Api\V1\CompanyRoleController;
 use App\Http\Controllers\Api\V1\EmissionPointController;
 use App\Http\Controllers\Api\V1\EnsureDefaultEmissionStructureController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
@@ -26,6 +27,9 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::put('/company/electronic-invoicing', [CompanyController::class, 'setElectronicInvoicing']);
         Route::delete('/company/logo', [CompanyController::class, 'deleteLogo']);
         Route::post('/company/members', [CompanyMemberController::class, 'store']);
+        Route::get('/company/members', [CompanyMemberController::class, 'index']);
+        Route::post('/company/users', [CompanyMemberController::class, 'createUser']);
+        Route::get('/company/roles', CompanyRoleController::class);
         Route::delete('/company/members/{userPublicId}', [CompanyMemberController::class, 'destroy']);
         Route::post('/company/members/{userPublicId}/reactivate', [CompanyMemberController::class, 'reactivate']);
         Route::patch('/company/members/{userPublicId}/role', [CompanyMemberController::class, 'updateRole']);

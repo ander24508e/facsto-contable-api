@@ -43,6 +43,10 @@ final class UpdateEmissionPointAction
                     $point->is_active = true;
                 }
             }
+            // The establishment's main point is the one it issues with by default: it cannot be turned off.
+            if ($point->is_default && ! $point->is_active) {
+                throw new ApiException(ApiErrorCode::PRIMARY_MUST_STAY_ACTIVE, 'El punto de emisión principal no se puede inactivar; elige otro principal primero.', 409);
+            }
             $point->save();
 
             return $point->refresh();

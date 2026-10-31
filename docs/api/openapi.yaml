@@ -397,6 +397,20 @@ paths:
         "403":
           $ref: "#/components/responses/CompanyAccessError"
   /api/v1/company/members:
+    get:
+      tags: [Companies]
+      summary: Lista los usuarios de la empresa activa con filtros y paginación.
+      operationId: listCompanyMembers
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: search, in: query, schema: { type: string, maxLength: 120 } }
+        - { name: role, in: query, schema: { $ref: "#/components/schemas/CompanyRole" } }
+        - { name: status, in: query, schema: { type: string, enum: [ACTIVE, INACTIVE, ALL] } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        "200": { description: Membresías de la empresa autenticada, content: { application/json: { schema: { $ref: "#/components/schemas/MembershipCollection" } } } }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
     post:
       tags: [Companies]
       summary: Agrega un usuario a la empresa con un rol local.
@@ -427,6 +441,30 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "422":
           $ref: "#/components/responses/ValidationError"
+  /api/v1/company/users:
+    post:
+      tags: [Companies]
+      summary: Crea una cuenta activa y la vincula a la empresa autenticada en una transacción.
+      operationId: createCompanyUser
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CompanyUserCreate" }
+      responses:
+        "201": { description: Usuario creado con membresía activa, content: { application/json: { schema: { $ref: "#/components/schemas/MembershipResponse" } } } }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/company/roles:
+    get:
+      tags: [Companies]
+      summary: Lista los roles fijos y cuáles puede asignar el usuario autenticado.
+      operationId: listCompanyRoles
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200": { description: Roles disponibles, content: { application/json: { schema: { $ref: "#/components/schemas/CompanyRoleCollection" } } } }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
   /api/v1/company/members/{userPublicId}:
     parameters:
       - name: userPublicId
@@ -446,12 +484,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data:
-                    type: object
-                    properties:
-                      isActive: { type: boolean, const: false }
+                $ref: "#/components/schemas/MembershipResponse"
         "403":
           $ref: "#/components/responses/CompanyAccessError"
         "404":
@@ -1090,7 +1123,7 @@ paths:
         schema: { type: string, format: uuid }
     patch:
       tags: [Fiscal structure]
-      summary: Actualiza un establecimiento de la empresa activa.
+      summary: Actualiza un establecimiento de la empresa activa (el principal no se puede inactivar, 409 PRIMARY_MUST_STAY_ACTIVE).
       operationId: updateEstablishment
       security:
         - sessionCookie: []
@@ -1197,7 +1230,7 @@ paths:
         schema: { type: string, format: uuid }
     patch:
       tags: [Fiscal structure]
-      summary: Actualiza un punto de emisión de la empresa activa.
+      summary: Actualiza un punto de emisión de la empresa activa (el principal no se puede inactivar, 409 PRIMARY_MUST_STAY_ACTIVE).
       operationId: updateEmissionPoint
       security:
         - sessionCookie: []
@@ -2764,6 +2797,28 @@ components:
     CompanyRole:
       type: string
       enum: [OWNER, ADMIN, BILLER, VIEWER]
+    CompanyUserCreate:
+      type: object
+      required: [name, email, role, password, password_confirmation]
+      properties:
+        name: { type: string, maxLength: 120 }
+        email: { type: string, format: email, maxLength: 254 }
+        phone: { type: [string, "null"], maxLength: 40 }
+        role: { $ref: "#/components/schemas/CompanyRole" }
+        password: { type: string, minLength: 10, description: Must contain letters and numbers. }
+        password_confirmation: { type: string, minLength: 10 }
+    CompanyRoleOption:
+      type: object
+      required: [code, label, description, canAssign]
+      properties:
+        code: { $ref: "#/components/schemas/CompanyRole" }
+        label: { type: string }
+        description: { type: string }
+        canAssign: { type: boolean }
+    CompanyRoleCollection:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/CompanyRoleOption" } }
     Company:
       type: object
       required: [publicId, slug, accountingRequired, status, role, hasLogo, sriEnvironment]
@@ -2829,6 +2884,7 @@ components:
         userPublicId: { type: string, format: uuid }
         name: { type: string }
         email: { type: string, format: email }
+        phone: { type: [string, "null"] }
         role: { $ref: "#/components/schemas/CompanyRole" }
         isActive: { type: boolean }
         joinedAt: { type: [string, "null"], format: date-time }
@@ -2836,6 +2892,17 @@ components:
       type: object
       properties:
         data: { $ref: "#/components/schemas/Membership" }
+    MembershipCollection:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/Membership" } }
+        meta:
+          type: object
+          properties:
+            current_page: { type: integer }
+            last_page: { type: integer }
+            per_page: { type: integer }
+            total: { type: integer }
     Establishment:
       type: object
       properties:
