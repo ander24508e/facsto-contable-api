@@ -6,6 +6,7 @@ use App\Domains\Catalog\Enums\ItemType;
 use App\Domains\Catalog\Models\Item;
 use App\Domains\Catalog\Models\Brand;
 use App\Domains\Catalog\Models\ItemCatalogMetadata;
+use App\Domains\Catalog\Services\BarcodeGenerator;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Inventory\Actions\SetItemStockAction;
 use App\Domains\Inventory\Actions\SyncItemPriceTiersAction;
@@ -26,9 +27,11 @@ final class CreateItemAction
         private readonly InventoryLookup $inventory,
         private readonly SetItemStockAction $stock,
         private readonly SyncItemPriceTiersAction $priceTiers,
+        private readonly BarcodeGenerator $barcodes,
     ) {}
 
-    public function execute(array $attributes, User $actor): Item
+    /** $stockArrives: the product is created by a purchase, which brings its units into the warehouse itself. */
+    public function execute(array $attributes, User $actor, bool $stockArrives = false): Item
     {
         $company = $this->context->company();
         $categoryPublicId = $attributes['category_public_id'] ?? null;
@@ -60,7 +63,7 @@ final class CreateItemAction
         $attributes['type'] = ItemType::from($attributes['type']);
         // A product is not registered without its stock; a service has neither stock nor wholesale prices.
         $warehouse = null;
-        if ($attributes['type'] === ItemType::PRODUCT) {
+        if ($attributes['type'] === ItemType::PRODUCT && ! $stockArrives) {
             if (! is_array($stock) || bccomp((string) ($stock['quantity'] ?? '0'), '0', 6) <= 0) {
                 throw new ApiException(ApiErrorCode::ITEM_STOCK_REQUIRED, 'Indica la bodega y cuántas unidades del producto tienes.', 422);
             }
@@ -69,6 +72,10 @@ final class CreateItemAction
 
         return DB::transaction(function () use ($company, $attributes, $actor, $warehouse, $stock, $tiers, $brand, $barcode): Item {
             $item = $company->items()->create($attributes);
+            // A product without a factory code gets an internal EAN-13, so it can be scanned at the till.
+            if ($barcode === null && $attributes['type'] === ItemType::PRODUCT) {
+                $barcode = $this->barcodes->next($company);
+            }
             if ($brand !== null || $barcode !== null) {
                 ItemCatalogMetadata::query()->create([
                     'company_id' => $company->id,
@@ -79,6 +86,8 @@ final class CreateItemAction
             }
             if ($warehouse !== null) {
                 $this->stock->execute($item, $warehouse, (string) $stock['quantity'], $actor, initial: true);
+            }
+            if ($attributes['type'] === ItemType::PRODUCT) {
                 $this->priceTiers->execute($item, $tiers);
             }
             $this->taxes->inheritFromCategory($item);

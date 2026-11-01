@@ -161,9 +161,7 @@ final class CatalogImportService
         $existing = $company->items()->pluck('internal_code')->map(fn ($code) => mb_strtolower($code))->flip();
         $ivaRates = $company->taxes()->with('definition')->get()
             ->filter(fn (CompanyTax $tax): bool => $tax->definition->tax_type === TaxType::IVA && $tax->isUsableOn(today()));
-        // Imported products go to the warehouse of the main establishment, like the form does.
-        $mainWarehouse = Warehouse::query()->where('company_id', $company->id)->where('is_active', true)
-            ->whereHas('establishment', fn ($query) => $query->where('is_main', true))->first();
+        $warehouses = Warehouse::query()->where('company_id', $company->id)->where('is_active', true)->with('establishment')->get();
         $seen = [];
         $result = [];
         foreach ($rows as $index => $raw) {
@@ -190,8 +188,13 @@ final class CatalogImportService
             $stock = str_replace(',', '.', (string) ($raw['stock'] ?? ''));
             if (! $isService && (preg_match('/^\d{1,12}(\.\d{1,6})?$/', $stock) !== 1 || bccomp($stock, '0', 6) <= 0)) {
                 $errors[] = 'El stock del producto es obligatorio y mayor que cero.';
-            } elseif (! $isService && ! $mainWarehouse) {
-                $errors[] = 'Crea la bodega del establecimiento principal antes de importar productos.';
+            }
+            $warehouse = null;
+            if (! $isService) {
+                [$warehouse, $warehouseError] = $this->warehouseFor($warehouses, trim((string) ($raw['bodega'] ?? '')));
+                if ($warehouseError !== null) {
+                    $errors[] = $warehouseError;
+                }
             }
             $cost = str_replace(',', '.', (string) ($raw['costo'] ?? ''));
             if ($cost !== '' && preg_match('/^\d{1,12}(\.\d{1,6})?$/', $cost) !== 1) {
@@ -208,11 +211,37 @@ final class CatalogImportService
                 'unidad' => (string) (($raw['unidad'] ?? '') ?: 'UND'), 'precio' => $price,
                 'precio_incluye_iva' => in_array(mb_strtolower(Str::ascii((string) ($raw['precio_incluye_iva'] ?? ''))), ['si', 'yes', '1', 'true'], true) ? 'SI' : 'NO',
                 'iva' => (string) ($raw['iva'] ?? ''), 'iva_public_id' => $tax?->public_id, 'categoria' => (string) ($raw['categoria'] ?? ''),
-                'stock' => $isService ? '' : $stock, 'costo' => $cost, 'bodega_public_id' => $isService ? null : $mainWarehouse?->public_id,
+                'stock' => $isService ? '' : $stock, 'costo' => $cost, 'bodega' => $warehouse?->name ?? '', 'bodega_public_id' => $warehouse?->public_id,
             ]];
         }
 
         return $result;
+    }
+
+    /**
+     * The warehouse a product row goes to: the one named in `bodega` (the main establishment's wins when two
+     * establishments share the name), or, when empty, the only active warehouse of the main establishment.
+     *
+     * @return array{0: ?Warehouse, 1: ?string}
+     */
+    private function warehouseFor($warehouses, string $name): array
+    {
+        if ($name === '') {
+            $main = $warehouses->filter(fn (Warehouse $warehouse): bool => $warehouse->establishment->is_main);
+
+            return match ($main->count()) {
+                0 => [null, 'Crea una bodega en el establecimiento principal o indica la bodega.'],
+                1 => [$main->first(), null],
+                default => [null, 'El establecimiento principal tiene varias bodegas: indica la bodega.'],
+            };
+        }
+        $named = $warehouses->filter(fn (Warehouse $warehouse): bool => mb_strtolower($warehouse->name) === mb_strtolower($name));
+        $main = $named->first(fn (Warehouse $warehouse): bool => $warehouse->establishment->is_main);
+        if ($main || $named->count() === 1) {
+            return [$main ?? $named->first(), null];
+        }
+
+        return [null, $named->isEmpty() ? 'La bodega no existe o está inactiva.' : 'Hay varias bodegas con ese nombre en distintos establecimientos.'];
     }
 
     private function ivaRate($rates, string $value): ?CompanyTax

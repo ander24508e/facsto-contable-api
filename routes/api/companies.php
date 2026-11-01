@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\CompanyController;
 use App\Http\Controllers\Api\V1\CompanyMemberController;
 use App\Http\Controllers\Api\V1\CompanyRoleController;
+use App\Http\Controllers\Api\V1\CompanySettingsController;
 use App\Http\Controllers\Api\V1\EmissionPointController;
 use App\Http\Controllers\Api\V1\EnsureDefaultEmissionStructureController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
@@ -30,6 +31,8 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/company/members', [CompanyMemberController::class, 'index']);
         Route::post('/company/users', [CompanyMemberController::class, 'createUser']);
         Route::get('/company/roles', CompanyRoleController::class);
+        Route::get('/company/settings', [CompanySettingsController::class, 'show']);
+        Route::patch('/company/settings', [CompanySettingsController::class, 'update']);
         Route::delete('/company/members/{userPublicId}', [CompanyMemberController::class, 'destroy']);
         Route::post('/company/members/{userPublicId}/reactivate', [CompanyMemberController::class, 'reactivate']);
         Route::patch('/company/members/{userPublicId}/role', [CompanyMemberController::class, 'updateRole']);

@@ -27,4 +27,20 @@ final class ItemCatalogMetadataTest extends CatalogTestCase
         $this->patchJson('/api/v1/items/'.$item['publicId'], ['barcode' => 'BC-002'])
             ->assertOk()->assertJsonPath('data.barcode', 'BC-002');
     }
+
+    public function test_a_product_without_barcode_gets_an_internal_ean13(): void
+    {
+        $user = User::factory()->create();
+        $company = $this->createCompany($user, '1799999999001');
+        $stock = $this->productStock($company, '3');
+        $product = fn (string $code): array => ['type' => 'PRODUCT', 'internalCode' => $code, 'name' => 'Agua', 'unit' => 'UND', 'salePrice' => '1', 'stock' => $stock];
+
+        $this->actingAs($user)->getJson('/api/v1/items/next-barcode')->assertOk()->assertJsonPath('data.barcode', '2000000000015');
+        $this->postJson('/api/v1/items', $product('AGUA-1'))->assertCreated()->assertJsonPath('data.barcode', '2000000000015');
+        $this->postJson('/api/v1/items', $product('AGUA-2'))->assertCreated()->assertJsonPath('data.barcode', '2000000000022');
+        // A factory code is kept, and a service is not given a barcode.
+        $this->postJson('/api/v1/items', [...$product('AGUA-3'), 'barcode' => '7861234567898'])->assertCreated()->assertJsonPath('data.barcode', '7861234567898');
+        $this->postJson('/api/v1/items', ['type' => 'SERVICE', 'internalCode' => 'SRV-1', 'name' => 'Asesoría', 'unit' => 'SERVICIO', 'salePrice' => '5'])
+            ->assertCreated()->assertJsonPath('data.barcode', null);
+    }
 }

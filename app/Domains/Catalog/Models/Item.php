@@ -19,6 +19,7 @@ use Illuminate\Support\Str;
 class Item extends Model
 {
     /** Units at or below which a product shows in the dashboard «stock bajo» alert. */
+    /** Default «stock bajo» threshold; each company sets its own in Sistema (CompanySettings). */
     public const LOW_STOCK = 5;
 
     protected static function booted(): void

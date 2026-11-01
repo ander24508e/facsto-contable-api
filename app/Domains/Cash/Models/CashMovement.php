@@ -8,13 +8,25 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 
-/** Money put into (IN) or taken out of (OUT) an open cash register, with its reason. */
-#[Fillable(['company_id', 'cash_session_id', 'type', 'amount', 'concept', 'created_by'])]
+/**
+ * Money put into (IN) or taken out of (OUT) an open cash register, with its reason. `source` tells typed
+ * movements (MANUAL) from the cash of an invoice (SALE) and the cash given back by a return (REFUND).
+ */
+#[Fillable(['company_id', 'cash_session_id', 'type', 'source', 'amount', 'concept', 'sale_id', 'electronic_document_id', 'created_by'])]
 class CashMovement extends Model
 {
     public const IN = 'IN';
 
     public const OUT = 'OUT';
+
+    public const MANUAL = 'MANUAL';
+
+    public const SALE = 'SALE';
+
+    public const REFUND = 'REFUND';
+
+    /** Installments collected from a customer (accounts receivable). */
+    public const CREDIT = 'CREDIT';
 
     protected static function booted(): void
     {

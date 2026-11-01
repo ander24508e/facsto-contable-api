@@ -69,7 +69,7 @@ final class SaleController extends Controller
     {
         $this->authorize('view', $sale);
 
-        $sale = $context->company()->sales()->with(['customer', 'creator', 'details.item', 'details.taxes', 'paymentMethods.fiscalPaymentMethod', 'electronicDocument'])
+        $sale = $context->company()->sales()->with(['customer', 'creator', 'cashSession', 'details.item', 'details.taxes', 'paymentMethods.fiscalPaymentMethod', 'installments', 'electronicDocument'])
             ->whereKey($sale->id)->firstOrFail();
 
         return (new SaleResource($sale))->additional(['meta' => ['invoiceReadiness' => $readiness->summary($sale)]]);

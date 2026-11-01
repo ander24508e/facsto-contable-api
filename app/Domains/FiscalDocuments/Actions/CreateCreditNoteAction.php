@@ -2,6 +2,9 @@
 
 namespace App\Domains\FiscalDocuments\Actions;
 
+use App\Domains\Cash\Models\CashSession;
+use App\Domains\Cash\Services\CashSessionResolver;
+use App\Domains\Cash\Services\SaleCashRecorder;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Customers\Enums\IdentificationType;
 use App\Domains\FiscalDocuments\Enums\DocumentStatus;
@@ -14,6 +17,8 @@ use App\Domains\FiscalDocuments\Services\DocumentSequenceAllocator;
 use App\Domains\FiscalDocuments\Services\ElectronicDocumentIssuanceReadiness;
 use App\Domains\FiscalDocuments\Services\NumericCodeGenerator;
 use App\Domains\FiscalDocuments\Services\SequentialFormatter;
+use App\Domains\Inventory\Services\StockLedger;
+use App\Domains\Sales\Models\Sale;
 use App\Models\User;
 use App\Shared\Audit\AuditRecorder;
 use App\Shared\Http\ApiErrorCode;
@@ -25,7 +30,8 @@ use RuntimeException;
  * POST /invoices/{invoice}/credit-notes — total or partial return of an authorized invoice (codDoc 04).
  * Each line returns a quantity of an invoice line, never more than what is still unreturned; amounts are
  * proportional to the invoice line, so the credit note never exceeds what was invoiced. It is numbered
- * on the invoice's emission point and then follows the same XML → signature → SRI pipeline.
+ * on the invoice's emission point and then follows the same XML → signature → SRI pipeline. A return of
+ * goods puts the products back in stock (kardex RETURN); a cash refund leaves an open cash register (REFUND).
  */
 final class CreateCreditNoteAction
 {
@@ -41,10 +47,16 @@ final class CreateCreditNoteAction
         private readonly NumericCodeGenerator $numericCodes,
         private readonly AccessKeyGenerator $accessKeys,
         private readonly AuditRecorder $audit,
+        private readonly StockLedger $stock,
+        private readonly SaleCashRecorder $cash,
+        private readonly CashSessionResolver $cashSessions,
     ) {}
 
-    /** @param list<array{lineNumber: int, quantity: string}> $lines 1-based positions of the invoice lines */
-    public function execute(ElectronicDocument $invoice, string $reason, array $lines, User $actor): ElectronicDocument
+    /**
+     * @param  list<array{lineNumber: int, quantity: string}>  $lines  1-based positions of the invoice lines
+     * @param  array{returnGoods?: bool, refundCash?: bool, cashSessionPublicId?: ?string}  $options
+     */
+    public function execute(ElectronicDocument $invoice, string $reason, array $lines, User $actor, array $options = []): ElectronicDocument
     {
         $company = $this->context->company();
         $pending = $this->issuance->companyPending($company);
@@ -53,7 +65,7 @@ final class CreateCreditNoteAction
         }
 
         try {
-            return DB::transaction(function () use ($company, $invoice, $reason, $lines, $actor): ElectronicDocument {
+            return DB::transaction(function () use ($company, $invoice, $reason, $lines, $actor, $options): ElectronicDocument {
                 $invoice = ElectronicDocument::query()->where('company_id', $company->id)->whereKey($invoice->id)->lockForUpdate()->with(['lines.taxes'])->firstOrFail();
                 if ($invoice->document_type !== DocumentType::INVOICE || $invoice->status !== DocumentStatus::AUTHORIZED) {
                     throw new ApiException(ApiErrorCode::INVALID_DOCUMENT_TRANSITION, 'Sólo se puede emitir una nota de crédito sobre una factura autorizada por el SRI.', 409);
@@ -103,6 +115,7 @@ final class CreateCreditNoteAction
                     'sale_id' => null,
                     'modified_document_id' => $invoice->id,
                     'reason' => $reason,
+                    'returns_goods' => (bool) ($options['returnGoods'] ?? false),
                     'document_type' => $type,
                     'sequential' => $sequential,
                     'full_number' => $this->numberFormatter->format($invoice->establishment_code, $invoice->emission_point_code, $sequential),
@@ -129,8 +142,18 @@ final class CreateCreditNoteAction
                     $created->taxes()->createMany(array_map(fn (array $tax): array => [...$tax, 'company_id' => $company->id], $line['taxes']));
                 }
                 $creditNote->taxes()->createMany(array_map(fn (array $tax): array => [...$tax, 'company_id' => $company->id], $totals['groups']));
+                $sale = Sale::query()->with('cashSession.warehouse')->find($invoice->sale_id);
+                if ($creditNote->returns_goods) {
+                    $warehouse = $sale?->cashSession?->warehouse ?? throw new ApiException(ApiErrorCode::VALIDATION_FAILED, 'La factura no tiene una bodega a la que devolver los productos.', 422);
+                    $this->stock->returnCreditNote($creditNote->load('lines'), $warehouse, $actor);
+                }
+                if ($options['refundCash'] ?? false) {
+                    $session = $this->cashSessions->forRefund($company, $options['cashSessionPublicId'] ?? null, $sale, $actor);
+                    $this->cash->refund($creditNote, $session, $actor);
+                }
                 $this->audit->record($actor, $company, 'credit_note.numbered', $creditNote, null, [
                     'fullNumber' => $creditNote->full_number, 'modifiedDocument' => $invoice->full_number, 'total' => $creditNote->total, 'reason' => $reason,
+                    'returnsGoods' => $creditNote->returns_goods, 'refundCash' => (bool) ($options['refundCash'] ?? false),
                 ]);
 
                 return $creditNote->load(['lines.taxes', 'taxes', 'modifiedDocument']);

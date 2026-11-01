@@ -20,11 +20,7 @@ final class UnitController extends Controller
     {
         $this->authorize('viewAny', Item::class);
         $company = $context->company();
-        if (! Unit::query()->where('company_id', $company->id)->exists()) {
-            foreach (Unit::DEFAULTS as $name) {
-                Unit::query()->create(['company_id' => $company->id, 'name' => $name]);
-            }
-        }
+        Unit::ensureDefaults($company->id);
 
         return response()->json(['data' => Unit::query()->where('company_id', $company->id)->where('is_active', true)->orderBy('name')->get()->map($this->present(...))]);
     }

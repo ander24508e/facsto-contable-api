@@ -19,7 +19,8 @@ final class ActivateCompanyTaxAction
     public function execute(string $definitionPublicId, ?string $validFrom, ?string $validUntil, User $actor): CompanyTax
     {
         $company = $this->context->company();
-        $definition = SriTaxDefinition::query()->where('public_id', $definitionPublicId)->where('is_active', true)->first();
+        $definition = SriTaxDefinition::query()->where('public_id', $definitionPublicId)->where('is_active', true)
+            ->where(fn ($owner) => $owner->whereNull('company_id')->orWhere('company_id', $company->id))->first();
         if (! $definition || ($definition->valid_until && $definition->valid_until->lt(today()))) {
             throw new ApiException(ApiErrorCode::TAX_NOT_AVAILABLE, 'La tarifa oficial no existe o ya no está vigente.', 422);
         }

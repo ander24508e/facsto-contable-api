@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Integrations;
 
+use App\Domains\Cash\Models\CashMovement;
+use App\Domains\Cash\Models\CashSession;
 use App\Domains\Catalog\Models\Item;
 use App\Domains\Companies\Models\Company;
 use App\Domains\FiscalDocuments\Models\ElectronicDocument;
@@ -70,6 +72,24 @@ final class ModuleInvoiceApiTest extends InvoiceFeatureTestCase
         $this->withToken($token)->postJson('/api/v1/invoices', $body)->assertUnprocessable()->assertJsonPath('error.code', 'IDEMPOTENCY_KEY_REQUIRED');
         $this->withToken($token)->postJson('/api/v1/invoices', ['lines' => [['itemCode' => 'NO-EXISTE', 'quantity' => '1']]], ['Idempotency-Key' => 'y'])
             ->assertUnprocessable()->assertJsonPath('error.details.itemCodes', ['NO-EXISTE']);
+    }
+
+    public function test_a_module_invoice_needs_the_cash_register_of_its_point_open(): void
+    {
+        [, $token] = $this->moduleCompany();
+        $body = ['lines' => [['itemCode' => 'SERV-1', 'quantity' => '1']]];
+        CashSession::query()->update(['status' => CashSession::CLOSED]);
+
+        $this->withToken($token)->postJson('/api/v1/invoices', $body, ['Idempotency-Key' => 'caja-1'])
+            ->assertConflict()->assertJsonPath('error.code', 'CASH_SESSION_NOT_OPEN');
+        $this->withToken($token)->postJson('/api/v1/invoices', [...$body, 'establishmentCode' => '009'], ['Idempotency-Key' => 'caja-2'])
+            ->assertUnprocessable()->assertJsonPath('error.code', 'EMISSION_POINT_NOT_FOUND');
+        $this->assertSame(0, Sale::query()->count());
+
+        CashSession::query()->update(['status' => CashSession::OPEN]);
+        $this->withToken($token)->postJson('/api/v1/invoices', [...$body, 'establishmentCode' => '001', 'emissionPointCode' => '001'], ['Idempotency-Key' => 'caja-3'])
+            ->assertCreated()->assertJsonPath('data.invoice.fullNumber', '001-001-000000001');
+        $this->assertSame('10.00', (string) CashMovement::query()->where('source', CashMovement::SALE)->firstOrFail()->amount);
     }
 
     public function test_a_revoked_token_stops_working_and_a_module_never_sees_other_documents(): void

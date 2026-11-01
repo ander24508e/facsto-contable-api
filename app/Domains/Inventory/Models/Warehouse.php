@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
-/** The single warehouse of an establishment, where its products are stored. */
+/** A warehouse of an establishment (it may have several), where its products are stored. */
 #[Fillable(['company_id', 'establishment_id', 'name', 'is_active'])]
 class Warehouse extends Model
 {

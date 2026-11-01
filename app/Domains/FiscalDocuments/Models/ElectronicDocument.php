@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
-#[Fillable(['company_id', 'sale_id', 'modified_document_id', 'reason', 'customer_id', 'establishment_id', 'emission_point_id', 'document_type', 'establishment_code', 'emission_point_code', 'sequential', 'full_number', 'numeric_code', 'access_key', 'previous_access_keys', 'issue_date', 'status', 'issuer_ruc', 'issuer_legal_name', 'issuer_commercial_name', 'issuer_main_address', 'establishment_address', 'accounting_required', 'special_taxpayer_number', 'withholding_agent_number', 'artisan_qualification_number', 'rimpe_type', 'sri_environment', 'emission_type', 'xml_version', 'provider_ruc', 'provider_name', 'customer_identification_type', 'customer_identification', 'customer_name', 'customer_address', 'customer_email', 'total_without_taxes', 'subtotal_without_tax', 'subtotal_zero', 'subtotal_taxed', 'discount_total', 'tax_total', 'tip_amount', 'total', 'currency', 'created_by', 'numbered_at', 'xml_built_at', 'signed_at', 'authorization_number', 'authorized_at', 'last_sri_status_at', 'last_error_code'])]
+#[Fillable(['company_id', 'sale_id', 'modified_document_id', 'reason', 'returns_goods', 'customer_id', 'establishment_id', 'emission_point_id', 'document_type', 'establishment_code', 'emission_point_code', 'sequential', 'full_number', 'numeric_code', 'access_key', 'previous_access_keys', 'issue_date', 'status', 'issuer_ruc', 'issuer_legal_name', 'issuer_commercial_name', 'issuer_main_address', 'establishment_address', 'accounting_required', 'special_taxpayer_number', 'withholding_agent_number', 'artisan_qualification_number', 'rimpe_type', 'sri_environment', 'emission_type', 'xml_version', 'provider_ruc', 'provider_name', 'customer_identification_type', 'customer_identification', 'customer_name', 'customer_address', 'customer_email', 'total_without_taxes', 'subtotal_without_tax', 'subtotal_zero', 'subtotal_taxed', 'discount_total', 'tax_total', 'tip_amount', 'total', 'currency', 'created_by', 'numbered_at', 'xml_built_at', 'signed_at', 'authorization_number', 'authorized_at', 'last_sri_status_at', 'last_error_code'])]
 class ElectronicDocument extends Model
 {
     protected static function booted(): void
@@ -97,6 +97,7 @@ class ElectronicDocument extends Model
             'status' => DocumentStatus::class,
             'issue_date' => 'date',
             'accounting_required' => 'boolean',
+            'returns_goods' => 'boolean',
             'total_without_taxes' => 'decimal:2',
             'subtotal_without_tax' => 'decimal:2',
             'subtotal_zero' => 'decimal:2',

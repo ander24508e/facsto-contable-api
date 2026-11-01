@@ -2,7 +2,9 @@
 
 namespace App\Domains\Sales\Models;
 
+use App\Domains\Cash\Models\CashSession;
 use App\Domains\Companies\Models\Company;
+use App\Domains\Credit\Models\CreditPayment;
 use App\Domains\Customers\Models\Customer;
 use App\Domains\FiscalDocuments\Models\ElectronicDocument;
 use App\Domains\Integrations\Models\ApiClient;
@@ -15,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
-#[Fillable(['company_id', 'customer_id', 'created_by', 'number', 'status', 'issue_date', 'customer_identification_type', 'customer_identification', 'customer_name', 'customer_address', 'customer_email', 'notes', 'subtotal', 'discount_total', 'tax_total', 'tip_amount', 'total', 'currency', 'api_client_id', 'source_module', 'source_reference', 'idempotency_key'])]
+#[Fillable(['company_id', 'customer_id', 'created_by', 'cash_session_id', 'number', 'status', 'issue_date', 'customer_identification_type', 'customer_identification', 'customer_name', 'customer_address', 'customer_email', 'notes', 'subtotal', 'discount_total', 'tax_total', 'tip_amount', 'total', 'currency', 'api_client_id', 'source_module', 'source_reference', 'idempotency_key'])]
 class Sale extends Model
 {
     protected static function booted(): void
@@ -43,6 +45,12 @@ class Sale extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    /** The open cash register the sale is charged in: it gives the establishment, the point and the warehouse. */
+    public function cashSession(): BelongsTo
+    {
+        return $this->belongsTo(CashSession::class);
+    }
+
     public function details(): HasMany
     {
         return $this->hasMany(SaleDetail::class);
@@ -51,6 +59,17 @@ class Sale extends Model
     public function paymentMethods(): HasMany
     {
         return $this->hasMany(SalePaymentMethod::class);
+    }
+
+    /** Accounts receivable: what a sale on credit still has to collect, by date. */
+    public function installments(): HasMany
+    {
+        return $this->hasMany(SaleInstallment::class)->orderBy('number');
+    }
+
+    public function creditPayments(): HasMany
+    {
+        return $this->hasMany(CreditPayment::class)->latest('id');
     }
 
     public function electronicDocument(): HasOne

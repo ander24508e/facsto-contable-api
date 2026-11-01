@@ -8,6 +8,8 @@ Route::prefix('v1')->group(function (): void {
     require __DIR__.'/api/customers.php';
     require __DIR__.'/api/catalog.php';
     require __DIR__.'/api/sales.php';
+    require __DIR__.'/api/purchases.php';
+    require __DIR__.'/api/credit.php';
     require __DIR__.'/api/invoices.php';
     require __DIR__.'/api/imports.php';
     require __DIR__.'/api/modules.php';

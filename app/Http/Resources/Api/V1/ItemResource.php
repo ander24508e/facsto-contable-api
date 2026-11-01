@@ -15,7 +15,7 @@ final class ItemResource extends JsonResource
             'hasImage' => $this->image_path !== null,
             'costPrice' => $this->cost_price,
             'additionalDetail' => $this->additional_detail,
-            // A product lives in one warehouse (one per establishment).
+            // A product lives in exactly one warehouse.
             'stock' => $this->whenLoaded('stocks', function () {
                 $stock = $this->stocks->first();
 

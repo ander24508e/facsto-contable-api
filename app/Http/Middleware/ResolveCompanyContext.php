@@ -5,10 +5,12 @@ namespace App\Http\Middleware;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Companies\Enums\CompanyStatus;
 use App\Domains\Companies\Models\Company;
+use App\Domains\Companies\Services\CompanySettings;
 use App\Shared\Http\ApiErrorCode;
 use App\Shared\Http\ApiException;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -18,7 +20,7 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class ResolveCompanyContext
 {
-    public function __construct(private readonly CompanyContext $companyContext) {}
+    public function __construct(private readonly CompanyContext $companyContext, private readonly CompanySettings $settings) {}
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -35,7 +37,29 @@ final class ResolveCompanyContext
         }
 
         $this->companyContext->set($company);
+        $this->guardIdleSession($request, $company);
 
         return $next($request);
+    }
+
+    /**
+     * Sistema → «cierre por inactividad»: a browser session unused for longer than the company allows is
+     * closed here too, so the rule does not depend only on the screen. Token clients have no session.
+     */
+    private function guardIdleSession(Request $request, Company $company): void
+    {
+        if (! $request->hasSession()) {
+            return;
+        }
+        $session = $request->session();
+        $minutes = $this->settings->for($company)->idle_timeout_minutes;
+        $last = $session->get('facsto.last_activity_at');
+        if ($minutes > 0 && is_int($last) && now()->getTimestamp() - $last > $minutes * 60) {
+            Auth::guard('web')->logout();
+            $session->invalidate();
+            $session->regenerateToken();
+            throw new ApiException(ApiErrorCode::SESSION_IDLE_TIMEOUT, 'Tu sesión se cerró por inactividad.', 401);
+        }
+        $session->put('facsto.last_activity_at', now()->getTimestamp());
     }
 }

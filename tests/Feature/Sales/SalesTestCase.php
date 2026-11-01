@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Sales;
 
+use App\Domains\Cash\Models\CashSession;
 use App\Domains\Catalog\Models\FiscalPaymentMethod;
 use App\Domains\Catalog\Models\Item;
 use App\Domains\Companies\Models\Company;
@@ -43,6 +44,8 @@ abstract class SalesTestCase extends CompanyTestCase
             $item->taxes()->attach($this->companyIva($company, '0')->id, ['company_id' => $company->id]);
         }
         $body = [
+            // Charged in the company's open cash register, when the test opened one.
+            'cashSessionPublicId' => CashSession::query()->where('company_id', $company->id)->where('status', CashSession::OPEN)->value('public_id'),
             'customerPublicId' => $customer->public_id,
             'lines' => [['itemPublicId' => $item->public_id, 'quantity' => '1', 'discountAmount' => '0.00']],
             'paymentMethods' => $withPayment ? [['fiscalPaymentMethodPublicId' => $this->paymentMethod()->public_id, 'amount' => '10.00']] : [],
@@ -55,7 +58,7 @@ abstract class SalesTestCase extends CompanyTestCase
     /** Official payment method 01 (tabla 24), loaded by the catalog seeder. */
     protected function paymentMethod(): FiscalPaymentMethod
     {
-        return FiscalPaymentMethod::query()->where('code', '01')->firstOrFail();
+        return FiscalPaymentMethod::query()->where('is_credit', false)->where('code', '01')->firstOrFail();
     }
 
     protected function makeCompanyReady(Company $company): void
@@ -64,5 +67,6 @@ abstract class SalesTestCase extends CompanyTestCase
         $establishment = $company->establishments()->create(['code' => '001', 'name' => 'Matriz', 'address' => 'Quito', 'is_active' => true, 'is_main' => true]);
         $establishment->emissionPoints()->create(['company_id' => $company->id, 'code' => '001', 'name' => 'Principal', 'is_active' => true, 'is_default' => true]);
         $this->installReadyCertificate($company);
+        $this->openCashRegister($company);
     }
 }

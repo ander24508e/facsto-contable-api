@@ -18,8 +18,8 @@ final class IssueSaleInvoiceAction
         private readonly ContinueInvoiceIssuanceAction $continue,
     ) {}
 
-    public function execute(Sale $sale, User $actor): ElectronicDocument
+    public function execute(Sale $sale, User $actor, ?string $cashSessionPublicId = null): ElectronicDocument
     {
-        return $this->continue->execute($this->number->execute($sale, $actor), $actor);
+        return $this->continue->execute($this->number->execute($sale, $actor, $cashSessionPublicId), $actor);
     }
 }

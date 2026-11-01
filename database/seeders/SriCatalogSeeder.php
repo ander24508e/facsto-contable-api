@@ -39,6 +39,7 @@ final class SriCatalogSeeder extends Seeder
         foreach (self::IVA_DEFINITIONS as $definition) {
             // whereDate: valid_from is cast to a date and may be stored with a time component.
             SriTaxDefinition::query()
+                ->whereNull('company_id')
                 ->where(['tax_type' => TaxType::IVA->value, 'sri_percentage_code' => $definition['code']])
                 ->whereDate('valid_from', $definition['from'])
                 ->firstOrNew()

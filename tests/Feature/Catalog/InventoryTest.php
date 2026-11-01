@@ -103,7 +103,7 @@ final class InventoryTest extends SalesTestCase
         $this->assertDatabaseHas('items', ['id' => $sold->id]);
     }
 
-    public function test_units_start_with_the_usual_ones_and_one_warehouse_per_establishment(): void
+    public function test_units_start_with_the_usual_ones_and_an_establishment_has_many_warehouses(): void
     {
         $user = User::factory()->create();
         $company = $this->createCompany($user, '1799999999001');
@@ -114,10 +114,12 @@ final class InventoryTest extends SalesTestCase
 
         $establishment = $company->establishments()->create(['code' => '002', 'name' => 'Norte', 'address' => 'Quito']);
         $warehouse = $this->postJson('/api/v1/warehouses', ['establishmentPublicId' => $establishment->public_id, 'name' => 'Bodega Norte'])->assertCreated()->json('data.publicId');
-        $this->postJson('/api/v1/warehouses', ['establishmentPublicId' => $establishment->public_id, 'name' => 'Otra'])->assertStatus(409)->assertJsonPath('error.code', 'WAREHOUSE_ALREADY_EXISTS');
+        $this->postJson('/api/v1/warehouses', ['establishmentPublicId' => $establishment->public_id, 'name' => 'Repuestos'])->assertCreated();
+        $this->postJson('/api/v1/warehouses', ['establishmentPublicId' => $establishment->public_id, 'name' => ' bodega  norte '])->assertStatus(409)->assertJsonPath('error.code', 'WAREHOUSE_ALREADY_EXISTS');
+        $this->patchJson("/api/v1/warehouses/{$warehouse}", ['name' => 'Repuestos'])->assertStatus(409)->assertJsonPath('error.code', 'WAREHOUSE_ALREADY_EXISTS');
         $this->patchJson("/api/v1/warehouses/{$warehouse}", ['name' => 'Bodega Norte 2'])->assertOk()->assertJsonPath('data.name', 'Bodega Norte 2');
         $this->getJson("/api/v1/warehouses/{$warehouse}")->assertOk()->assertJsonPath('data.establishmentCode', '002');
-        $this->getJson('/api/v1/warehouses?establishment='.$establishment->public_id)->assertOk()->assertJsonCount(1, 'data');
+        $this->getJson('/api/v1/warehouses?establishment='.$establishment->public_id)->assertOk()->assertJsonCount(2, 'data');
     }
 
     public function test_the_warehouses_module_counts_products_and_keeps_a_stocked_warehouse_active(): void
@@ -139,5 +141,29 @@ final class InventoryTest extends SalesTestCase
         $this->postJson("/api/v1/warehouses/{$stock['warehousePublicId']}/deactivate")->assertOk()->assertJsonPath('data.isActive', false);
         $this->getJson('/api/v1/warehouses')->assertOk()->assertJsonCount(0, 'data');
         $this->getJson('/api/v1/warehouses?status=INACTIVE')->assertOk()->assertJsonCount(1, 'data');
+    }
+
+    public function test_a_product_belongs_to_one_warehouse_and_moving_it_is_kept_in_the_kardex(): void
+    {
+        $user = User::factory()->create();
+        $company = $this->createCompany($user, '1799999999001');
+        $stock = $this->productStock($company, '30');
+        $establishment = $company->establishments()->where('code', '001')->first();
+        $other = $this->actingAs($user)->postJson('/api/v1/warehouses', ['establishmentPublicId' => $establishment->public_id, 'name' => 'Bodega Sur'])
+            ->assertCreated()->json('data.publicId');
+        $item = $this->postJson('/api/v1/items', ['type' => 'PRODUCT', 'internalCode' => 'AGUA', 'name' => 'Agua', 'unit' => 'UND', 'salePrice' => '1', 'stock' => $stock])
+            ->assertCreated()->json('data.publicId');
+
+        $this->patchJson("/api/v1/items/{$item}", ['stock' => ['warehousePublicId' => $other, 'quantity' => '30']])->assertOk()
+            ->assertJsonPath('data.stock.warehousePublicId', $other)
+            ->assertJsonPath('data.stock.quantity', '30.000000');
+
+        $this->assertDatabaseCount('item_stocks', 1);
+        $this->assertSame(
+            [[StockMovement::INITIAL, '30.000000', '30.000000'], [StockMovement::ADJUSTMENT, '-30.000000', '0.000000'], [StockMovement::ADJUSTMENT, '30.000000', '30.000000']],
+            StockMovement::query()->orderBy('id')->get()->map(fn ($movement) => [$movement->type, $movement->quantity, $movement->balance])->all(),
+        );
+        $this->getJson('/api/v1/items?warehouse='.$stock['warehousePublicId'])->assertOk()->assertJsonCount(0, 'data');
+        $this->postJson("/api/v1/warehouses/{$stock['warehousePublicId']}/deactivate")->assertOk();
     }
 }

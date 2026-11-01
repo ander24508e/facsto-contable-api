@@ -138,6 +138,14 @@ paths:
           $ref: "#/components/responses/AuthenticationError"
         "422":
           $ref: "#/components/responses/ValidationError"
+  /api/v1/me/theme:
+    put:
+      tags: [Account]
+      summary: Guarda en el perfil el modo claro u oscuro elegido; /me lo devuelve en `theme`.
+      operationId: updateTheme
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [theme], properties: { theme: { type: string, enum: [light, dark] } } } } } }
+      responses: { "200": { description: Usuario con su modo }, "422": { $ref: "#/components/responses/ValidationError" } }
   /api/v1/me/password:
     put:
       tags: [Account]
@@ -456,6 +464,33 @@ paths:
         "201": { description: Usuario creado con membresía activa, content: { application/json: { schema: { $ref: "#/components/schemas/MembershipResponse" } } } }
         "403": { $ref: "#/components/responses/CompanyAccessError" }
         "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/company/settings:
+    get:
+      tags: [Companies]
+      summary: "Sistema: umbral de stock bajo, forma de pago y cliente iniciales de la venta, IVA y unidad de productos nuevos, cierre por inactividad y, sólo lectura, el límite de consumidor final vigente (regla fiscal del SRI). Cualquier miembro activo."
+      operationId: getCompanySettings
+      security: [{ sessionCookie: [] }]
+      responses: { "200": { description: Ajustes con sus predeterminados } }
+    patch:
+      tags: [Companies]
+      summary: "Cambia los ajustes de Sistema (sólo dueño y administrador; queda auditado). idleTimeoutMinutes: 0, 15, 30, 60 o 480."
+      operationId: updateCompanySettings
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                lowStockThreshold: { type: integer, minimum: 0, maximum: 100000 }
+                allowNegativeStock: { type: boolean, description: "Permitir stock negativo: con false (por defecto) una factura sin unidades suficientes en la bodega de la caja responde 409 INSUFFICIENT_STOCK." }
+                defaultPaymentMethod: { type: string, nullable: true, description: Código SRI vigente }
+                defaultCustomer: { type: string, enum: [EMPTY, FINAL_CONSUMER] }
+                defaultTaxPublicId: { type: string, format: uuid, nullable: true }
+                defaultUnit: { type: string, maxLength: 32, nullable: true }
+                idleTimeoutMinutes: { type: integer, enum: [0, 15, 30, 60, 480] }
+      responses: { "200": { description: Ajustes guardados }, "403": { $ref: "#/components/responses/CompanyAccessError" }, "422": { $ref: "#/components/responses/ValidationError" } }
   /api/v1/company/roles:
     get:
       tags: [Companies]
@@ -681,6 +716,9 @@ paths:
       tags: [FiscalDocuments]
       summary: Único comando de emisión; F04 (numerar) → F05 (XML y firma) → encolar F06 (SRI).
       description: >-
+        Al numerar, los productos salen de la bodega de la caja (kardex SALE): 422 ITEM_NOT_IN_WAREHOUSE si un producto
+        está en otra bodega y 409 INSUFFICIENT_STOCK (con `details.items`) si no alcanza y Sistema no permite stock
+        negativo; en ambos casos no se numera. Al corregir y reemitir sólo se mueve la diferencia.
         No se asigna secuencial, número ni clave de acceso hasta que la empresa pueda continuar hacia XML, firma y SRI:
         empresa activa, emisor y estructura de emisión completos, certificado vigente, legible y del mismo RUC que el emisor,
         RUC del proveedor configurado y venta lista. Si falta algo responde FISCAL_SETUP_INCOMPLETE con `details.pending`
@@ -690,10 +728,19 @@ paths:
         permite; si no, queda SIGNED con `transmissionBlockedReason`. Llamarlo otra vez reanuda desde el estado actual sin
         volver a numerar. Si un paso de F05 falla, el error incluye `details.invoicePublicId`, `details.invoiceStatus` y
         `details.reason_code` (por ejemplo DIGEST_MISMATCH, KEYSTORE_UNREADABLE, XML_SCHEMA_INVALID).
+        Toda factura se cobra en una caja abierta: `cashSessionPublicId`, la caja guardada en la venta o la única que
+        abrió el usuario. De esa caja salen el establecimiento y el punto de emisión (y con ellos el número), y el pago
+        01 entra como ingreso SALE de la sesión. Sin caja abierta responde 409 CASH_SESSION_REQUIRED; con una caja
+        cerrada, 409 CASH_SESSION_NOT_OPEN.
       operationId: issueSaleInvoice
       security: [{ sessionCookie: [], csrfHeader: [] }]
       parameters:
         - { name: sale, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, properties: { cashSessionPublicId: { type: [string, "null"], format: uuid } } }
       responses:
         "201": { description: Venta numerada en esta llamada y procesada hasta su estado actual, content: { application/json: { schema: { $ref: "#/components/schemas/ElectronicDocumentResponse" } } } }
         "200": { description: Documento existente reanudado sin nuevo secuencial, content: { application/json: { schema: { $ref: "#/components/schemas/ElectronicDocumentResponse" } } } }
@@ -734,6 +781,8 @@ paths:
               required: [lines]
               properties:
                 sourceReference: { type: string, maxLength: 120 }
+                establishmentCode: { type: string, pattern: '^\d{3}$', description: "Caja (establecimiento + punto) cuya sesión abierta recibe la factura; por defecto el punto principal del establecimiento principal. 409 CASH_SESSION_NOT_OPEN si esa caja no está abierta (no se crea la venta)." }
+                emissionPointCode: { type: string, pattern: '^\d{3}$' }
                 customer: { type: object, properties: { identificationType: { type: string, enum: [RUC, CEDULA, PASSPORT, FOREIGN_IDENTIFICATION] }, identification: { type: string }, legalName: { type: string }, email: { type: string }, address: { type: string }, phone: { type: string } } }
                 lines: { type: array, items: { type: object, required: [itemCode, quantity], properties: { itemCode: { type: string }, quantity: { type: string }, discountAmount: { type: string } } } }
                 payments: { type: array, items: { type: object, required: [code], properties: { code: { type: string }, amount: { type: string }, reference: { type: string }, term: { type: string }, timeUnit: { type: string, enum: [DAY, MONTH] } } } }
@@ -935,14 +984,15 @@ paths:
   /api/v1/fiscal-payment-methods:
     get:
       tags: [Catalog]
-      summary: Lista las formas fiscales de pago vigentes; no procesa transacciones.
+      summary: Formas de pago vigentes - tabla 24 del SRI más CREDITO, fijas para todas las empresas.
+      description: CREDITO (isCredit) va al XML como 01 con el plazo en días hasta la última cuota.
       operationId: listFiscalPaymentMethods
       security: [{ sessionCookie: [] }]
       parameters:
         - { name: search, in: query, schema: { type: string }, description: Busca por código o nombre. }
         - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
         - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 15 } }
-      responses: { "200": { description: Catálogo fiscal global vigente, content: { application/json: { schema: { $ref: "#/components/schemas/FiscalPaymentMethodPage" } } } } }
+      responses: { "200": { description: Catálogo fiscal vigente, content: { application/json: { schema: { $ref: "#/components/schemas/FiscalPaymentMethodPage" } } } } }
   /api/v1/fiscal-profile:
     get:
       tags: [Companies]
@@ -1496,6 +1546,14 @@ paths:
           }
         "409": { $ref: "#/components/responses/ConflictError" }
         "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/items/{item}/stock-movements:
+    get:
+      tags: [Catalog]
+      summary: "Kardex del producto (más reciente primero, hasta 200): tipo INITIAL, ADJUSTMENT, SALE o RETURN, cantidad con signo, saldo, bodega, comprobante, nota, usuario y fecha."
+      operationId: listItemStockMovements
+      security: [{ sessionCookie: [] }]
+      parameters: [{ name: item, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Movimientos del kardex } }
   /api/v1/items/{item}:
     parameters:
       - {
@@ -1681,10 +1739,58 @@ paths:
       operationId: listCashDenominations
       security: [{ sessionCookie: [] }]
       responses: { "200": { description: "{ bills: [...], coins: [...] }" } }
+  /api/v1/proformas:
+    get:
+      tags: [Sales]
+      summary: "Proformas de la empresa (búsqueda por cliente o identificación), paginadas como Ventas."
+      operationId: listProformas
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses: { "200": { description: Proformas con meta de paginación } }
+    post:
+      tags: [Sales]
+      summary: "Crea una proforma (PRO-000001, numeración propia). Calcula igual que la venta pero no toca stock, caja, numeración de ventas ni SRI."
+      operationId: createProforma
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lines]
+              properties:
+                customerPublicId: { type: [string, "null"], format: uuid }
+                warehousePublicId: { type: [string, "null"], format: uuid, description: Bodega cuyos productos se ofrecen (sólo referencia). }
+                notes: { type: [string, "null"], maxLength: 2000 }
+                lines: { type: array, minItems: 1, items: { type: object, required: [itemPublicId, quantity], properties: { itemPublicId: { type: string, format: uuid }, quantity: { type: string }, discountAmount: { type: string } } } }
+      responses: { "201": { description: Proforma con sus líneas } }
+  /api/v1/proformas/{proforma}:
+    parameters: [{ name: proforma, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      tags: [Sales]
+      summary: Proforma con sus líneas (404 PROFORMA_NOT_FOUND si es de otra empresa).
+      operationId: getProforma
+      security: [{ sessionCookie: [] }]
+      responses: { "200": { description: Proforma }, "404": { $ref: "#/components/responses/NotFoundError" } }
+    patch:
+      tags: [Sales]
+      summary: Reemplaza el cliente, la bodega, las notas y las líneas de la proforma (mismo cuerpo que la creación).
+      operationId: updateProforma
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      responses: { "200": { description: Proforma }, "404": { $ref: "#/components/responses/NotFoundError" } }
+    delete:
+      tags: [Sales]
+      summary: Elimina la proforma.
+      operationId: deleteProforma
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      responses: { "204": { description: Eliminada }, "404": { $ref: "#/components/responses/NotFoundError" } }
   /api/v1/cash-sessions/{session}:
     get:
       tags: [Sales]
-      summary: "Reporte de una sesión de caja: datos, balance { opening, in, out, expected } y movimientos en orden."
+      summary: "Reporte de una sesión de caja: datos, balance { opening, in, out, expected }, ventas facturadas { count, total, payments[{ code, name, amount }] } y movimientos en orden con su `source` (MANUAL, SALE, REFUND)."
       operationId: getCashSession
       security: [{ sessionCookie: [] }]
       parameters: [{ name: session, in: path, required: true, schema: { type: string, format: uuid } }]
@@ -1727,7 +1833,7 @@ paths:
                 amount: { type: string, pattern: '^\d{1,9}(\.\d{1,2})?$', description: Obligatorio con MANUAL }
                 denominations: { type: object, description: "Obligatorio con COUNTED: { bills: {...}, coins: {...} }" }
                 notes: { type: string, maxLength: 255 }
-      responses: { "200": { description: Caja cerrada con esperado, contado y diferencia }, "409": { $ref: "#/components/responses/ConflictError" }, "422": { $ref: "#/components/responses/ValidationError" } }
+      responses: { "200": { description: "Caja cerrada con esperado, contado y diferencia" }, "409": { $ref: "#/components/responses/ConflictError" }, "422": { $ref: "#/components/responses/ValidationError" } }
   /api/v1/warehouses:
     get:
       tags: [Catalog]
@@ -1741,7 +1847,7 @@ paths:
       responses: { "200": { description: Bodegas con productsCount (productos con stock) y unitsTotal } }
     post:
       tags: [Catalog]
-      summary: Crea la bodega de un establecimiento (WAREHOUSE_ALREADY_EXISTS si ya tiene una).
+      summary: Crea una bodega en un establecimiento; puede tener varias (WAREHOUSE_ALREADY_EXISTS si el nombre ya existe en ese establecimiento).
       operationId: createWarehouse
       security: [{ sessionCookie: [], csrfHeader: [] }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [establishmentPublicId, name], properties: { establishmentPublicId: { type: string, format: uuid }, name: { type: string, maxLength: 80 } } } } } }
@@ -1756,7 +1862,7 @@ paths:
       responses: { "200": { description: Bodega }, "404": { $ref: "#/components/responses/NotFoundError" } }
     patch:
       tags: [Catalog]
-      summary: Renombra una bodega.
+      summary: Renombra una bodega (WAREHOUSE_ALREADY_EXISTS si el nombre ya existe en su establecimiento).
       operationId: updateWarehouse
       security: [{ sessionCookie: [], csrfHeader: [] }]
       parameters: [{ name: warehouse, in: path, required: true, schema: { type: string, format: uuid } }]
@@ -1891,6 +1997,30 @@ paths:
         "200": { description: Tarifa desactivada, content: { application/json: { schema: { $ref: "#/components/schemas/TaxResponse" } } } }
         "403": { $ref: "#/components/responses/CompanyAccessError" }
         "409": { $ref: "#/components/responses/ConflictError" }
+  /api/v1/taxes/{companyTax}:
+    patch:
+      tags: [Taxes]
+      summary: Actualiza nombre y vigencia local de una tarifa aplicada, dentro de su vigencia oficial. Código y porcentaje SRI son inmutables.
+      operationId: updateCompanyTax
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters:
+        - { name: companyTax, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 120 }
+                validFrom: { type: [string, "null"], format: date }
+                validUntil: { type: [string, "null"], format: date }
+      responses:
+        "200": { description: Tarifa actualizada, content: { application/json: { schema: { $ref: "#/components/schemas/TaxResponse" } } } }
+        "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "404": { description: Tarifa no perteneciente a la empresa activa }
+        "422": { $ref: "#/components/responses/ValidationError" }
   /api/v1/taxes/replacements/preview:
     post:
       tags: [Taxes]
@@ -1920,11 +2050,30 @@ paths:
   /api/v1/tax-definitions:
     get:
       tags: [Taxes]
-      summary: Catálogo normativo oficial de FACSTO (sólo lectura).
+      summary: Catálogo normativo oficial de FACSTO más las tarifas de IVA que la empresa registró.
       operationId: listTaxDefinitions
       security: [{ sessionCookie: [] }]
       responses:
-        "200": { description: Definiciones oficiales, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/SriTaxDefinition" } } } } } } }
+        "200": { description: Definiciones oficiales y propias, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/SriTaxDefinition" } } } } } } }
+    post:
+      tags: [Taxes]
+      summary: "«Agregar IVA»: tarifa decretada que el catálogo no tiene; se aplica al crearla. 409 TAX_DEFINITION_EXISTS si el código está vigente."
+      operationId: createTaxDefinition
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, percentageCode, percentage, validFrom]
+              properties:
+                name: { type: string, maxLength: 60 }
+                percentageCode: { type: string, pattern: "^\\d{1,4}$", description: Código de porcentaje oficial del SRI. }
+                percentage: { type: number, minimum: 0, maximum: 100 }
+                validFrom: { type: string, format: date }
+                validUntil: { type: [string, "null"], format: date }
+      responses: { "201": { description: Tarifa aplicada en la empresa }, "409": { description: TAX_DEFINITION_EXISTS } }
   /api/v1/fiscal-rules:
     get:
       tags: [Taxes]
@@ -1951,6 +2100,7 @@ paths:
     get:
       tags: [Customers]
       summary: Detecta el tipo de una cédula/RUC escrita, valida su dígito y busca el cliente y su duplicado (cédula ↔ RUC 001).
+      description: Si no existe el cliente, sriTaxpayer trae la razón social del catastro público del SRI (o null si no responde).
       operationId: lookupCustomer
       security: [{ sessionCookie: [] }]
       parameters:
@@ -2121,7 +2271,10 @@ paths:
       description: >-
         Cada línea devuelve una cantidad de una línea de la factura (lineNumber, base 1) sin superar lo que queda por
         devolver; descuento e impuestos son proporcionales. No se admite para consumidor final. Se numera en el punto
-        de emisión de la factura con su propia secuencia.
+        de emisión de la factura con su propia secuencia. `returnGoods` (devolución de mercadería) devuelve los productos
+        a su bodega con un movimiento RETURN del kardex; sin él, el stock no cambia. `refundCash` saca el total en
+        efectivo de una caja abierta (`cashSessionPublicId`, la de la factura o la única del usuario) como egreso
+        REFUND; 409 CASH_SESSION_REQUIRED sin caja y CASH_INSUFFICIENT si no alcanza.
       operationId: createCreditNote
       security: [{ sessionCookie: [], csrfHeader: [] }]
       parameters:
@@ -2136,6 +2289,9 @@ paths:
               properties:
                 reason: { type: string, minLength: 3, maxLength: 300 }
                 lines: { type: array, minItems: 1, items: { type: object, required: [lineNumber, quantity], properties: { lineNumber: { type: integer, minimum: 1 }, quantity: { type: string } } } }
+                returnGoods: { type: boolean, default: false }
+                refundCash: { type: boolean, default: false }
+                cashSessionPublicId: { type: [string, "null"], format: uuid }
       responses:
         "201": { description: Nota de crédito, content: { application/json: { schema: { $ref: "#/components/schemas/ElectronicDocumentResponse" } } } }
         "409": { $ref: "#/components/responses/ConflictError" }
@@ -2249,6 +2405,255 @@ paths:
       security: [{ sessionCookie: [] }]
       responses:
         "200": { description: "[{ code, count, date, to }]" }
+  /api/v1/dashboard/tax-calendar:
+    get:
+      tags: [Dashboard]
+      summary: Próximas declaraciones por el noveno dígito del RUC (IVA 104 mensual o semestral RIMPE, retenciones 103, renta).
+      operationId: dashboardTaxCalendar
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200": { description: "{ ninthDigit, dueDay, items: [{ obligation, form, period, dueDate, daysLeft }] }" }
+  /api/v1/taxpayers/lookup:
+    get:
+      tags: [Customers]
+      summary: Datos del catastro público del SRI para un RUC o cédula (razón social, estado, agente de retención); null si no responde.
+      operationId: lookupTaxpayer
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: identification, in: query, required: true, schema: { type: string, pattern: "^(\\d{10}|\\d{13})$" } }
+      responses: { "200": { description: "{ ruc, legalName, status, withholdingAgent, keepsAccounting } o null" } }
+  /api/v1/items/next-barcode:
+    get:
+      tags: [Catalog]
+      summary: Siguiente EAN-13 interno (prefijo 20) para un producto sin código de fábrica.
+      operationId: nextItemBarcode
+      security: [{ sessionCookie: [] }]
+      responses: { "200": { description: "{ barcode }" } }
+  /api/v1/suppliers:
+    get:
+      tags: [Purchases]
+      summary: Proveedores, paginados (search por RUC o razón social; status ACTIVE o INACTIVE).
+      operationId: listSuppliers
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [ACTIVE, INACTIVE] } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses: { "200": { description: "{ data: [{ publicId, identification, legalName, email, phone, address, isActive, purchasesCount }], meta }" } }
+    post:
+      tags: [Purchases]
+      summary: Registra un proveedor con RUC (o cédula) válido. 409 SUPPLIER_ALREADY_EXISTS.
+      operationId: createSupplier
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [legalName]
+              properties:
+                identification: { type: string, pattern: "^(\\d{10}|\\d{13})$", description: Solo al crear; no cambia. }
+                legalName: { type: string, maxLength: 300 }
+                email: { type: [string, "null"], format: email }
+                phone: { type: [string, "null"] }
+                address: { type: [string, "null"], maxLength: 300 }
+      responses: { "201": { description: Proveedor }, "409": { description: SUPPLIER_ALREADY_EXISTS }, "422": { $ref: "#/components/responses/ValidationError" } }
+  /api/v1/suppliers/{supplier}:
+    get:
+      tags: [Purchases]
+      summary: Un proveedor (404 SUPPLIER_NOT_FOUND fuera de la empresa).
+      operationId: showSupplier
+      security: [{ sessionCookie: [] }]
+      parameters: [{ name: supplier, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Proveedor } }
+    patch:
+      tags: [Purchases]
+      summary: Edita razón social y contacto; la identificación no cambia (422 si se envía).
+      operationId: updateSupplier
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters: [{ name: supplier, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [legalName]
+              properties:
+                identification: { type: string, pattern: "^(\\d{10}|\\d{13})$", description: Solo al crear; no cambia. }
+                legalName: { type: string, maxLength: 300 }
+                email: { type: [string, "null"], format: email }
+                phone: { type: [string, "null"] }
+                address: { type: [string, "null"], maxLength: 300 }
+      responses: { "200": { description: Proveedor }, "422": { $ref: "#/components/responses/ValidationError" } }
+  /api/v1/suppliers/{supplier}/activate:
+    post:
+      tags: [Purchases]
+      summary: Activa un proveedor.
+      operationId: activateSupplier
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters: [{ name: supplier, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Proveedor activo } }
+  /api/v1/suppliers/{supplier}/deactivate:
+    post:
+      tags: [Purchases]
+      summary: Desactiva un proveedor; conserva sus compras pero no se elige en compras nuevas.
+      operationId: deactivateSupplier
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters: [{ name: supplier, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Proveedor inactivo } }
+  /api/v1/purchases:
+    get:
+      tags: [Purchases]
+      summary: Compras de Inversiones, paginadas (search por proveedor; credit=1 solo a crédito).
+      operationId: listPurchases
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: credit, in: query, schema: { type: string, enum: ["1"] } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses: { "200": { description: Compras con meta de paginación } }
+    post:
+      tags: [Purchases]
+      summary: "Registra una compra COM-000001: suma stock a la bodega (PURCHASE), deja el costo y, a crédito, sus cuotas."
+      description: >-
+        Una línea lleva itemPublicId o newItem (crea el producto ahí mismo). Un producto de otra bodega responde 422
+        ITEM_NOT_IN_WAREHOUSE. Con CREDITO, downPayment (abono) es menor que el total e installments suman el resto
+        (INSTALLMENTS_INVALID).
+      operationId: createPurchase
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [supplierPublicId, warehousePublicId, fiscalPaymentMethodPublicId, lines]
+              properties:
+                supplierPublicId: { type: string, format: uuid }
+                warehousePublicId: { type: string, format: uuid }
+                issueDate: { type: [string, "null"], format: date }
+                supplierDocumentNumber: { type: [string, "null"], pattern: "^\\d{3}-\\d{3}-\\d{9}$" }
+                notes: { type: [string, "null"], maxLength: 500 }
+                fiscalPaymentMethodPublicId: { type: string, format: uuid }
+                downPayment: { type: [string, "null"], description: Abono pagado al comprar (CREDITO). }
+                installmentFrequency: { type: [string, "null"], enum: [DAILY, BIWEEKLY, MONTHLY, SEMIANNUAL, ANNUAL, null] }
+                creditNotes: { type: [string, "null"], maxLength: 500 }
+                installments: { type: array, items: { type: object, required: [dueDate, amount], properties: { dueDate: { type: string, format: date }, amount: { type: string } } } }
+                lines:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [quantity, unitCost]
+                    properties:
+                      itemPublicId: { type: string, format: uuid }
+                      newItem:
+                        type: object
+                        required: [name]
+                        description: Ficha de producto preparada en el modal; se crea dentro de la transacción de compra y recibe su stock desde esta compra.
+                        properties:
+                          name: { type: string, maxLength: 60 }
+                          internalCode: { type: [string, "null"], maxLength: 25 }
+                          auxiliaryCode: { type: [string, "null"], maxLength: 25 }
+                          barcode: { type: [string, "null"], maxLength: 64 }
+                          unit: { type: string, maxLength: 32 }
+                          salePrice: { type: [string, "null"], description: Decimal opcional de hasta 6 posiciones; si se omite, el backend usa el costo unitario de compra. }
+                          priceIncludesTax: { type: boolean }
+                          costPrice: { type: [string, "null"] }
+                          description: { type: [string, "null"] }
+                          additionalDetail: { type: [string, "null"], maxLength: 300 }
+                          categoryPublicId: { type: [string, "null"], format: uuid }
+                          brandPublicId: { type: [string, "null"], format: uuid }
+                          priceTiers: { type: array, maxItems: 10, items: { type: object, required: [minQuantity, price], properties: { minQuantity: { type: string }, price: { type: string } } } }
+                          taxPublicIds: { type: array, maxItems: 8, items: { type: string, format: uuid } }
+                      quantity: { type: string }
+                      unitCost: { type: string }
+                      taxPublicId: { type: [string, "null"], format: uuid }
+      responses: { "201": { description: Compra con líneas y cuotas }, "422": { $ref: "#/components/responses/ValidationError" } }
+  /api/v1/purchases/{purchase}:
+    get:
+      tags: [Purchases]
+      summary: Detalle de una compra (404 PURCHASE_NOT_FOUND fuera de la empresa).
+      operationId: showPurchase
+      security: [{ sessionCookie: [] }]
+      parameters: [{ name: purchase, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: "Compra con líneas, cuotas y saldo" } }
+  /api/v1/receivables:
+    get:
+      tags: [Credit]
+      summary: "Cuentas por cobrar: ventas facturadas con CREDITO, su abono, lo pagado, el saldo y la próxima cuota."
+      operationId: listReceivables
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [PENDING, OVERDUE, PAID] } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses: { "200": { description: Cuentas con meta de paginación } }
+  /api/v1/receivables/{sale}:
+    get:
+      tags: [Credit]
+      summary: Detalle con cuotas y cobros.
+      operationId: showReceivable
+      security: [{ sessionCookie: [] }]
+      parameters: [{ name: sale, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Cuenta }, "404": { description: RECEIVABLE_NOT_FOUND } }
+  /api/v1/receivables/{sale}/payments:
+    post:
+      tags: [Credit]
+      summary: "Cobra cuotas: el valor cubre las cuotas de la más antigua y entra a la caja abierta del punto de emisión de la venta (409 CASH_SESSION_NOT_OPEN si está cerrada)."
+      operationId: payReceivable
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters: [{ name: sale, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: string, description: Mayor a cero y hasta el saldo (422 CREDIT_PAYMENT_EXCEEDS_BALANCE). }
+                notes: { type: [string, "null"], maxLength: 255 }
+      responses: { "201": { description: Cuenta actualizada }, "422": { description: CREDIT_PAYMENT_EXCEEDS_BALANCE } }
+  /api/v1/payables:
+    get:
+      tags: [Credit]
+      summary: "Cuentas por pagar: compras con CREDITO, su abono, lo pagado, el saldo y la próxima cuota."
+      operationId: listPayables
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [PENDING, OVERDUE, PAID] } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses: { "200": { description: Cuentas con meta de paginación } }
+  /api/v1/payables/{purchase}:
+    get:
+      tags: [Credit]
+      summary: Detalle con cuotas y pagos.
+      operationId: showPayable
+      security: [{ sessionCookie: [] }]
+      parameters: [{ name: purchase, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Cuenta }, "404": { description: PURCHASE_NOT_FOUND } }
+  /api/v1/payables/{purchase}/payments:
+    post:
+      tags: [Credit]
+      summary: "Paga cuotas al proveedor, de la más antigua a la más nueva; no toca la caja."
+      operationId: payPayable
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters: [{ name: purchase, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: string, description: Mayor a cero y hasta el saldo (422 CREDIT_PAYMENT_EXCEEDS_BALANCE). }
+                notes: { type: [string, "null"], maxLength: 255 }
+      responses: { "201": { description: Cuenta actualizada }, "422": { description: CREDIT_PAYMENT_EXCEEDS_BALANCE } }
   /api/v1/reports/tax-summary:
     get:
       tags: [Dashboard]
@@ -2448,7 +2853,7 @@ components:
         additionalDetail: { type: [string, "null"], maxLength: 300 }
         stock: { type: [object, "null"], description: Existencia en su bodega (solo productos), properties: { quantity: { type: string }, warehousePublicId: { type: string, format: uuid }, warehouseName: { type: string }, establishmentPublicId: { type: string, format: uuid } } }
         priceTiers: { type: array, description: Precios alternos desde una cantidad (mayorista), items: { type: object, properties: { minQuantity: { type: string }, price: { type: string } } } }
-        finalPrice: { type: string, description: Precio por unidad con impuestos (el mismo precio si ya los incluye), redondeado a centavos. }
+        finalPrice: { type: string, description: "Precio por unidad con impuestos (el mismo precio si ya los incluye), redondeado a centavos." }
         auxiliaryCode: { type: [string, "null"], maxLength: 25 }
         categoryPublicId: { type: [string, "null"], format: uuid }
         categoryName: { type: [string, "null"] }
@@ -2522,10 +2927,16 @@ components:
         reference: { type: [string, "null"], maxLength: 120 }
         term: { type: [string, "null"], pattern: '^\d+(\.\d{1,2})?$' }
         timeUnit: { type: [string, "null"], enum: [DAY, MONTH] }
+        isCredit: { type: boolean, description: "Respuesta: pago a crédito (cuotas en sale_installments, nunca entra a la caja)." }
+        downPayment: { type: string, description: Abono de CREDITO; entra a la caja con la factura. }
+        installmentFrequency: { type: [string, "null"], enum: [DAILY, BIWEEKLY, MONTHLY, SEMIANNUAL, ANNUAL, null] }
+        creditNotes: { type: [string, "null"], maxLength: 500 }
+        installments: { type: array, maxItems: 120, description: "Obligatorio con una forma a crédito: suman el valor exacto (INSTALLMENTS_INVALID).", items: { type: object, required: [dueDate, amount], properties: { dueDate: { type: string, format: date }, amount: { type: string } } } }
     SaleDraftRequest:
       type: object
       properties:
         customerPublicId: { type: [string, "null"], format: uuid }
+        cashSessionPublicId: { type: [string, "null"], format: uuid, description: "Caja abierta en la que se cobra (409 CASH_SESSION_NOT_OPEN si está cerrada). Sin enviarla, el borrador conserva la que tenía." }
         notes: { type: [string, "null"], maxLength: 2000 }
         tipAmount: { type: [string, "null"], pattern: '^\d{1,14}(\.\d{1,2})?$', description: Propina; no supera MAX_TIP_PERCENTAGE del subtotal (TIP_MAX_PERCENTAGE_EXCEEDED). }
         lines:
@@ -2720,7 +3131,7 @@ components:
       type: object
       properties:
         identifier: { type: [string, "null"] }
-        type: { type: [string, "null"], description: ERROR, ADVERTENCIA o INFORMATIVO }
+        type: { type: [string, "null"], description: "ERROR, ADVERTENCIA o INFORMATIVO" }
         message: { type: string }
         additionalInformation: { type: [string, "null"] }
     SriSubmission:

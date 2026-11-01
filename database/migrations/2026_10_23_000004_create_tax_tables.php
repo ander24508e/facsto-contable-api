@@ -13,6 +13,8 @@ return new class extends Migration
         Schema::create('sri_tax_definitions', function (Blueprint $table): void {
             $table->id();
             $table->uuid('public_id')->unique();
+            // NULL = catálogo oficial. Con empresa = tarifa que esa empresa registró con «Agregar IVA».
+            $table->foreignId('company_id')->nullable()->constrained()->cascadeOnDelete();
             $table->string('tax_type', 16);
             $table->string('sri_tax_code', 4);
             $table->string('sri_percentage_code', 8);
@@ -31,7 +33,7 @@ return new class extends Migration
             $table->string('legal_basis', 255);
             $table->boolean('is_active')->default(true);
             $table->timestamps();
-            $table->unique(['tax_type', 'sri_percentage_code', 'valid_from'], 'sri_tax_definitions_version_unique');
+            $table->unique(['company_id', 'tax_type', 'sri_percentage_code', 'valid_from'], 'sri_tax_definitions_company_version_unique');
             $table->index(['is_active', 'valid_from', 'valid_until']);
         });
 
@@ -51,6 +53,8 @@ return new class extends Migration
             $table->unique(['company_id', 'id'], 'company_taxes_company_id_id_unique');
             $table->index(['company_id', 'is_active']);
         });
+
+        DB::statement('CREATE UNIQUE INDEX sri_tax_definitions_version_unique ON sri_tax_definitions (tax_type, sri_percentage_code, valid_from) WHERE company_id IS NULL');
 
         if (DB::getDriverName() === 'pgsql') {
             DB::statement("ALTER TABLE sri_tax_definitions ADD CONSTRAINT sri_tax_definitions_type_check CHECK (tax_type IN ('IVA','ICE','IRBPNR'))");

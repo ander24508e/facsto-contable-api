@@ -15,6 +15,7 @@ abstract class InvoiceFeatureTestCase extends SalesTestCase
         $company->fiscalSettings()->create(['accounting_required' => false, 'sri_environment' => 'TEST', 'emission_type' => 'NORMAL']);
         $establishment = $company->establishments()->create(['code' => '001', 'name' => 'Matriz', 'address' => 'Quito', 'is_active' => true, 'is_main' => true]);
         $establishment->emissionPoints()->create(['company_id' => $company->id, 'code' => '001', 'name' => 'Principal', 'is_active' => true, 'is_default' => true]);
+        $this->openCashRegister($company, $user);
 
         return $company;
     }

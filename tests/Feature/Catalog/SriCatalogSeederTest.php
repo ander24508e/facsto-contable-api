@@ -23,7 +23,9 @@ final class SriCatalogSeederTest extends CatalogTestCase
         $this->assertSame(['0', '4', '5', '6', '7'], $current);
         $this->assertSame(7, SriTaxDefinition::query()->count());
         $this->assertSame(2, FiscalRule::query()->count());
-        $this->assertSame(['01', '15', '16', '17', '18', '19', '20', '21'], FiscalPaymentMethod::query()->orderBy('code')->pluck('code')->all());
+        $this->assertSame(['01', '15', '16', '17', '18', '19', '20', '21'], FiscalPaymentMethod::query()->where('is_credit', false)->orderBy('code')->pluck('code')->all());
+        // CREDITO, fixed for every company, sends code 01 with its term.
+        $this->assertSame(['01'], FiscalPaymentMethod::query()->where('is_credit', true)->where('name', 'CREDITO')->pluck('code')->all());
         $this->assertSame(5, $company->taxes()->count());
     }
 

@@ -1,0 +1,35 @@
+<?php
+
+namespace App\Domains\Companies\Models;
+
+use App\Domains\Taxes\Models\CompanyTax;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+/** Sistema: the rules and defaults of one company (stock threshold, sale and product defaults, idle timeout). */
+#[Fillable(['company_id', 'low_stock_threshold', 'allow_negative_stock', 'default_payment_method', 'default_customer', 'default_company_tax_id', 'default_unit', 'idle_timeout_minutes'])]
+class CompanySetting extends Model
+{
+    public const DEFAULT_CUSTOMERS = ['EMPTY', 'FINAL_CONSUMER'];
+
+    /** Minutes the idle timeout can take; 0 never closes the session. */
+    public const IDLE_TIMEOUTS = [0, 15, 30, 60, 480];
+
+    protected $attributes = [
+        'low_stock_threshold' => 5,
+        'allow_negative_stock' => false,
+        'default_customer' => 'EMPTY',
+        'idle_timeout_minutes' => 0,
+    ];
+
+    public function defaultTax(): BelongsTo
+    {
+        return $this->belongsTo(CompanyTax::class, 'default_company_tax_id');
+    }
+
+    protected function casts(): array
+    {
+        return ['low_stock_threshold' => 'integer', 'allow_negative_stock' => 'boolean', 'idle_timeout_minutes' => 'integer'];
+    }
+}

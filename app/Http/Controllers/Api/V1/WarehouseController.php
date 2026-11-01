@@ -12,7 +12,7 @@ use App\Shared\Http\ApiException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-/** Warehouses: one per establishment, created or renamed from the inventory form. */
+/** Warehouses: an establishment has as many as it needs; each belongs to one establishment. */
 final class WarehouseController extends Controller
 {
     public function index(Request $request, CompanyContext $context): JsonResponse
@@ -56,10 +56,9 @@ final class WarehouseController extends Controller
         if (! $establishment) {
             throw new ApiException(ApiErrorCode::ESTABLISHMENT_NOT_FOUND, 'El establecimiento no está activo en la empresa actual.', 422);
         }
-        if (Warehouse::query()->where('establishment_id', $establishment->id)->exists()) {
-            throw new ApiException(ApiErrorCode::WAREHOUSE_ALREADY_EXISTS, 'Este establecimiento ya tiene su bodega.', 409);
-        }
-        $warehouse = Warehouse::query()->create(['company_id' => $company->id, 'establishment_id' => $establishment->id, 'name' => trim($data['name'])]);
+        $name = $this->cleanName($data['name']);
+        $this->ensureUniqueName($establishment->id, $name);
+        $warehouse = Warehouse::query()->create(['company_id' => $company->id, 'establishment_id' => $establishment->id, 'name' => $name]);
         $audit->record($request->user(), $company, 'warehouse.created', $warehouse, null, ['name' => $warehouse->name, 'establishment' => $establishment->code]);
 
         return response()->json(['data' => $this->present($warehouse->load('establishment'))], 201);
@@ -73,8 +72,10 @@ final class WarehouseController extends Controller
             throw new ApiException(ApiErrorCode::WAREHOUSE_NOT_FOUND, 'La bodega no existe en la empresa activa.', 404);
         }
         $data = $request->validate(['name' => ['required', 'string', 'max:80']]);
+        $name = $this->cleanName($data['name']);
+        $this->ensureUniqueName($warehouse->establishment_id, $name, $warehouse->id);
         $before = ['name' => $warehouse->name];
-        $warehouse->forceFill(['name' => trim($data['name'])])->save();
+        $warehouse->forceFill(['name' => $name])->save();
         $audit->record($request->user(), $company, 'warehouse.updated', $warehouse, $before, ['name' => $warehouse->name]);
 
         return response()->json(['data' => $this->present($warehouse->load('establishment'))]);
@@ -85,11 +86,11 @@ final class WarehouseController extends Controller
         return $this->setActive($request, $warehouse, $context, $audit, true);
     }
 
-    /** A warehouse that still holds units cannot be deactivated: its products would be left nowhere. */
+    /** A warehouse that still holds products cannot be deactivated: they would be left nowhere. */
     public function deactivate(Request $request, Warehouse $warehouse, CompanyContext $context, AuditRecorder $audit): JsonResponse
     {
         if ($warehouse->stocks()->where('quantity', '>', 0)->exists()) {
-            throw new ApiException(ApiErrorCode::WAREHOUSE_IN_USE, 'La bodega tiene productos con stock; muévelos antes de desactivarla.', 409);
+            throw new ApiException(ApiErrorCode::WAREHOUSE_IN_USE, 'La bodega tiene productos con stock; muévelos a otra bodega antes de desactivarla.', 409);
         }
 
         return $this->setActive($request, $warehouse, $context, $audit, false);
@@ -108,6 +109,22 @@ final class WarehouseController extends Controller
         }
 
         return response()->json(['data' => $this->present($warehouse->load('establishment'))]);
+    }
+
+    private function cleanName(string $name): string
+    {
+        return (string) preg_replace('/\s+/u', ' ', trim($name));
+    }
+
+    /** Two warehouses of the same establishment cannot share a name: the cashier picks them by name. */
+    private function ensureUniqueName(int $establishmentId, string $name, ?int $except = null): void
+    {
+        $taken = Warehouse::query()->where('establishment_id', $establishmentId)
+            ->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
+            ->when($except, fn ($query) => $query->whereKeyNot($except))->exists();
+        if ($taken) {
+            throw new ApiException(ApiErrorCode::WAREHOUSE_ALREADY_EXISTS, 'Ya existe una bodega con ese nombre en este establecimiento.', 409);
+        }
     }
 
     /** @return array<string, mixed> */

@@ -23,6 +23,11 @@ final class SaleResource extends JsonResource
                 'email' => $this->customer_email,
             ],
             'createdBy' => $this->creator?->name,
+            // The cash register (session) the sale is charged in.
+            'cashSession' => $this->whenLoaded('cashSession', fn () => $this->cashSession ? [
+                'publicId' => $this->cashSession->public_id,
+                'status' => $this->cashSession->status,
+            ] : null),
             'notes' => $this->notes,
             'subtotal' => $this->subtotal,
             'discountTotal' => $this->discount_total,
@@ -74,6 +79,16 @@ final class SaleResource extends JsonResource
                 'reference' => $method->reference,
                 'term' => $method->term,
                 'timeUnit' => $method->time_unit,
+                'isCredit' => (bool) $method->is_credit,
+                'downPayment' => $method->down_payment,
+                'installmentFrequency' => $method->installment_frequency,
+                'creditNotes' => $method->credit_notes,
+            ])->values()),
+            'installments' => $this->whenLoaded('installments', fn () => $this->installments->map(fn ($installment): array => [
+                'number' => $installment->number,
+                'dueDate' => $installment->due_date->toDateString(),
+                'amount' => $installment->amount,
+                'paidAmount' => $installment->paid_amount,
             ])->values()),
             'createdAt' => $this->created_at?->toIso8601String(),
             'updatedAt' => $this->updated_at?->toIso8601String(),

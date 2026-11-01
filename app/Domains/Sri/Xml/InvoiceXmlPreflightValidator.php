@@ -10,6 +10,8 @@ use App\Domains\Sri\Mappers\SriDocumentTypeMapper;
 use App\Domains\Sri\Mappers\SriEmissionTypeMapper;
 use App\Domains\Sri\Mappers\SriEnvironmentMapper;
 use App\Domains\Sri\Mappers\SriIdentificationTypeMapper;
+use App\Domains\Taxes\Enums\FiscalRuleCode;
+use App\Domains\Taxes\Services\FiscalRuleResolver;
 use LogicException;
 
 final class InvoiceXmlPreflightValidator
@@ -20,6 +22,7 @@ final class InvoiceXmlPreflightValidator
         private readonly SriEmissionTypeMapper $emissions,
         private readonly SriIdentificationTypeMapper $identifications,
         private readonly DocumentStateMachine $states,
+        private readonly FiscalRuleResolver $rules,
     ) {}
 
     public function validate(ElectronicDocument $document): void
@@ -106,7 +109,9 @@ final class InvoiceXmlPreflightValidator
         if ($document->rimpe_type !== null && ! in_array($document->rimpe_type, ['ENTREPRENEUR', 'POPULAR_BUSINESS'], true)) {
             $this->fail('RIMPE_TYPE_UNSUPPORTED');
         }
-        if ($document->customer_identification_type === 'FINAL_CONSUMER' && bccomp((string) $document->total, '50.00', 2) > 0) {
+        // The consumer-final limit is the SRI's global rule in force on the issue date (never hard-coded).
+        if ($document->customer_identification_type === 'FINAL_CONSUMER'
+            && bccomp((string) $document->total, $this->rules->decimalAt(FiscalRuleCode::FINAL_CONSUMER_MAX_TOTAL, $document->issue_date), 2) > 0) {
             $this->fail('FINAL_CONSUMER_AMOUNT_EXCEEDED');
         }
     }

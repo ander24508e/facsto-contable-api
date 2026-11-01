@@ -7,7 +7,8 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Cajas: cada sesión de una caja (punto de emisión) con su bodega: quién la abrió y la cerró, cuándo y con
- * cuánto dinero (monto fijo o conteo por billetes y monedas), y los ingresos y egresos de dinero entre medio.
+ * cuánto dinero (monto fijo o conteo por billetes y monedas). Va antes de las ventas, que guardan la sesión
+ * en la que se cobraron; sus movimientos de dinero van después de los comprobantes.
  */
 return new class extends Migration
 {
@@ -45,26 +46,10 @@ return new class extends Migration
 
         // Una caja sólo puede tener una apertura sin cerrar.
         DB::statement("CREATE UNIQUE INDEX cash_sessions_one_open_per_point ON cash_sessions (emission_point_id) WHERE status = 'OPEN'");
-
-        // Ingresos (IN) y egresos (OUT) de dinero registrados mientras la caja está abierta.
-        Schema::create('cash_movements', function (Blueprint $table): void {
-            $table->id();
-            $table->uuid('public_id')->unique();
-            $table->foreignId('company_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('cash_session_id');
-            $table->string('type', 8);
-            $table->decimal('amount', 14, 2);
-            $table->string('concept', 120);
-            $table->foreignId('created_by')->constrained('users')->restrictOnDelete();
-            $table->timestamps();
-            $table->index(['cash_session_id', 'created_at']);
-            $table->foreign(['company_id', 'cash_session_id'])->references(['company_id', 'id'])->on('cash_sessions')->cascadeOnDelete();
-        });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('cash_movements');
         Schema::dropIfExists('cash_sessions');
     }
 };

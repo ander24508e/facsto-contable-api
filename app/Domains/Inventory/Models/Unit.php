@@ -17,6 +17,16 @@ class Unit extends Model
         static::creating(fn (self $unit) => $unit->public_id ??= (string) Str::uuid7());
     }
 
+    /** The usual units, created the first time the company needs a unit (inventory, settings or a sale). */
+    public static function ensureDefaults(int $companyId): void
+    {
+        if (! static::query()->where('company_id', $companyId)->exists()) {
+            foreach (self::DEFAULTS as $name) {
+                static::query()->create(['company_id' => $companyId, 'name' => $name]);
+            }
+        }
+    }
+
     public function getRouteKeyName(): string
     {
         return 'public_id';

@@ -15,6 +15,8 @@ return new class extends Migration
             $table->foreignId('company_id')->constrained()->restrictOnDelete();
             $table->foreignId('customer_id')->nullable();
             $table->foreignId('created_by')->constrained('users')->restrictOnDelete();
+            // Caja abierta en la que se cobra: de ella salen el establecimiento, el punto de emisión y la bodega.
+            $table->foreignId('cash_session_id')->nullable();
             // Internal consecutive per company (V-00001); unrelated to the SRI sequential.
             $table->unsignedInteger('number');
             $table->string('status', 32)->default('DRAFT');
@@ -43,7 +45,9 @@ return new class extends Migration
             $table->unique(['company_id', 'api_client_id', 'idempotency_key'], 'sales_idempotency_unique');
             $table->foreign(['company_id', 'api_client_id'])->references(['company_id', 'id'])->on('api_clients')->restrictOnDelete();
             $table->foreign(['company_id', 'customer_id'])->references(['company_id', 'id'])->on('customers')->restrictOnDelete();
+            $table->foreign(['company_id', 'cash_session_id'])->references(['company_id', 'id'])->on('cash_sessions')->restrictOnDelete();
             $table->index(['company_id', 'status', 'created_at']);
+            $table->index('cash_session_id');
             $table->index(['company_id', 'customer_id', 'created_at']);
         });
 
@@ -97,6 +101,11 @@ return new class extends Migration
             $table->string('reference', 120)->nullable();
             $table->decimal('term', 12, 2)->nullable();
             $table->string('time_unit', 16)->nullable();
+            // CREDITO: el abono entra a la caja con la factura; el saldo se cobra en cuotas (sale_installments).
+            $table->boolean('is_credit')->default(false);
+            $table->decimal('down_payment', 18, 2)->default(0);
+            $table->string('installment_frequency', 16)->nullable();
+            $table->string('credit_notes', 500)->nullable();
             $table->timestamps();
             $table->foreign(['company_id', 'sale_id'])->references(['company_id', 'id'])->on('sales')->cascadeOnDelete();
         });
@@ -107,7 +116,7 @@ return new class extends Migration
             DB::statement('ALTER TABLE sale_details ADD CONSTRAINT sale_details_quantity_positive_check CHECK (quantity > 0)');
             DB::statement('ALTER TABLE sale_details ADD CONSTRAINT sale_details_amounts_nonnegative_check CHECK (unit_price >= 0 AND discount_amount >= 0 AND subtotal >= 0 AND taxable_base >= 0 AND tax_total >= 0 AND total >= 0)');
             DB::statement('ALTER TABLE sale_detail_taxes ADD CONSTRAINT sale_detail_taxes_amounts_nonnegative_check CHECK (percentage >= 0 AND taxable_base >= 0 AND tax_amount >= 0)');
-            DB::statement('ALTER TABLE sale_payment_methods ADD CONSTRAINT sale_payment_methods_amount_nonnegative_check CHECK (amount >= 0 AND (term IS NULL OR term >= 0))');
+            DB::statement('ALTER TABLE sale_payment_methods ADD CONSTRAINT sale_payment_methods_amount_nonnegative_check CHECK (amount >= 0 AND down_payment >= 0 AND down_payment <= amount AND (term IS NULL OR term >= 0))');
         }
     }
 

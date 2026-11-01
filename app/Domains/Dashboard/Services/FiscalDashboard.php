@@ -2,9 +2,9 @@
 
 namespace App\Domains\Dashboard\Services;
 
-use App\Domains\Catalog\Models\Item;
 use App\Domains\Companies\Fiscal\Services\ElectronicInvoicingRequirements;
 use App\Domains\Companies\Models\Company;
+use App\Domains\Companies\Services\CompanySettings;
 use App\Domains\FiscalDocuments\Enums\DocumentStatus;
 use App\Domains\FiscalDocuments\Enums\DocumentType;
 use App\Domains\FiscalDocuments\Models\ElectronicDocument;
@@ -20,7 +20,7 @@ final class FiscalDashboard
 {
     private const IN_PROCESS = ['NUMBERED', 'XML_BUILT', 'SIGNED', 'QUEUED', 'RECEIVED', 'PENDING_AUTHORIZATION'];
 
-    public function __construct(private readonly ElectronicInvoicingRequirements $requirements) {}
+    public function __construct(private readonly ElectronicInvoicingRequirements $requirements, private readonly CompanySettings $settings) {}
 
     /** Today's documents by bucket; FAILED ones are still retried until 23:59:59 of their issue date. */
     public function status(Company $company): array
@@ -183,10 +183,12 @@ final class FiscalDashboard
         } elseif (! $company->fiscalSettings?->sri_submission_enabled) {
             $actions[] = ['code' => 'ELECTRONIC_INVOICING_OFF', 'count' => null, 'date' => null, 'to' => '/companies'];
         }
+        // The threshold is the company's (Sistema), 5 by default; `threshold` goes to the alert text.
+        $threshold = $this->settings->lowStockThreshold($company);
         $lowStock = $company->items()->where('type', 'PRODUCT')->where('is_active', true)
-            ->whereHas('stocks', fn ($query) => $query->where('quantity', '<=', Item::LOW_STOCK))->count();
+            ->whereHas('stocks', fn ($query) => $query->where('quantity', '<=', $threshold))->count();
         if ($lowStock > 0) {
-            $actions[] = ['code' => 'LOW_STOCK', 'count' => $lowStock, 'date' => null, 'to' => '/catalog/items?stock=low'];
+            $actions[] = ['code' => 'LOW_STOCK', 'count' => $lowStock, 'date' => null, 'to' => '/catalog/items?stock=low', 'threshold' => $threshold];
         }
         $staleDrafts = $company->sales()->where('status', SaleStatus::DRAFT->value)->where('updated_at', '<', now()->subDays(7))->count();
         if ($staleDrafts > 0) {

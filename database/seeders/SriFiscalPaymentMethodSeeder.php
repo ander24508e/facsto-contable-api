@@ -16,15 +16,18 @@ final class SriFiscalPaymentMethodSeeder extends Seeder
         ['code' => '19', 'name' => 'TARJETA DE CRÉDITO', 'valid_from' => '2016-06-01'],
         ['code' => '20', 'name' => 'OTROS CON UTILIZACIÓN DEL SISTEMA FINANCIERO', 'valid_from' => '2016-06-01'],
         ['code' => '21', 'name' => 'ENDOSO DE TÍTULOS', 'valid_from' => '2016-06-01'],
+        // Venta o compra a crédito: va al XML como 01 con el plazo en días hasta la última cuota.
+        ['code' => '01', 'name' => 'CREDITO', 'valid_from' => '2013-01-01', 'is_credit' => true],
     ];
 
     public function run(): void
     {
         foreach (self::METHODS as $method) {
-            FiscalPaymentMethod::query()->where('code', $method['code'])
+            $isCredit = $method['is_credit'] ?? false;
+            FiscalPaymentMethod::query()->where('code', $method['code'])->where('is_credit', $isCredit)
                 ->whereDate('valid_from', $method['valid_from'])
                 ->firstOrNew()
-                ->fill([...$method, 'valid_until' => null, 'is_active' => true])
+                ->fill([...$method, 'is_credit' => $isCredit, 'valid_until' => null, 'is_active' => true])
                 ->save();
         }
     }

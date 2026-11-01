@@ -31,6 +31,7 @@ final class CompanyTaxCatalogSynchronizer
     private function defaultDefinitions(): Collection
     {
         return SriTaxDefinition::query()
+            ->whereNull('company_id')
             ->where('is_active', true)
             ->where('enabled_by_default', true)
             ->where(fn ($query) => $query->whereNull('valid_until')->orWhereDate('valid_until', '>=', today()))

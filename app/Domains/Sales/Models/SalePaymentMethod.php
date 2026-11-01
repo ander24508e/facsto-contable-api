@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['company_id', 'sale_id', 'fiscal_payment_method_id', 'method_code', 'method_name', 'amount', 'reference', 'term', 'time_unit'])]
+#[Fillable(['company_id', 'sale_id', 'fiscal_payment_method_id', 'method_code', 'method_name', 'amount', 'reference', 'term', 'time_unit', 'is_credit', 'down_payment', 'installment_frequency', 'credit_notes'])]
 class SalePaymentMethod extends Model
 {
     public function fiscalPaymentMethod(): BelongsTo
@@ -22,6 +22,6 @@ class SalePaymentMethod extends Model
 
     protected function casts(): array
     {
-        return ['amount' => 'decimal:2', 'term' => 'decimal:2'];
+        return ['amount' => 'decimal:2', 'term' => 'decimal:2', 'is_credit' => 'boolean', 'down_payment' => 'decimal:2'];
     }
 }

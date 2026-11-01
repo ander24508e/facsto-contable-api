@@ -4,6 +4,7 @@ namespace App\Domains\Sales\Services;
 
 use App\Domains\Catalog\Models\FiscalPaymentMethod;
 use App\Domains\Companies\Context\CompanyContext;
+use App\Domains\Credit\Services\InstallmentPlan;
 use App\Domains\Customers\Enums\IdentificationType;
 use App\Domains\Customers\Models\Customer;
 use App\Domains\Taxes\Enums\FiscalRuleCode;
@@ -22,6 +23,7 @@ final class SaleQuoteService
         private readonly CompanyContext $context,
         private readonly SaleDraftCalculator $calculator,
         private readonly FiscalRuleResolver $rules,
+        private readonly InstallmentPlan $installments,
     ) {}
 
     /**
@@ -57,24 +59,30 @@ final class SaleQuoteService
 
         $payments = [];
         foreach ($data['paymentMethods'] ?? [] as $methodData) {
-            $method = FiscalPaymentMethod::query()
+            $method = FiscalPaymentMethod::query()->valid()
                 ->where('public_id', $methodData['fiscalPaymentMethodPublicId'])
-                ->where('is_active', true)
-                ->whereDate('valid_from', '<=', today())
-                ->where(fn ($query) => $query->whereNull('valid_until')->orWhereDate('valid_until', '>=', today()))
                 ->first();
             if (! $method) {
                 throw new ApiException(ApiErrorCode::FISCAL_PAYMENT_METHOD_NOT_FOUND, 'Uno de los métodos fiscales de pago no está vigente.', 422);
             }
+            $amount = bcadd((string) $methodData['amount'], '0', 2);
+            // CREDITO: down payment plus installments for the balance; the XML declares the term in days.
+            $terms = $method->is_credit ? $this->installments->terms($methodData, $amount) : null;
+            $plan = $terms['installments'] ?? [];
             $payments[] = [
                 'fiscal_payment_method_id' => $method->id,
                 'fiscal_payment_method_public_id' => $method->public_id,
                 'method_code' => $method->code,
                 'method_name' => $method->name,
-                'amount' => bcadd((string) $methodData['amount'], '0', 2),
+                'amount' => $amount,
                 'reference' => $methodData['reference'] ?? null,
-                'term' => $methodData['term'] ?? null,
-                'time_unit' => $methodData['timeUnit'] ?? null,
+                'term' => $plan ? $this->installments->termInDays($plan) : ($methodData['term'] ?? null),
+                'time_unit' => $plan ? 'DAY' : ($methodData['timeUnit'] ?? null),
+                'is_credit' => $method->is_credit,
+                'down_payment' => $terms['down_payment'] ?? '0.00',
+                'installment_frequency' => $terms['installment_frequency'] ?? null,
+                'credit_notes' => $terms['credit_notes'] ?? null,
+                'installments' => $plan,
             ];
         }
 

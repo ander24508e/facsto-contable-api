@@ -4,6 +4,7 @@ namespace App\Domains\Cash\Models;
 
 use App\Domains\Companies\Models\EmissionPoint;
 use App\Domains\Inventory\Models\Warehouse;
+use App\Domains\Sales\Models\Sale;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
@@ -50,6 +51,11 @@ class CashSession extends Model
     public function closer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'closed_by');
+    }
+
+    public function sales(): HasMany
+    {
+        return $this->hasMany(Sale::class);
     }
 
     public function movements(): HasMany

@@ -18,6 +18,7 @@ final class ElectronicDocumentResource extends JsonResource
             'documentType' => $this->document_type->value,
             'fullNumber' => $this->full_number,
             'reason' => $this->reason,
+            'returnsGoods' => (bool) $this->returns_goods,
             'modifiedDocument' => $this->modified_document_id === null ? null : [
                 'publicId' => $this->modifiedDocument?->public_id,
                 'fullNumber' => $this->modifiedDocument?->full_number,

@@ -31,9 +31,17 @@ final class CreditNoteController extends Controller
             'lines' => ['required', 'array', 'min:1', 'max:100'],
             'lines.*.lineNumber' => ['required', 'integer', 'min:1', 'distinct'],
             'lines.*.quantity' => ['required', 'string', 'regex:/^\d{1,9}(\.\d{1,6})?$/'],
+            // Devolución de mercadería (vuelve al stock) and cash given back from an open register.
+            'returnGoods' => ['sometimes', 'boolean'],
+            'refundCash' => ['sometimes', 'boolean'],
+            'cashSessionPublicId' => ['sometimes', 'nullable', 'uuid'],
         ]);
 
-        $creditNote = $create->execute($invoice, trim($data['reason']), $data['lines'], $request->user());
+        $creditNote = $create->execute($invoice, trim($data['reason']), $data['lines'], $request->user(), [
+            'returnGoods' => (bool) ($data['returnGoods'] ?? false),
+            'refundCash' => (bool) ($data['refundCash'] ?? false),
+            'cashSessionPublicId' => $data['cashSessionPublicId'] ?? null,
+        ]);
         try {
             $creditNote = $continue->execute($creditNote, $request->user());
         } catch (ApiException) {

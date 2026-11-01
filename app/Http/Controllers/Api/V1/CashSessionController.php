@@ -9,7 +9,9 @@ use App\Domains\Cash\Models\CashMovement;
 use App\Domains\Cash\Models\CashSession;
 use App\Domains\Cash\Services\CashDenominations;
 use App\Domains\Companies\Context\CompanyContext;
+use App\Domains\Sales\Enums\SaleStatus;
 use App\Domains\Sales\Models\Sale;
+use App\Domains\Sales\Models\SalePaymentMethod;
 use App\Http\Controllers\Controller;
 use App\Shared\Http\ApiErrorCode;
 use App\Shared\Http\ApiException;
@@ -43,7 +45,7 @@ final class CashSessionController extends Controller
         return response()->json(['data' => $query->limit(100)->get()->map($this->present(...))]);
     }
 
-    /** The report of one session: its data, the balance and every movement in order. */
+    /** The report of one session: its data, the balance, its invoiced sales by payment and every movement in order. */
     public function show(CashSession $session, CompanyContext $context): JsonResponse
     {
         $this->authorize('viewAny', Sale::class);
@@ -53,9 +55,11 @@ final class CashSessionController extends Controller
         return response()->json(['data' => [
             ...$this->present($session),
             'balance' => $session->balance(),
+            'sales' => $this->sales($session),
             'movements' => $session->movements->map(fn (CashMovement $movement): array => [
                 'publicId' => $movement->public_id,
                 'type' => $movement->type,
+                'source' => $movement->source,
                 'amount' => (string) $movement->amount,
                 'concept' => $movement->concept,
                 'createdBy' => $movement->creator->name,
@@ -91,6 +95,7 @@ final class CashSessionController extends Controller
         return response()->json(['data' => [
             'publicId' => $movement->public_id,
             'type' => $movement->type,
+            'source' => $movement->source,
             'amount' => (string) $movement->amount,
             'concept' => $movement->concept,
             'createdBy' => $request->user()->name,
@@ -128,6 +133,26 @@ final class CashSessionController extends Controller
             'denominations.coins' => ['sometimes', 'array'],
             'denominations.coins.*' => ['integer', 'min:0', 'max:100000'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:255'],
+        ];
+    }
+
+    /**
+     * The invoices charged in the session and how they were paid. Only code 01 (cash) entered the drawer;
+     * cards, transfers and credit are listed for the report.
+     *
+     * @return array{count: int, total: string, payments: list<array{code: string, name: ?string, amount: string}>}
+     */
+    private function sales(CashSession $session): array
+    {
+        $sales = Sale::query()->where('cash_session_id', $session->id)->where('status', SaleStatus::DOCUMENT_PREPARED);
+        $payments = SalePaymentMethod::query()->whereIn('sale_id', (clone $sales)->select('id'))
+            ->selectRaw('method_code, MAX(method_name) as method_name, SUM(amount) as amount')
+            ->groupBy('method_code')->orderBy('method_code')->get();
+
+        return [
+            'count' => (clone $sales)->count(),
+            'total' => bcadd((string) (clone $sales)->sum('total'), '0', 2),
+            'payments' => $payments->map(fn ($row): array => ['code' => $row->method_code, 'name' => $row->method_name, 'amount' => bcadd((string) $row->amount, '0', 2)])->all(),
         ];
     }
 

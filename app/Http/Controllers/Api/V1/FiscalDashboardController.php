@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Dashboard\Services\FiscalDashboard;
+use App\Domains\Dashboard\Services\TaxCalendar;
 use App\Domains\Sales\Models\Sale;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
@@ -34,6 +35,14 @@ final class FiscalDashboardController extends Controller
         $period = $request->validate(['period' => ['sometimes', 'date_format:Y-m']])['period'] ?? now((string) config('sri.timezone'))->format('Y-m');
 
         return response()->json(['data' => $dashboard->trend($context->company(), $period)]);
+    }
+
+    /** GET /dashboard/tax-calendar — the next tax returns by the ninth digit of the RUC. */
+    public function taxCalendar(CompanyContext $context, TaxCalendar $calendar): JsonResponse
+    {
+        $this->authorize('viewAny', Sale::class);
+
+        return response()->json(['data' => $calendar->upcoming($context->company()->loadMissing('fiscalSettings'))]);
     }
 
     public function actions(CompanyContext $context, FiscalDashboard $dashboard): JsonResponse

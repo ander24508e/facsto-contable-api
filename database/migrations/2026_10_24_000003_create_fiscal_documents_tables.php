@@ -36,6 +36,8 @@ return new class extends Migration
             $table->foreignId('sale_id')->nullable();
             $table->foreignId('modified_document_id')->nullable();
             $table->string('reason', 300)->nullable();
+            // Nota de crédito por devolución de mercadería: sus productos vuelven al stock (kardex RETURN).
+            $table->boolean('returns_goods')->default(false);
             $table->foreignId('customer_id');
             $table->foreignId('establishment_id');
             $table->foreignId('emission_point_id');

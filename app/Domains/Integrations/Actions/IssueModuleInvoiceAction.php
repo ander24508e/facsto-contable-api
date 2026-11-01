@@ -2,6 +2,8 @@
 
 namespace App\Domains\Integrations\Actions;
 
+use App\Domains\Cash\Models\CashSession;
+use App\Domains\Cash\Services\CashSessionResolver;
 use App\Domains\Catalog\Models\FiscalPaymentMethod;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Customers\Actions\CreateCustomerAction;
@@ -38,6 +40,7 @@ final class IssueModuleInvoiceAction
         private readonly SaleQuoteService $quotes,
         private readonly CreateSaleDraftAction $createSale,
         private readonly IssueSaleInvoiceAction $issue,
+        private readonly CashSessionResolver $cashSessions,
     ) {}
 
     /** @return array{sale: Sale, invoice: ?ElectronicDocument, error: ?ApiException, replayed: bool} */
@@ -52,7 +55,10 @@ final class IssueModuleInvoiceAction
             return ['sale' => $existing, 'invoice' => $existing->electronicDocument, 'error' => null, 'replayed' => true];
         }
 
+        // Module money is controlled like any other: the invoice needs the cash register of its point open.
+        $session = $this->cashSession($data);
         $draft = [
+            'cashSessionPublicId' => $session->public_id,
             'customerPublicId' => $this->customer($data['customer'] ?? null, $actor)->public_id,
             'lines' => $this->lines($data['lines']),
             'notes' => $data['notes'] ?? null,
@@ -80,7 +86,7 @@ final class IssueModuleInvoiceAction
         }
 
         try {
-            $invoice = $this->issue->execute($sale, $actor);
+            $invoice = $this->issue->execute($sale, $actor, $session->public_id);
             $error = null;
         } catch (ApiException $exception) {
             // The sale is kept: the module may retry with the same key or the user finishes it in Ventas.
@@ -89,6 +95,23 @@ final class IssueModuleInvoiceAction
         }
 
         return ['sale' => $sale->refresh(), 'invoice' => $invoice, 'error' => $error, 'replayed' => false];
+    }
+
+    /** The open session of the emission point sent (`establishmentCode` + `emissionPointCode`), by default the main one. */
+    private function cashSession(array $data): CashSession
+    {
+        $company = $this->context->company();
+        $establishment = isset($data['establishmentCode'])
+            ? $company->establishments()->where('code', $data['establishmentCode'])->where('is_active', true)->first()
+            : $company->establishments()->where('is_main', true)->where('is_active', true)->first();
+        $point = isset($data['emissionPointCode'])
+            ? $establishment?->emissionPoints()->where('code', $data['emissionPointCode'])->where('is_active', true)->first()
+            : $establishment?->emissionPoints()->where('is_default', true)->where('is_active', true)->first();
+        if (! $point) {
+            throw new ApiException(ApiErrorCode::EMISSION_POINT_NOT_FOUND, 'El establecimiento o el punto de emisión no existen o están inactivos.', 422);
+        }
+
+        return $this->cashSessions->openAt($company, $point->setRelation('establishment', $establishment));
     }
 
     private function existing(ApiClient $client, string $key): ?Sale
@@ -143,7 +166,7 @@ final class IssueModuleInvoiceAction
     private function payments(array $payments, string $total): array
     {
         $payments = $payments === [] ? [['code' => '01', 'amount' => $total]] : $payments;
-        $methods = FiscalPaymentMethod::query()->whereIn('code', array_column($payments, 'code'))->where('is_active', true)
+        $methods = FiscalPaymentMethod::query()->where('is_credit', false)->whereIn('code', array_column($payments, 'code'))->where('is_active', true)
             ->whereDate('valid_from', '<=', today())
             ->where(fn ($query) => $query->whereNull('valid_until')->orWhereDate('valid_until', '>=', today()))
             ->pluck('public_id', 'code');

@@ -28,6 +28,9 @@ final class ModuleInvoiceController extends Controller
         }
         $data = $request->validate([
             'sourceReference' => ['nullable', 'string', 'max:120'],
+            // The cash register (establishment + point) whose open session receives the invoice; by default the main one.
+            'establishmentCode' => ['nullable', 'regex:/^\d{3}$/', 'required_with:emissionPointCode'],
+            'emissionPointCode' => ['nullable', 'regex:/^\d{3}$/'],
             'customer' => ['nullable', 'array'],
             'customer.identificationType' => ['nullable', Rule::in(['RUC', 'CEDULA', 'PASSPORT', 'FOREIGN_IDENTIFICATION'])],
             'customer.identification' => ['required_with:customer', 'string', 'max:20'],

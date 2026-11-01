@@ -13,8 +13,10 @@ Route::middleware(['auth:sanctum', 'company.context'])->group(function (): void 
     Route::get('/items', [ItemController::class, 'index']);
     Route::get('/items/frequent', [ItemController::class, 'frequent']);
     Route::get('/items/next-code', [ItemController::class, 'nextCode']);
+    Route::get('/items/next-barcode', [ItemController::class, 'nextBarcode']);
     Route::post('/items', [ItemController::class, 'store']);
     Route::get('/items/{item}', [ItemController::class, 'show']);
+    Route::get('/items/{item}/stock-movements', [ItemController::class, 'stockMovements']);
     Route::patch('/items/{item}', [ItemController::class, 'update']);
     Route::delete('/items/{item}', [ItemController::class, 'destroy']);
     Route::post('/items/{item}/activate', [ItemController::class, 'activate']);
@@ -49,10 +51,12 @@ Route::middleware(['auth:sanctum', 'company.context'])->group(function (): void 
     Route::post('/brands/{brand}/deactivate', [BrandController::class, 'deactivate']);
     Route::get('/taxes', [TaxController::class, 'index']);
     Route::post('/taxes', [TaxController::class, 'activate']);
+    Route::patch('/taxes/{companyTax}', [TaxController::class, 'update']);
     Route::post('/taxes/{companyTax}/deactivate', [TaxController::class, 'deactivate']);
     Route::post('/taxes/replacements/preview', [TaxController::class, 'previewReplacement']);
     Route::post('/taxes/replacements', [TaxController::class, 'replace']);
     Route::get('/tax-definitions', [TaxController::class, 'definitions']);
     Route::get('/fiscal-rules', [TaxController::class, 'fiscalRules']);
     Route::get('/fiscal-payment-methods', [FiscalPaymentMethodController::class, 'index']);
+    Route::post('/tax-definitions', [TaxController::class, 'storeDefinition']);
 });

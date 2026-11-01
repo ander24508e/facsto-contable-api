@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
-#[Fillable(['tax_type', 'sri_tax_code', 'sri_percentage_code', 'name', 'calculation_type', 'fixed_percentage', 'specific_rate', 'specific_unit', 'percentage_editable', 'calculation_supported', 'enabled_by_default', 'valid_from', 'valid_until', 'legal_basis', 'is_active'])]
+#[Fillable(['company_id', 'tax_type', 'sri_tax_code', 'sri_percentage_code', 'name', 'calculation_type', 'fixed_percentage', 'specific_rate', 'specific_unit', 'percentage_editable', 'calculation_supported', 'enabled_by_default', 'valid_from', 'valid_until', 'legal_basis', 'is_active'])]
 class SriTaxDefinition extends Model
 {
     protected static function booted(): void

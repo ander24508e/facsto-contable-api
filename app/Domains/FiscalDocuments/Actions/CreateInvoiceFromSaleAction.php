@@ -2,8 +2,14 @@
 
 namespace App\Domains\FiscalDocuments\Actions;
 
+use App\Domains\Cash\Services\CashSessionResolver;
+use App\Domains\Cash\Models\CashSession;
+use App\Domains\Cash\Services\SaleCashRecorder;
+use App\Domains\Companies\Services\CompanySettings;
+use App\Domains\Inventory\Services\StockLedger;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Companies\Models\Company;
+use App\Domains\Companies\Models\EmissionPoint;
 use App\Domains\FiscalDocuments\Enums\DocumentStatus;
 use App\Domains\FiscalDocuments\Enums\DocumentType;
 use App\Domains\FiscalDocuments\Models\ElectronicDocument;
@@ -33,14 +39,19 @@ final class CreateInvoiceFromSaleAction
         private readonly NumericCodeGenerator $numericCodes,
         private readonly AccessKeyGenerator $accessKeys,
         private readonly AuditRecorder $audit,
+        private readonly CashSessionResolver $cashSessions,
+        private readonly SaleCashRecorder $cash,
+        private readonly StockLedger $stock,
+        private readonly CompanySettings $settings,
     ) {}
 
-    public function execute(Sale $sale, User $actor): ElectronicDocument
+    /** @param  ?string  $cashSessionPublicId  the open cash register chosen for a draft; otherwise its own (or the user's only one) */
+    public function execute(Sale $sale, User $actor, ?string $cashSessionPublicId = null): ElectronicDocument
     {
         $company = $this->context->company();
 
         try {
-            return DB::transaction(function () use ($company, $sale, $actor): ElectronicDocument {
+            return DB::transaction(function () use ($company, $sale, $actor, $cashSessionPublicId): ElectronicDocument {
                 $sale = $company->sales()->whereKey($sale->id)->lockForUpdate()->with(['customer', 'details.taxes', 'details.item', 'paymentMethods'])->first();
                 if (! $sale) {
                     throw new ApiException(ApiErrorCode::SALE_NOT_FOUND, 'La venta no pertenece a la empresa actual.', 404);
@@ -60,8 +71,12 @@ final class CreateInvoiceFromSaleAction
                 // No sequential, number or access key exists until the company can sign and continue to the SRI.
                 $this->issuance->assertCanIssue($company, $sale);
 
-                $establishment = $company->establishments()->where('is_main', true)->where('is_active', true)->first();
-                $point = $establishment?->emissionPoints()->where('is_default', true)->where('is_active', true)->first();
+                // The cash register decides where the invoice is issued from: its emission point and establishment.
+                $session = $cashSessionPublicId !== null
+                    ? $this->cashSessions->open($company, $cashSessionPublicId)
+                    : $this->cashSessions->forSale($company, $sale, $actor);
+                $point = EmissionPoint::query()->whereKey($session->emission_point_id)->where('is_active', true)->first();
+                $establishment = $point?->establishment()->where('is_active', true)->first();
                 $settings = $company->fiscalSettings;
                 if (! $establishment || ! $point || ! $settings?->sri_environment || ! $settings?->emission_type) {
                     throw new ApiException(ApiErrorCode::FISCAL_SETUP_INCOMPLETE, 'La estructura fiscal de emisión no está lista.', 409);
@@ -91,7 +106,10 @@ final class CreateInvoiceFromSaleAction
                     'created_by' => $actor->id, 'numbered_at' => $issuedAt,
                 ]);
                 $this->writeContent($document, $sale, $totals['tax_groups']);
-                $sale->forceFill(['status' => SaleStatus::DOCUMENT_PREPARED, 'issue_date' => $issueDate])->save();
+                $sale->forceFill(['status' => SaleStatus::DOCUMENT_PREPARED, 'issue_date' => $issueDate, 'cash_session_id' => $session->id])->save();
+                // The products leave the cash register's warehouse; any failure undoes the numbering too.
+                $this->stock->syncInvoice($document, $sale, $session->warehouse, $this->settings->allowsNegativeStock($company), $actor);
+                $this->cash->record($sale, $document, $actor);
                 $this->audit->record($actor, $company, 'invoice.numbered', $document, null, ['fullNumber' => $fullNumber, 'status' => DocumentStatus::NUMBERED->value]);
 
                 return $document->load(['lines.taxes', 'taxes', 'paymentMethods']);
@@ -146,6 +164,11 @@ final class CreateInvoiceFromSaleAction
         ])->save();
         $this->writeContent($document, $sale, $totals['tax_groups']);
         $sale->forceFill(['status' => SaleStatus::DOCUMENT_PREPARED, 'issue_date' => $issuedAt->toDateString()])->save();
+        // The corrected lines move only their difference in the kardex; the corrected payments rewrite the
+        // cash of the sale while its cash register is still open.
+        $session = CashSession::query()->with('warehouse')->findOrFail($sale->cash_session_id);
+        $this->stock->syncInvoice($document, $sale, $session->warehouse, $this->settings->allowsNegativeStock($company), $actor);
+        $this->cash->record($sale, $document, $actor);
         $this->audit->record($actor, $company, 'invoice.corrected', $document, ['accessKey' => $previousKey], [
             'fullNumber' => $document->full_number, 'accessKey' => $accessKey, 'status' => $document->status->value,
         ]);

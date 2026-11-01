@@ -107,4 +107,29 @@ final class CatalogProductivityTest extends SalesTestCase
         $this->assertSame('20.000000', $item->stocks()->value('quantity'));
         $this->assertSame('7.000000', $item->cost_price);
     }
+
+    public function test_imported_products_name_their_warehouse_when_the_main_establishment_has_several(): void
+    {
+        $user = User::factory()->create();
+        $company = $this->createCompany($user, '1799999999001');
+        $this->productStock($company);
+        $establishment = $company->establishments()->where('code', '001')->first();
+        $this->actingAs($user)->postJson('/api/v1/warehouses', ['establishmentPublicId' => $establishment->public_id, 'name' => 'Bodega Sur'])->assertCreated();
+        $csv = "tipo,codigo,nombre,precio,iva,stock,bodega
+"
+            ."PRODUCTO,F-1,Filtro,5,15,8,bodega sur
+"
+            ."PRODUCTO,F-2,Aceite,5,15,8,
+"
+            ."PRODUCTO,F-3,Bujia,5,15,8,No existe
+";
+
+        $preview = $this->post('/api/v1/imports/preview', ['type' => 'items', 'file' => UploadedFile::fake()->createWithContent('items.csv', $csv)], ['Accept' => 'application/json'])
+            ->assertOk()->assertJsonPath('data.valid', 1)->json('data');
+        $this->assertSame('El establecimiento principal tiene varias bodegas: indica la bodega.', $preview['rows'][1]['errors'][0]);
+        $this->assertSame('La bodega no existe o está inactiva.', $preview['rows'][2]['errors'][0]);
+        $this->postJson("/api/v1/imports/{$preview['id']}/commit", ['type' => 'items'])->assertOk()->assertJsonPath('data.created', 1);
+
+        $this->assertSame('Bodega Sur', Item::query()->where('internal_code', 'F-1')->firstOrFail()->stocks()->first()->warehouse->name);
+    }
 }

@@ -5,18 +5,15 @@ namespace App\Http\Controllers\Api\V1;
 use App\Domains\Catalog\Models\FiscalPaymentMethod;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\FiscalPaymentMethodResource;
-use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
+/** Payment methods: the SRI's table 24 and CREDITO, fixed and read only. */
 final class FiscalPaymentMethodController extends Controller
 {
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = FiscalPaymentMethod::query()
-            ->where('is_active', true)
-            ->whereDate('valid_from', '<=', today())
-            ->where(fn ($query) => $query->whereNull('valid_until')->orWhereDate('valid_until', '>=', today()))
-            ->orderBy('name');
+        $query = FiscalPaymentMethod::query()->valid()->orderBy('is_credit')->orderBy('name');
 
         if ($search = trim((string) $request->query('search'))) {
             $query->where(fn ($builder) => $builder

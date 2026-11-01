@@ -12,6 +12,9 @@ use App\Domains\Catalog\Actions\UpdateItemAction;
 use App\Domains\Catalog\Actions\UpdateItemImageAction;
 use App\Domains\Catalog\Models\Item;
 use App\Domains\Companies\Context\CompanyContext;
+use App\Domains\Companies\Services\CompanySettings;
+use App\Domains\Inventory\Models\StockMovement;
+use App\Domains\Catalog\Services\BarcodeGenerator;
 use App\Domains\Inventory\Services\ItemCodeSuggester;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Catalog\StoreItemRequest;
@@ -38,6 +41,14 @@ final class ItemController extends Controller
         return response()->json(['data' => ['code' => $suggester->suggest($context->company(), $data['name'], $category)]]);
     }
 
+    /** GET /items/next-barcode — the next internal EAN-13 (prefix 20) for a product without a factory code. */
+    public function nextBarcode(CompanyContext $context, BarcodeGenerator $barcodes): JsonResponse
+    {
+        $this->authorize('create', Item::class);
+
+        return response()->json(['data' => ['barcode' => $barcodes->next($context->company())]]);
+    }
+
     public function index(Request $request, CompanyContext $context): AnonymousResourceCollection
     {
         $this->authorize('viewAny', Item::class);
@@ -52,7 +63,8 @@ final class ItemController extends Controller
         }
         // Dashboard «stock bajo»: products with 5 units or fewer.
         if ($request->query('stock') === 'low') {
-            $query->where('type', 'PRODUCT')->whereHas('stocks', fn ($builder) => $builder->where('quantity', '<=', Item::LOW_STOCK));
+            $threshold = app(CompanySettings::class)->lowStockThreshold($context->company());
+            $query->where('type', 'PRODUCT')->whereHas('stocks', fn ($builder) => $builder->where('quantity', '<=', $threshold));
         }
         if ($warehouse = $request->query('warehouse')) {
             $query->whereHas('stocks.warehouse', fn ($builder) => $builder->where('public_id', $warehouse));
@@ -105,6 +117,27 @@ final class ItemController extends Controller
         $this->authorize('view', $item);
 
         return new ItemResource($item->load(['taxes.definition', 'category', 'catalogMetadata.brand', 'stocks.warehouse.establishment', 'priceTiers']));
+    }
+
+    /** The kardex of a product: every stock change, newest first, with its warehouse, document and user. */
+    public function stockMovements(Item $item): JsonResponse
+    {
+        $this->authorize('view', $item);
+        $movements = StockMovement::query()->where('item_id', $item->id)->with(['warehouse', 'document', 'user'])
+            ->orderByDesc('created_at')->orderByDesc('id')->limit(200)->get();
+
+        return response()->json(['data' => $movements->map(fn (StockMovement $movement): array => [
+            'publicId' => $movement->public_id,
+            'type' => $movement->type,
+            'quantity' => (string) $movement->quantity,
+            'balance' => (string) $movement->balance,
+            'warehouseName' => $movement->warehouse->name,
+            'documentPublicId' => $movement->document?->public_id,
+            'documentNumber' => $movement->document?->full_number,
+            'note' => $movement->note,
+            'user' => $movement->user?->name,
+            'createdAt' => $movement->created_at->toIso8601String(),
+        ])]);
     }
 
     public function update(UpdateItemRequest $request, Item $item, UpdateItemAction $update): ItemResource
@@ -176,7 +209,8 @@ final class ItemController extends Controller
 
     private function attributes(array $data): array
     {
-        foreach (['internalCode' => 'internal_code', 'auxiliaryCode' => 'auxiliary_code', 'salePrice' => 'sale_price', 'priceIncludesTax' => 'price_includes_tax', 'categoryPublicId' => 'category_public_id', 'brandPublicId' => 'brand_public_id', 'barcode' => 'barcode', 'costPrice' => 'cost_price', 'additionalDetail' => 'additional_detail', 'priceTiers' => 'price_tiers'] as $source => $target) {
+        // «barcode» keeps its name, so it is not in the map (unsetting it would drop the value).
+        foreach (['internalCode' => 'internal_code', 'auxiliaryCode' => 'auxiliary_code', 'salePrice' => 'sale_price', 'priceIncludesTax' => 'price_includes_tax', 'categoryPublicId' => 'category_public_id', 'brandPublicId' => 'brand_public_id', 'costPrice' => 'cost_price', 'additionalDetail' => 'additional_detail', 'priceTiers' => 'price_tiers'] as $source => $target) {
             if (array_key_exists($source, $data)) {
                 $data[$target] = $data[$source];
             }

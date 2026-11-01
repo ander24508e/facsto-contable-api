@@ -15,6 +15,8 @@ final class FiscalPaymentMethodResource extends JsonResource
             'name' => $this->name,
             'validFrom' => $this->valid_from?->toDateString(),
             'validUntil' => $this->valid_until?->toDateString(),
+            // CREDITO: opens «Configurar cuotas».
+            'isCredit' => (bool) $this->is_credit,
         ];
     }
 }

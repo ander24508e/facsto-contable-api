@@ -85,6 +85,12 @@ return [
         ],
     ],
 
+    // Catastro público del SRI: razón social de un RUC al escribirlo en Clientes o Proveedores.
+    'taxpayer_lookup' => [
+        'enabled' => (bool) env('SRI_TAXPAYER_LOOKUP_ENABLED', true),
+        'url' => env('SRI_TAXPAYER_LOOKUP_URL', 'https://srienlinea.sri.gob.ec/sri-catastro-sujeto-servicio-internet/rest/ConsolidadoContribuyente/obtenerPorNumerosRuc'),
+    ],
+
     'http' => [
         'connect_timeout' => (int) env('SRI_CONNECT_TIMEOUT', 10),
         'timeout' => (int) env('SRI_TIMEOUT', 30),

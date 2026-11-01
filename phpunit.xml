@@ -29,6 +29,7 @@
         <env name="MAIL_MAILER" value="array" force="true"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>
+        <env name="SRI_TAXPAYER_LOOKUP_ENABLED" value="false" force="true"/>
         <!-- Docker define estas variables en el contenedor; Laravel lee $_SERVER antes que $_ENV. -->
         <server name="APP_ENV" value="testing" force="true"/>
         <server name="SRI_INVOICE_XML_VERSION" value="1.1.0" force="true"/>
