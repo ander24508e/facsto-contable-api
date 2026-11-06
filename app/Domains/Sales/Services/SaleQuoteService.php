@@ -79,6 +79,7 @@ final class SaleQuoteService
                 'term' => $plan ? $this->installments->termInDays($plan) : ($methodData['term'] ?? null),
                 'time_unit' => $plan ? 'DAY' : ($methodData['timeUnit'] ?? null),
                 'is_credit' => $method->is_credit,
+                'is_transfer' => $method->is_transfer,
                 'down_payment' => $terms['down_payment'] ?? '0.00',
                 'installment_frequency' => $terms['installment_frequency'] ?? null,
                 'credit_notes' => $terms['credit_notes'] ?? null,
@@ -119,6 +120,9 @@ final class SaleQuoteService
             $pending[] = 'payment_methods';
         } elseif (bccomp($paymentTotal, $calculation['total'], 2) !== 0) {
             $pending[] = 'payment_total';
+        }
+        if (array_filter($payments, fn (array $payment): bool => $payment['is_transfer'] && blank($payment['reference']))) {
+            $pending[] = 'payment_reference';
         }
         if ($customer?->identification_type === IdentificationType::FINAL_CONSUMER
             && bccomp($calculation['total'], $this->rules->decimalAt(FiscalRuleCode::FINAL_CONSUMER_MAX_TOTAL, today()), 2) > 0) {

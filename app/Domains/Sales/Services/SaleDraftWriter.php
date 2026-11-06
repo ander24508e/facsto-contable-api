@@ -5,11 +5,11 @@ namespace App\Domains\Sales\Services;
 use App\Domains\Cash\Services\CashSessionResolver;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Companies\Models\Company;
+use App\Domains\Credit\Models\CreditPayment;
 use App\Domains\Sales\Enums\SaleStatus;
 use App\Domains\Sales\Models\Sale;
 use App\Models\User;
 use App\Shared\Audit\AuditRecorder;
-use App\Domains\Credit\Models\CreditPayment;
 use App\Shared\Http\ApiErrorCode;
 use App\Shared\Http\ApiException;
 use Illuminate\Support\Facades\DB;
@@ -104,7 +104,7 @@ final class SaleDraftWriter
             $installments = [];
             foreach ($paymentSnapshots as $method) {
                 array_push($installments, ...$method['installments']);
-                unset($method['fiscal_payment_method_public_id'], $method['installments']);
+                unset($method['fiscal_payment_method_public_id'], $method['installments'], $method['is_transfer']);
                 $sale->paymentMethods()->create([...$method, 'company_id' => $company->id]);
             }
             // Accounts receivable: the installments of every payment on credit, numbered by date.

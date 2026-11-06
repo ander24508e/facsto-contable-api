@@ -8,7 +8,8 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Kardex: cada cambio de existencias de un artículo en su bodega, con signo (+ entra, − sale) y el saldo
  * que dejó. INITIAL y ADJUSTMENT los escribe Inventario; SALE la factura y RETURN la nota de crédito por
- * devolución, ambos con el comprobante que los originó; PURCHASE la compra de Inversiones.
+ * devolución, ambos con el comprobante que los originó; PURCHASE la compra de Inversiones; CONSUMPTION el
+ * consumo interno (insumos que se gastan sin venderse), con el módulo y la referencia que lo originaron.
  */
 return new class extends Migration
 {
@@ -25,6 +26,8 @@ return new class extends Migration
             $table->decimal('balance', 18, 6);
             $table->foreignId('electronic_document_id')->nullable();
             $table->foreignId('purchase_id')->nullable();
+            $table->string('source_module', 32)->nullable();
+            $table->string('source_reference', 64)->nullable();
             $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
             $table->string('note', 255)->nullable();
             $table->timestamp('created_at')->useCurrent();

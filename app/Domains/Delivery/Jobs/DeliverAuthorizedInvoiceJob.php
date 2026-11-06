@@ -79,7 +79,11 @@ final class DeliverAuthorizedInvoiceJob implements ShouldBeUnique, ShouldQueue
                 $document->access_key,
                 $artifacts->read($artifacts->latest($document, DocumentArtifactType::AUTHORIZED_XML)),
                 $artifacts->read($rideArtifact),
-                $document->document_type === DocumentType::CREDIT_NOTE ? 'Nota de crédito electrónica' : 'Factura electrónica',
+                match ($document->document_type) {
+                    DocumentType::CREDIT_NOTE => 'Nota de crédito electrónica',
+                    DocumentType::RETENTION => 'Comprobante de retención electrónico',
+                    default => 'Factura electrónica',
+                },
             ));
         } catch (Throwable $exception) {
             $delivery->forceFill(['status' => DeliveryStatus::FAILED, 'last_error_code' => 'MAIL_TRANSPORT_FAILED'])->save();

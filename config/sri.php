@@ -8,6 +8,12 @@ return [
         'xsd_path' => resource_path('sri/xsd/credit_note/1.1.0/notaCredito.xsd'),
     ],
 
+    // Comprobante de retención (codDoc 07), esquema oficial 2.0.0 (ficha técnica v2.34, anexo 10).
+    'retention' => [
+        'xml_version' => '2.0.0',
+        'xsd_path' => resource_path('sri/xsd/retention/2.0.0/comprobanteRetencion.xsd'),
+    ],
+
     'invoice' => [
         'xml_version' => env('SRI_INVOICE_XML_VERSION', '1.1.0'),
         'xsd_path' => resource_path('sri/xsd/invoice/1.1.0/factura.xsd'),

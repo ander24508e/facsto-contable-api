@@ -15,6 +15,9 @@ final class ItemResource extends JsonResource
             'hasImage' => $this->image_path !== null,
             'costPrice' => $this->cost_price,
             'additionalDetail' => $this->additional_detail,
+            'contentQuantity' => $this->content_quantity,
+            'contentUnit' => $this->content_unit,
+            'managedBy' => $this->managed_by,
             // A product lives in exactly one warehouse.
             'stock' => $this->whenLoaded('stocks', function () {
                 $stock = $this->stocks->first();

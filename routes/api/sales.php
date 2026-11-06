@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\FiscalDashboardController;
 use App\Http\Controllers\Api\V1\ProformaController;
 use App\Http\Controllers\Api\V1\SaleController;
 use App\Http\Controllers\Api\V1\SaleQuoteController;
+use App\Http\Controllers\Api\V1\SaleTransactionController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.context'])->group(function (): void {
@@ -18,6 +19,7 @@ Route::middleware(['auth:sanctum', 'company.context'])->group(function (): void 
     Route::get('/sales', [SaleController::class, 'index']);
     Route::post('/sales', [SaleController::class, 'store']);
     Route::post('/sales/quote', SaleQuoteController::class);
+    Route::get('/sales/transactions', [SaleTransactionController::class, 'index']);
     Route::get('/sales/{sale}', [SaleController::class, 'show']);
     Route::patch('/sales/{sale}', [SaleController::class, 'update']);
     Route::post('/sales/{sale}/cancel', [SaleController::class, 'cancel']);

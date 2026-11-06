@@ -210,7 +210,7 @@ final class ItemController extends Controller
     private function attributes(array $data): array
     {
         // «barcode» keeps its name, so it is not in the map (unsetting it would drop the value).
-        foreach (['internalCode' => 'internal_code', 'auxiliaryCode' => 'auxiliary_code', 'salePrice' => 'sale_price', 'priceIncludesTax' => 'price_includes_tax', 'categoryPublicId' => 'category_public_id', 'brandPublicId' => 'brand_public_id', 'costPrice' => 'cost_price', 'additionalDetail' => 'additional_detail', 'priceTiers' => 'price_tiers'] as $source => $target) {
+        foreach (['internalCode' => 'internal_code', 'auxiliaryCode' => 'auxiliary_code', 'salePrice' => 'sale_price', 'priceIncludesTax' => 'price_includes_tax', 'categoryPublicId' => 'category_public_id', 'brandPublicId' => 'brand_public_id', 'costPrice' => 'cost_price', 'additionalDetail' => 'additional_detail', 'contentQuantity' => 'content_quantity', 'contentUnit' => 'content_unit', 'priceTiers' => 'price_tiers'] as $source => $target) {
             if (array_key_exists($source, $data)) {
                 $data[$target] = $data[$source];
             }

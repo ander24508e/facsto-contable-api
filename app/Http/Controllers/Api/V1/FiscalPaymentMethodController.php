@@ -8,12 +8,12 @@ use App\Http\Resources\Api\V1\FiscalPaymentMethodResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
-/** Payment methods: the SRI's table 24 and CREDITO, fixed and read only. */
+/** Payment methods: the SRI's table 24, CREDITO and TRANSFERENCIA, fixed and read only. */
 final class FiscalPaymentMethodController extends Controller
 {
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = FiscalPaymentMethod::query()->valid()->orderBy('is_credit')->orderBy('name');
+        $query = FiscalPaymentMethod::query()->valid()->orderBy('is_credit')->orderBy('is_transfer')->orderBy('name');
 
         if ($search = trim((string) $request->query('search'))) {
             $query->where(fn ($builder) => $builder

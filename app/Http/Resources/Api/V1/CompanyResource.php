@@ -5,6 +5,7 @@ namespace App\Http\Resources\Api\V1;
 use App\Domains\Certificates\Enums\CertificateStatus;
 use App\Domains\Companies\Fiscal\Services\ElectronicInvoicingRequirements;
 use App\Domains\Companies\Models\Company;
+use App\Domains\Modules\Services\ModuleRegistry;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -44,6 +45,8 @@ final class CompanyResource extends JsonResource
                 'enabled' => (bool) $company->fiscalSettings?->sri_submission_enabled,
                 'requirements' => app(ElectronicInvoicingRequirements::class)->check($company),
             ],
+            // Módulos contratados (derechos de Condore Platform) y lo que el rol puede hacer en cada uno.
+            'modules' => app(ModuleRegistry::class)->forCompany($company, $membership?->role),
         ];
     }
 }

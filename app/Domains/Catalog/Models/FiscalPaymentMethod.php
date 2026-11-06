@@ -11,12 +11,15 @@ use Illuminate\Support\Str;
 
 /**
  * A payment method: the SRI's table 24 plus CREDITO (is_credit), which sends code 01 with its term and
- * is collected in installments.
+ * is collected in installments, and TRANSFERENCIA (is_transfer), which sends code 20, needs the transfer
+ * reference and is only offered in sales.
  */
-#[Fillable(['code', 'name', 'valid_from', 'valid_until', 'is_credit', 'is_active'])]
+#[Fillable(['code', 'name', 'valid_from', 'valid_until', 'is_credit', 'is_transfer', 'is_active'])]
 class FiscalPaymentMethod extends Model
 {
     public const CREDIT_NAME = 'CREDITO';
+
+    public const TRANSFER_NAME = 'TRANSFERENCIA';
 
     protected static function booted(): void
     {
@@ -43,6 +46,6 @@ class FiscalPaymentMethod extends Model
 
     protected function casts(): array
     {
-        return ['valid_from' => 'date', 'valid_until' => 'date', 'is_credit' => 'boolean', 'is_active' => 'boolean'];
+        return ['valid_from' => 'date', 'valid_until' => 'date', 'is_credit' => 'boolean', 'is_transfer' => 'boolean', 'is_active' => 'boolean'];
     }
 }

@@ -27,6 +27,11 @@ return new class extends Migration
             $table->decimal('cost_price', 18, 6)->nullable();
             // Detalle adicional de la presentación (p. ej. «Botella PET 500 ml»).
             $table->string('additional_detail', 300)->nullable();
+            // Contenido de una unidad (p. ej. Caneca = 20 L): permite gastar parte de ella como insumo. Medidas ml, L, g, kg.
+            $table->decimal('content_quantity', 18, 6)->nullable();
+            $table->string('content_unit', 4)->nullable();
+            // Módulo que crea y mantiene el artículo (p. ej. «carwash» para los precios por vehículo); null = Inventario.
+            $table->string('managed_by', 32)->nullable();
             // Foto del producto en el disco privado; se sirve solo a miembros de la empresa.
             $table->string('image_path', 255)->nullable();
             $table->boolean('is_active')->default(true);

@@ -44,6 +44,7 @@ final class PurchaseController extends Controller
             'warehousePublicId' => ['required', 'uuid'],
             'issueDate' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today'],
             'supplierDocumentNumber' => ['nullable', 'string', 'regex:/^\d{3}-\d{3}-\d{9}$/'],
+            'supplierAuthorizationNumber' => ['nullable', 'string', 'regex:/^(\d{10}|\d{37}|\d{49})$/'],
             'notes' => ['nullable', 'string', 'max:500'],
             'fiscalPaymentMethodPublicId' => ['required', 'uuid'],
             'downPayment' => ['nullable', 'string', 'regex:/^\d{1,16}(\.\d{1,2})?$/'],
@@ -110,6 +111,7 @@ final class PurchaseController extends Controller
             'issueDate' => $purchase->issue_date->toDateString(),
             'supplier' => ['publicId' => $purchase->supplier?->public_id, 'identification' => $purchase->supplier?->identification, 'legalName' => $purchase->supplier?->legal_name],
             'supplierDocumentNumber' => $purchase->supplier_document_number,
+            'supplierAuthorizationNumber' => $purchase->supplier_authorization_number,
             'paymentMethod' => ['code' => $purchase->payment_method_code, 'name' => $purchase->payment_method_name, 'isCredit' => $purchase->is_credit],
             'subtotal' => $purchase->subtotal,
             'taxTotal' => $purchase->tax_total,
@@ -131,6 +133,10 @@ final class PurchaseController extends Controller
                 'installmentFrequency' => $purchase->installment_frequency,
                 'creditNotes' => $purchase->credit_notes,
                 'balance' => bcsub((string) $purchase->installments->sum('amount'), $paid ?? '0', 2),
+                'retention' => ($retention = $purchase->retention()->with('withholdings')->first()) ? [
+                    'publicId' => $retention->public_id, 'fullNumber' => $retention->full_number, 'status' => $retention->status->value,
+                    'withheldTotal' => $retention->withholdings->reduce(fn (string $sum, $row): string => bcadd($sum, (string) $row->amount, 2), '0.00'),
+                ] : null,
             ] : []),
         ];
     }

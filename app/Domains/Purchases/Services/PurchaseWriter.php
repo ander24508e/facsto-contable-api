@@ -13,9 +13,9 @@ use App\Domains\Inventory\Models\ItemStock;
 use App\Domains\Inventory\Models\StockMovement;
 use App\Domains\Inventory\Services\InventoryLookup;
 use App\Domains\Inventory\Services\ItemCodeSuggester;
+use App\Domains\Purchases\Actions\EnsureSupplierCustomerAction;
 use App\Domains\Purchases\Models\Purchase;
 use App\Domains\Purchases\Models\Supplier;
-use App\Domains\Purchases\Actions\EnsureSupplierCustomerAction;
 use App\Domains\Taxes\Models\CompanyTax;
 use App\Models\User;
 use App\Shared\Audit\AuditRecorder;
@@ -42,14 +42,15 @@ final class PurchaseWriter
     ) {}
 
     /**
-     * @param  array{supplierPublicId: string, warehousePublicId: string, issueDate?: ?string, supplierDocumentNumber?: ?string, notes?: ?string, fiscalPaymentMethodPublicId: string, downPayment?: ?string, installmentFrequency?: ?string, creditNotes?: ?string, installments?: ?array, lines: list<array<string, mixed>>}  $data
+     * @param  array{supplierPublicId: string, warehousePublicId: string, issueDate?: ?string, supplierDocumentNumber?: ?string, supplierAuthorizationNumber?: ?string, notes?: ?string, fiscalPaymentMethodPublicId: string, downPayment?: ?string, installmentFrequency?: ?string, creditNotes?: ?string, installments?: ?array, lines: list<array<string, mixed>>}  $data
      */
     public function create(Company $company, array $data, User $actor): Purchase
     {
         $supplier = Supplier::query()->where('company_id', $company->id)->where('public_id', $data['supplierPublicId'])->where('is_active', true)->first()
             ?? throw new ApiException(ApiErrorCode::SUPPLIER_NOT_FOUND, 'Selecciona un proveedor activo de la empresa.', 422);
         $warehouse = $this->inventory->activeWarehouse($company, $data['warehousePublicId']);
-        $method = FiscalPaymentMethod::query()->valid()->where('public_id', $data['fiscalPaymentMethodPublicId'])->first()
+        // TRANSFERENCIA is a sales-only method: a purchase never takes it.
+        $method = FiscalPaymentMethod::query()->valid()->where('is_transfer', false)->where('public_id', $data['fiscalPaymentMethodPublicId'])->first()
             ?? throw new ApiException(ApiErrorCode::FISCAL_PAYMENT_METHOD_NOT_FOUND, 'La forma de pago no está vigente.', 422);
         $taxes = CompanyTax::query()->where('company_id', $company->id)->with('definition')->get()->keyBy('public_id');
 
@@ -59,12 +60,15 @@ final class PurchaseWriter
             foreach ($data['lines'] as $row) {
                 $item = isset($row['newItem']) ? $this->newItem($company, $row, $actor) : $this->existingItem($company, (string) ($row['itemPublicId'] ?? ''));
                 $tax = isset($row['taxPublicId']) ? ($taxes[$row['taxPublicId']] ?? throw new ApiException(ApiErrorCode::TAX_NOT_AVAILABLE, 'El IVA no está activo en la empresa.', 422)) : null;
-                $percentage = (string) ($tax?->definition->fixed_percentage ?? $item->taxes()->with('definition')->get()->first(fn (CompanyTax $itemTax) => $itemTax->definition->tax_type->value === 'IVA')?->definition->fixed_percentage ?? '0');
+                $definition = $tax?->definition ?? $item->taxes()->with('definition')->get()->first(fn (CompanyTax $itemTax) => $itemTax->definition->tax_type->value === 'IVA')?->definition;
+                $percentage = (string) ($definition?->fixed_percentage ?? '0');
+                // The SRI code of the rate: a retention declares the taxes of its support document.
+                $percentageCode = (string) ($definition?->sri_percentage_code ?? '0');
                 $quantity = bcadd((string) $row['quantity'], '0', 6);
                 $cost = bcadd((string) $row['unitCost'], '0', 6);
                 $subtotal = $this->round(bcmul($quantity, $cost, 8));
                 $taxTotal = $this->round(bcdiv(bcmul($subtotal, $percentage, 8), '100', 8));
-                $lines[] = compact('item', 'quantity', 'cost', 'percentage', 'subtotal', 'taxTotal');
+                $lines[] = compact('item', 'quantity', 'cost', 'percentage', 'percentageCode', 'subtotal', 'taxTotal');
             }
             $subtotal = array_reduce($lines, fn (string $sum, array $line): string => bcadd($sum, $line['subtotal'], 2), '0.00');
             $taxTotal = array_reduce($lines, fn (string $sum, array $line): string => bcadd($sum, $line['taxTotal'], 2), '0.00');
@@ -80,6 +84,7 @@ final class PurchaseWriter
                 'supplier_id' => $supplier->id, 'warehouse_id' => $warehouse->id, 'created_by' => $actor->id,
                 'issue_date' => $data['issueDate'] ?? today()->toDateString(),
                 'supplier_document_number' => $data['supplierDocumentNumber'] ?? null,
+                'supplier_authorization_number' => $data['supplierAuthorizationNumber'] ?? null,
                 'fiscal_payment_method_id' => $method->id, 'payment_method_code' => $method->code, 'payment_method_name' => $method->name,
                 'is_credit' => $method->is_credit, 'down_payment' => $terms['down_payment'] ?? '0.00',
                 'installment_frequency' => $terms['installment_frequency'] ?? null, 'credit_notes' => $terms['credit_notes'] ?? null,
@@ -91,7 +96,7 @@ final class PurchaseWriter
                 $item = $line['item'];
                 $purchase->lines()->create([
                     'company_id' => $company->id, 'item_id' => $item->id, 'item_code' => $item->internal_code, 'item_name' => $item->name,
-                    'quantity' => $line['quantity'], 'unit_cost' => $line['cost'], 'tax_percentage' => $line['percentage'],
+                    'quantity' => $line['quantity'], 'unit_cost' => $line['cost'], 'tax_percentage' => $line['percentage'], 'tax_percentage_code' => $line['percentageCode'],
                     'subtotal' => $line['subtotal'], 'tax_total' => $line['taxTotal'], 'total' => bcadd($line['subtotal'], $line['taxTotal'], 2),
                 ]);
                 $this->receive($purchase, $item, $line['quantity'], $actor);

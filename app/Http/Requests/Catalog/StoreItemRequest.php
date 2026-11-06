@@ -29,6 +29,8 @@ final class StoreItemRequest extends FormRequest
             'barcode' => ['nullable', 'string', 'max:64'],
             'costPrice' => ['sometimes', 'nullable', 'string', 'regex:/^\d{1,12}(\.\d{1,6})?$/'],
             'additionalDetail' => ['sometimes', 'nullable', 'string', 'max:300'],
+            'contentQuantity' => ['sometimes', 'nullable', 'required_with:contentUnit', 'string', 'regex:/^\d{1,12}(\.\d{1,6})?$/', 'not_regex:/^0+(\.0+)?$/'],
+            'contentUnit' => ['sometimes', 'nullable', 'required_with:contentQuantity', 'in:ml,L,g,kg'],
             'stock' => ['required_if:type,PRODUCT', 'array'],
             'stock.warehousePublicId' => ['required_with:stock', 'uuid'],
             'stock.quantity' => ['required_with:stock', 'string', 'regex:/^\d{1,12}(\.\d{1,6})?$/'],

@@ -41,6 +41,8 @@ return new class extends Migration
             $table->date('issue_date');
             // Factura del proveedor (001-001-000000123), opcional.
             $table->string('supplier_document_number', 17)->nullable();
+            // Autorización de esa factura en el SRI (opcional): sale en la retención como numAutDocSustento.
+            $table->string('supplier_authorization_number', 49)->nullable();
             $table->foreignId('fiscal_payment_method_id')->nullable()->constrained('fiscal_payment_methods')->restrictOnDelete();
             $table->string('payment_method_code', 12)->nullable();
             $table->string('payment_method_name', 120)->nullable();
@@ -71,6 +73,8 @@ return new class extends Migration
             $table->decimal('quantity', 18, 6);
             $table->decimal('unit_cost', 18, 6);
             $table->decimal('tax_percentage', 8, 4)->default(0);
+            // Código SRI de la tarifa de IVA (tabla 17): la retención declara los impuestos del sustento.
+            $table->string('tax_percentage_code', 8)->default('0');
             $table->decimal('subtotal', 18, 2);
             $table->decimal('tax_total', 18, 2);
             $table->decimal('total', 18, 2);

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['company_id', 'purchase_id', 'item_id', 'item_code', 'item_name', 'quantity', 'unit_cost', 'tax_percentage', 'subtotal', 'tax_total', 'total'])]
+#[Fillable(['company_id', 'purchase_id', 'item_id', 'item_code', 'item_name', 'quantity', 'unit_cost', 'tax_percentage', 'tax_percentage_code', 'subtotal', 'tax_total', 'total'])]
 class PurchaseLine extends Model
 {
     public function item(): BelongsTo

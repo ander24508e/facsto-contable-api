@@ -2,14 +2,13 @@
 
 namespace App\Domains\FiscalDocuments\Actions;
 
-use App\Domains\Cash\Services\CashSessionResolver;
 use App\Domains\Cash\Models\CashSession;
+use App\Domains\Cash\Services\CashSessionResolver;
 use App\Domains\Cash\Services\SaleCashRecorder;
-use App\Domains\Companies\Services\CompanySettings;
-use App\Domains\Inventory\Services\StockLedger;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Companies\Models\Company;
 use App\Domains\Companies\Models\EmissionPoint;
+use App\Domains\Companies\Services\CompanySettings;
 use App\Domains\FiscalDocuments\Enums\DocumentStatus;
 use App\Domains\FiscalDocuments\Enums\DocumentType;
 use App\Domains\FiscalDocuments\Models\ElectronicDocument;
@@ -19,6 +18,7 @@ use App\Domains\FiscalDocuments\Services\DocumentSequenceAllocator;
 use App\Domains\FiscalDocuments\Services\ElectronicDocumentIssuanceReadiness;
 use App\Domains\FiscalDocuments\Services\NumericCodeGenerator;
 use App\Domains\FiscalDocuments\Services\SequentialFormatter;
+use App\Domains\Inventory\Services\StockLedger;
 use App\Domains\Sales\Enums\SaleStatus;
 use App\Domains\Sales\Models\Sale;
 use App\Models\User;

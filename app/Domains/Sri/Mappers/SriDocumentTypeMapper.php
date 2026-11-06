@@ -11,6 +11,7 @@ final class SriDocumentTypeMapper
         return match ($type) {
             DocumentType::INVOICE => '01',
             DocumentType::CREDIT_NOTE => '04',
+            DocumentType::RETENTION => '07',
         };
     }
 }

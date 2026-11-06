@@ -2,7 +2,6 @@
 
 namespace App\Domains\FiscalDocuments\Actions;
 
-use App\Domains\Cash\Models\CashSession;
 use App\Domains\Cash\Services\CashSessionResolver;
 use App\Domains\Cash\Services\SaleCashRecorder;
 use App\Domains\Companies\Context\CompanyContext;

@@ -23,7 +23,7 @@ final class SaleInvoiceReadinessService
             $pending[] = 'customer';
         }
 
-        $sale->loadMissing(['details.taxes', 'paymentMethods']);
+        $sale->loadMissing(['details.taxes', 'paymentMethods.fiscalPaymentMethod']);
         if ($sale->details->isEmpty()) {
             $pending[] = 'lines';
         }
@@ -68,6 +68,10 @@ final class SaleInvoiceReadinessService
                     || bccomp((string) $payment->amount, '0', 2) <= 0) {
                     $pending[] = 'payment_methods';
                     break;
+                }
+                // TRANSFERENCIA: the transfer reference identifies the payment.
+                if ($payment->fiscalPaymentMethod?->is_transfer && blank($payment->reference)) {
+                    $pending[] = 'payment_reference';
                 }
                 $paymentTotal = bcadd($paymentTotal, (string) $payment->amount, 2);
             }

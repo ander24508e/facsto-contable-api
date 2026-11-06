@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
-#[Fillable(['company_id', 'category_id', 'type', 'internal_code', 'auxiliary_code', 'name', 'description', 'unit', 'sale_price', 'price_includes_tax', 'cost_price', 'additional_detail', 'is_active'])]
+#[Fillable(['company_id', 'category_id', 'type', 'internal_code', 'auxiliary_code', 'name', 'description', 'unit', 'sale_price', 'price_includes_tax', 'cost_price', 'additional_detail', 'content_quantity', 'content_unit', 'managed_by', 'is_active'])]
 class Item extends Model
 {
     /** Units at or below which a product shows in the dashboard «stock bajo» alert. */
@@ -65,6 +65,6 @@ class Item extends Model
 
     protected function casts(): array
     {
-        return ['type' => ItemType::class, 'sale_price' => 'decimal:6', 'cost_price' => 'decimal:6', 'price_includes_tax' => 'boolean', 'is_active' => 'boolean'];
+        return ['type' => ItemType::class, 'sale_price' => 'decimal:6', 'cost_price' => 'decimal:6', 'content_quantity' => 'decimal:6', 'price_includes_tax' => 'boolean', 'is_active' => 'boolean'];
     }
 }

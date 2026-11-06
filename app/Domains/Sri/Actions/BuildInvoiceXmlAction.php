@@ -6,6 +6,7 @@ use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Companies\Models\Company;
 use App\Domains\FiscalDocuments\Enums\DocumentArtifactType;
 use App\Domains\FiscalDocuments\Enums\DocumentStatus;
+use App\Domains\FiscalDocuments\Enums\DocumentType;
 use App\Domains\FiscalDocuments\Models\DocumentArtifact;
 use App\Domains\FiscalDocuments\Models\ElectronicDocument;
 use App\Domains\FiscalDocuments\Services\DocumentArtifactStorage;
@@ -14,6 +15,7 @@ use App\Domains\Sri\Xml\InvoiceXmlBuilder;
 use App\Domains\Sri\Xml\InvoiceXmlDataFactory;
 use App\Domains\Sri\Xml\InvoiceXmlPreflightException;
 use App\Domains\Sri\Xml\InvoiceXmlPreflightValidator;
+use App\Domains\Sri\Xml\RetentionXmlBuilder;
 use App\Domains\Sri\Xml\XmlSchemaValidationException;
 use App\Domains\Sri\Xml\XsdValidator;
 use App\Models\User;
@@ -30,6 +32,7 @@ final class BuildInvoiceXmlAction
         private readonly InvoiceXmlPreflightValidator $preflight,
         private readonly InvoiceXmlDataFactory $dataFactory,
         private readonly InvoiceXmlBuilder $builder,
+        private readonly RetentionXmlBuilder $retentions,
         private readonly XsdValidator $xsd,
         private readonly DocumentArtifactStorage $artifacts,
         private readonly DocumentStateMachine $states,
@@ -54,19 +57,9 @@ final class BuildInvoiceXmlAction
                     ->with(['lines.taxes', 'taxes', 'paymentMethods'])
                     ->firstOrFail();
 
-                try {
-                    $this->preflight->validate($document);
-                } catch (InvoiceXmlPreflightException $exception) {
-                    throw new ApiException(
-                        ApiErrorCode::VALIDATION_FAILED,
-                        'La factura no está lista para generar el XML.',
-                        422,
-                        ['reason_code' => $exception->reasonCode],
-                    );
-                }
-
-                $data = $this->dataFactory->make($document);
-                $xml = $this->builder->build($data);
+                $xml = $document->document_type === DocumentType::RETENTION
+                    ? $this->retentions->build($document)
+                    : $this->invoiceXml($document);
                 try {
                     $this->xsd->validate($xml, $document->document_type->xsdPath());
                 } catch (XmlSchemaValidationException $exception) {
@@ -99,5 +92,22 @@ final class BuildInvoiceXmlAction
             }
             throw $exception;
         }
+    }
+
+    /** Invoices and credit notes: preflight of the ficha rules, then the XML from their snapshots. */
+    private function invoiceXml(ElectronicDocument $document): string
+    {
+        try {
+            $this->preflight->validate($document);
+        } catch (InvoiceXmlPreflightException $exception) {
+            throw new ApiException(
+                ApiErrorCode::VALIDATION_FAILED,
+                'La factura no está lista para generar el XML.',
+                422,
+                ['reason_code' => $exception->reasonCode],
+            );
+        }
+
+        return $this->builder->build($this->dataFactory->make($document));
     }
 }

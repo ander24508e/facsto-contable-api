@@ -4,16 +4,18 @@ namespace App\Domains\Purchases\Models;
 
 use App\Domains\Companies\Models\Company;
 use App\Domains\Credit\Models\CreditPayment;
+use App\Domains\FiscalDocuments\Models\ElectronicDocument;
 use App\Domains\Inventory\Models\Warehouse;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
 /** A purchase of Inversiones: its own numbering (COM-000001), it adds stock and may be paid in installments. */
-#[Fillable(['company_id', 'number', 'supplier_id', 'warehouse_id', 'created_by', 'issue_date', 'supplier_document_number', 'fiscal_payment_method_id', 'payment_method_code', 'payment_method_name', 'is_credit', 'down_payment', 'installment_frequency', 'credit_notes', 'subtotal', 'tax_total', 'total', 'notes'])]
+#[Fillable(['company_id', 'number', 'supplier_id', 'warehouse_id', 'created_by', 'issue_date', 'supplier_document_number', 'supplier_authorization_number', 'fiscal_payment_method_id', 'payment_method_code', 'payment_method_name', 'is_credit', 'down_payment', 'installment_frequency', 'credit_notes', 'subtotal', 'tax_total', 'total', 'notes'])]
 class Purchase extends Model
 {
     protected static function booted(): void
@@ -65,6 +67,12 @@ class Purchase extends Model
     public function installments(): HasMany
     {
         return $this->hasMany(PurchaseInstallment::class)->orderBy('number');
+    }
+
+    /** Its comprobante de retención (07), when the company withholds. */
+    public function retention(): HasOne
+    {
+        return $this->hasOne(ElectronicDocument::class);
     }
 
     protected function casts(): array

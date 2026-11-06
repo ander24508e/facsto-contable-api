@@ -62,7 +62,7 @@ final class FiscalDashboard
         $start = CarbonImmutable::createFromFormat('Y-m-d', $period.'-01', $timezone)->startOfDay();
         $end = $start->endOfMonth();
 
-        $totals = ElectronicDocument::query()->where('company_id', $company->id)
+        $totals = ElectronicDocument::query()->where('company_id', $company->id)->salesDocuments()
             ->where('status', DocumentStatus::AUTHORIZED->value)
             ->whereDate('issue_date', '>=', $start->toDateString())
             ->whereDate('issue_date', '<=', $end->toDateString())
@@ -118,7 +118,7 @@ final class FiscalDashboard
     {
         $start = CarbonImmutable::createFromFormat('Y-m-d', $period.'-01')->startOfDay();
         $authorized = fn () => ElectronicDocument::query()
-            ->where('company_id', $company->id)
+            ->where('company_id', $company->id)->salesDocuments()
             ->where('status', DocumentStatus::AUTHORIZED->value)
             ->whereDate('issue_date', '>=', $start->toDateString())
             ->whereDate('issue_date', '<=', $start->endOfMonth()->toDateString());

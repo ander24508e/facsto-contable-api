@@ -35,5 +35,9 @@ final readonly class RideData
         public string $barcodeSvg,
         /** @var array{type: string, number: string, date: string, reason: string}|null credit note: the invoice it modifies */
         public ?array $modifiedDocument = null,
+        /** @var array{type: string, number: string, date: string, fiscalPeriod: string}|null retention: the supplier's invoice it withholds on */
+        public ?array $supportDocument = null,
+        /** @var list<array{tax: string, code: string, base: string, percentage: string, amount: string}> retention lines */
+        public array $withholdings = [],
     ) {}
 }

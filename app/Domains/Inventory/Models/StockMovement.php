@@ -13,7 +13,7 @@ use Illuminate\Support\Str;
  * One change of stock (the kardex): signed quantity and the resulting balance. Never edited. SALE and
  * RETURN carry the invoice or credit note that caused them; PURCHASE carries the purchase of Inversiones.
  */
-#[Fillable(['company_id', 'item_id', 'warehouse_id', 'type', 'quantity', 'balance', 'electronic_document_id', 'purchase_id', 'user_id', 'note'])]
+#[Fillable(['company_id', 'item_id', 'warehouse_id', 'type', 'quantity', 'balance', 'electronic_document_id', 'purchase_id', 'source_module', 'source_reference', 'user_id', 'note'])]
 class StockMovement extends Model
 {
     public const INITIAL = 'INITIAL';
@@ -25,6 +25,9 @@ class StockMovement extends Model
     public const RETURN = 'RETURN';
 
     public const PURCHASE = 'PURCHASE';
+
+    /** Internal consumption (supplies used, not sold), with the module and reference that caused it. */
+    public const CONSUMPTION = 'CONSUMPTION';
 
     public const UPDATED_AT = null;
 

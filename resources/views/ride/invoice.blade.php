@@ -1,4 +1,4 @@
-{{-- RIDE de factura (ficha técnica, anexo 2). Sólo datos congelados del comprobante y de la autorización del SRI. --}}
+{{-- RIDE de factura, nota de crédito y comprobante de retención (ficha técnica, anexo 2). Sólo datos congelados del comprobante y de la autorización del SRI. --}}
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -74,6 +74,12 @@
             <td><span class="label">Fecha de emisión:</span> {{ $ride->issueDate }}</td>
             <td><span class="label">Dirección:</span> {{ $ride->customer['address'] }}</td>
         </tr>
+        @if ($ride->supportDocument)
+            <tr>
+                <td><span class="label">Período fiscal:</span> {{ $ride->supportDocument['fiscalPeriod'] }}</td>
+                <td></td>
+            </tr>
+        @endif
         @if ($ride->modifiedDocument)
             <tr>
                 <td><span class="label">Comprobante que se modifica:</span> {{ $ride->modifiedDocument['type'] }} {{ $ride->modifiedDocument['number'] }}</td>
@@ -87,6 +93,38 @@
 </div>
 
 <div class="spacer"></div>
+@if ($ride->supportDocument)
+<table class="grid">
+    <thead>
+        <tr>
+            <th>Comprobante</th>
+            <th>Número</th>
+            <th>Fecha emisión</th>
+            <th>Ejercicio fiscal</th>
+            <th>Base imponible</th>
+            <th>Impuesto</th>
+            <th>Código</th>
+            <th>% Retención</th>
+            <th>Valor retenido</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach ($ride->withholdings as $row)
+            <tr>
+                <td>{{ $ride->supportDocument['type'] }}</td>
+                <td>{{ $ride->supportDocument['number'] }}</td>
+                <td>{{ $ride->supportDocument['date'] }}</td>
+                <td>{{ $ride->supportDocument['fiscalPeriod'] }}</td>
+                <td class="num">{{ $row['base'] }}</td>
+                <td>{{ $row['tax'] }}</td>
+                <td>{{ $row['code'] }}</td>
+                <td class="num">{{ $row['percentage'] }}</td>
+                <td class="num">{{ $row['amount'] }}</td>
+            </tr>
+        @endforeach
+    </tbody>
+</table>
+@else
 <table class="grid">
     <thead>
         <tr>
@@ -113,6 +151,7 @@
         @endforeach
     </tbody>
 </table>
+@endif
 
 <div class="spacer"></div>
 <table>
@@ -145,7 +184,7 @@
                 @foreach ($ride->totals as $row)
                     <tr><td class="label">{{ $row['label'] }}</td><td class="num">{{ $row['amount'] }}</td></tr>
                 @endforeach
-                <tr><th style="text-align: left;">VALOR TOTAL</th><th class="num">{{ $ride->total }}</th></tr>
+                <tr><th style="text-align: left;">{{ $ride->supportDocument ? 'TOTAL RETENIDO' : 'VALOR TOTAL' }}</th><th class="num">{{ $ride->total }}</th></tr>
             </table>
         </td>
     </tr>

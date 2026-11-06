@@ -38,6 +38,15 @@ return new class extends Migration
             $table->string('reason', 300)->nullable();
             // Nota de crédito por devolución de mercadería: sus productos vuelven al stock (kardex RETURN).
             $table->boolean('returns_goods')->default(false);
+            // Comprobante de retención (07): nace de una compra de Inversiones, que es su documento de sustento.
+            $table->foreignId('purchase_id')->nullable();
+            $table->char('fiscal_period', 7)->nullable();
+            $table->boolean('related_party')->default(false);
+            $table->char('support_code', 2)->nullable();
+            $table->char('support_document_code', 2)->nullable();
+            $table->char('support_document_number', 17)->nullable();
+            $table->date('support_document_date')->nullable();
+            $table->string('support_authorization_number', 49)->nullable();
             $table->foreignId('customer_id');
             $table->foreignId('establishment_id');
             $table->foreignId('emission_point_id');
@@ -97,6 +106,8 @@ return new class extends Migration
             $table->foreign(['company_id', 'sale_id'])->references(['company_id', 'id'])->on('sales')->restrictOnDelete();
             $table->foreign(['company_id', 'customer_id'])->references(['company_id', 'id'])->on('customers')->restrictOnDelete();
             $table->index(['company_id', 'modified_document_id']);
+            // Sin llave foránea: las compras se crean en una migración posterior.
+            $table->index(['company_id', 'purchase_id']);
             $table->foreign(['company_id', 'establishment_id'])->references(['company_id', 'id'])->on('establishments')->restrictOnDelete();
             $table->foreign(['company_id', 'emission_point_id'])->references(['company_id', 'id'])->on('emission_points')->restrictOnDelete();
             $table->index(['company_id', 'status', 'issue_date']);

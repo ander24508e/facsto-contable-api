@@ -3,6 +3,7 @@
 namespace App\Domains\Ride\Services;
 
 use App\Domains\FiscalDocuments\Enums\DocumentStatus;
+use App\Domains\FiscalDocuments\Enums\DocumentType;
 use App\Domains\FiscalDocuments\Models\ElectronicDocument;
 use App\Domains\Ride\DTOs\RideData;
 use Illuminate\Support\Collection;
@@ -26,7 +27,8 @@ final class RideDataFactory
         if ($document->status !== DocumentStatus::AUTHORIZED || blank($document->authorization_number) || $document->authorized_at === null) {
             throw new LogicException('A RIDE is only generated for an authorized document.');
         }
-        $document->loadMissing(['lines', 'taxes', 'paymentMethods', 'modifiedDocument']);
+        $document->loadMissing(['lines', 'taxes', 'paymentMethods', 'modifiedDocument', 'withholdings']);
+        $isRetention = $document->document_type === DocumentType::RETENTION;
 
         $lines = $document->lines->map(fn ($line): array => [
             'code' => $line->item_code,
@@ -96,9 +98,11 @@ final class RideDataFactory
                 'address' => $document->customer_address,
             ],
             lines: $lines,
-            totals: $totals,
-            total: (string) $document->total,
-            payments: $document->paymentMethods->map(fn ($payment): array => [
+            totals: $isRetention ? [] : $totals,
+            total: $isRetention
+                ? $document->withholdings->reduce(fn (string $sum, $row): string => bcadd($sum, (string) $row->amount, 2), '0.00')
+                : (string) $document->total,
+            payments: $isRetention ? [] : $document->paymentMethods->map(fn ($payment): array => [
                 'code' => $payment->method_code,
                 'name' => $payment->method_name,
                 'amount' => (string) $payment->amount,
@@ -112,6 +116,19 @@ final class RideDataFactory
                 'date' => $document->modifiedDocument->issue_date->format('d/m/Y'),
                 'reason' => (string) $document->reason,
             ],
+            supportDocument: $isRetention ? [
+                'type' => 'FACTURA',
+                'number' => (string) $document->support_document_number,
+                'date' => $document->support_document_date?->format('d/m/Y') ?? '',
+                'fiscalPeriod' => (string) $document->fiscal_period,
+            ] : null,
+            withholdings: $document->withholdings->map(fn ($row): array => [
+                'tax' => $row->tax_code === '2' ? 'IVA' : 'RENTA',
+                'code' => $row->withholding_code,
+                'base' => (string) $row->taxable_base,
+                'percentage' => $this->percent((string) $row->percentage),
+                'amount' => (string) $row->amount,
+            ])->values()->all(),
         );
     }
 

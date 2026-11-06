@@ -9,6 +9,7 @@ use App\Domains\Catalog\Models\FiscalPaymentMethod;
 use App\Domains\Sales\Enums\SaleStatus;
 use App\Domains\Sales\Models\Sale;
 use App\Models\User;
+use Illuminate\Testing\TestResponse;
 
 /** CREDITO: a sale with a down payment and installments, collected later into its cash register (cuentas por cobrar). */
 final class CreditPaymentTest extends SalesTestCase
@@ -19,7 +20,7 @@ final class CreditPaymentTest extends SalesTestCase
     }
 
     /** A sale of $10.00 on CREDITO: $4.00 down and $6.00 in two monthly installments. */
-    private function creditSale(User $user, Sale $sale, array $installments, string $downPayment = '4.00'): \Illuminate\Testing\TestResponse
+    private function creditSale(User $user, Sale $sale, array $installments, string $downPayment = '4.00'): TestResponse
     {
         return $this->actingAs($user)->patchJson("/api/v1/sales/{$sale->public_id}", [
             'customerPublicId' => $sale->customer->public_id,
@@ -38,7 +39,8 @@ final class CreditPaymentTest extends SalesTestCase
 
         $this->actingAs($user)->getJson('/api/v1/fiscal-payment-methods?per_page=100')->assertOk()
             ->assertJsonFragment(['name' => 'CREDITO', 'code' => '01', 'isCredit' => true])
-            ->assertJsonCount(9, 'data');
+            ->assertJsonFragment(['name' => 'TRANSFERENCIA', 'code' => '20', 'isTransfer' => true])
+            ->assertJsonCount(10, 'data');
         $this->postJson('/api/v1/fiscal-payment-methods', ['name' => 'Fiado', 'code' => '01'])->assertMethodNotAllowed();
     }
 

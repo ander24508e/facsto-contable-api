@@ -103,7 +103,7 @@ final class CustomerController extends Controller
     public function fiscalSummary(Customer $customer): JsonResponse
     {
         $this->authorize('view', $customer);
-        $documents = ElectronicDocument::query()->where('company_id', $customer->company_id)->where('customer_id', $customer->id);
+        $documents = ElectronicDocument::query()->where('company_id', $customer->company_id)->where('customer_id', $customer->id)->salesDocuments();
         $year = (clone $documents)->where('status', DocumentStatus::AUTHORIZED->value)->whereYear('issue_date', now()->year);
         $sum = fn (DocumentType $type): string => (string) ((clone $year)->where('document_type', $type->value)->sum('total') ?: '0');
 

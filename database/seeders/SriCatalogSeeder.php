@@ -65,6 +65,7 @@ final class SriCatalogSeeder extends Seeder
         $this->rule(FiscalRuleCode::MAX_TIP_PERCENTAGE, '10.00', '2013-01-01', 'Ficha técnica SRI offline v2.34, numeral 9.16, tabla 21 (propina)');
 
         $this->call(SriFiscalPaymentMethodSeeder::class);
+        $this->call(SriWithholdingCodeSeeder::class);
         $synchronizer->syncAllCompanies();
     }
 

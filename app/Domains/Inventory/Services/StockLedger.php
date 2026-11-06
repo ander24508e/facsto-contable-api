@@ -95,6 +95,29 @@ final class StockLedger
         }
     }
 
+    /**
+     * Internal consumption: supplies used up without being sold (e.g. the polish of a car wash). It leaves
+     * the product's own warehouse and may go below zero, because the work is already done; the kardex keeps the
+     * module and reference that caused it. Services and products never stocked are skipped.
+     */
+    public function consume(Item $item, string $units, User $actor, string $note, string $sourceModule, string $sourceReference): void
+    {
+        if ($item->type !== ItemType::PRODUCT || bccomp($units, '0', 6) <= 0) {
+            return;
+        }
+        $stock = ItemStock::query()->where('item_id', $item->id)->lockForUpdate()->first();
+        if (! $stock) {
+            return;
+        }
+        $balance = bcsub((string) $stock->quantity, $units, 6);
+        $stock->forceFill(['quantity' => $balance])->save();
+        StockMovement::query()->create([
+            'company_id' => $stock->company_id, 'item_id' => $stock->item_id, 'warehouse_id' => $stock->warehouse_id,
+            'type' => StockMovement::CONSUMPTION, 'quantity' => bcmul($units, '-1', 6), 'balance' => $balance,
+            'source_module' => $sourceModule, 'source_reference' => $sourceReference, 'user_id' => $actor->id, 'note' => mb_substr($note, 0, 255),
+        ]);
+    }
+
     private function write(ItemStock $stock, string $change, string $type, ElectronicDocument $document, User $actor, string $note): void
     {
         $balance = bcadd((string) $stock->quantity, $change, 6);

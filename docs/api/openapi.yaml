@@ -984,8 +984,11 @@ paths:
   /api/v1/fiscal-payment-methods:
     get:
       tags: [Catalog]
-      summary: Formas de pago vigentes - tabla 24 del SRI más CREDITO, fijas para todas las empresas.
-      description: CREDITO (isCredit) va al XML como 01 con el plazo en días hasta la última cuota.
+      summary: Formas de pago vigentes - tabla 24 del SRI más CREDITO y TRANSFERENCIA, fijas para todas las empresas.
+      description: >-
+        CREDITO (isCredit) va al XML como 01 con el plazo en días hasta la última cuota. TRANSFERENCIA (isTransfer) va
+        al XML como 20, exige la referencia de la transferencia para facturar (pending payment_reference) y sólo se
+        acepta en ventas: una compra con ella responde 422 FISCAL_PAYMENT_METHOD_NOT_FOUND.
       operationId: listFiscalPaymentMethods
       security: [{ sessionCookie: [] }]
       parameters:
@@ -1549,7 +1552,7 @@ paths:
   /api/v1/items/{item}/stock-movements:
     get:
       tags: [Catalog]
-      summary: "Kardex del producto (más reciente primero, hasta 200): tipo INITIAL, ADJUSTMENT, SALE o RETURN, cantidad con signo, saldo, bodega, comprobante, nota, usuario y fecha."
+      summary: "Kardex del producto (más reciente primero, hasta 200): tipo INITIAL, ADJUSTMENT, SALE, RETURN, PURCHASE o CONSUMPTION (insumos gastados por un módulo), cantidad con signo, saldo, bodega, comprobante, nota, usuario y fecha."
       operationId: listItemStockMovements
       security: [{ sessionCookie: [] }]
       parameters: [{ name: item, in: path, required: true, schema: { type: string, format: uuid } }]
@@ -2082,6 +2085,26 @@ paths:
       security: [{ sessionCookie: [] }]
       responses:
         "200": { description: Reglas fiscales, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/FiscalRule" } } } } } } }
+  /api/v1/sales/transactions:
+    get:
+      tags: [Sales]
+      summary: Ventas → Transacciones - una fila por cada pago de una venta facturada, con su referencia y el estado de la factura.
+      description: >-
+        meta.collectedTotal suma los pagos de facturas AUTHORIZED con los mismos filtros. status agrupa los estados del
+        comprobante (authorized, sent = en proceso, problems = devueltos, no autorizados o con error técnico).
+      operationId: listSaleTransactions
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: search, in: query, schema: { type: string, maxLength: 120 }, description: "Referencia, cliente, identificación o número de factura." }
+        - { name: method, in: query, schema: { type: string, format: uuid }, description: publicId de la forma de pago. }
+        - { name: status, in: query, schema: { type: string, enum: [authorized, sent, problems] } }
+        - { name: from, in: query, schema: { type: string, format: date }, description: Fecha de emisión desde. }
+        - { name: to, in: query, schema: { type: string, format: date }, description: Fecha de emisión hasta. }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 15 } }
+      responses:
+        "200": { description: "Pagos de ventas facturadas (data: amount, methodCode, methodName, isCredit, isTransfer, reference, sale, customer, invoice)." }
+        "422": { $ref: "#/components/responses/ValidationError" }
   /api/v1/sales/quote:
     post:
       tags: [Sales]
@@ -2089,7 +2112,7 @@ paths:
       description: >-
         Mismo cuerpo que POST /sales. Devuelve líneas, subtotal, descuento, base, impuestos por tarifa (taxSummary),
         propina, total, suma de pagos, diferencia por asignar y lo que falta para facturar (pending: customer, lines,
-        payment_methods, payment_total, final_consumer_limit). Un artículo con priceIncludesTax obtiene su base
+        payment_methods, payment_total, payment_reference, final_consumer_limit). Un artículo con priceIncludesTax obtiene su base
         dividiendo el precio para (1 + tarifas).
       operationId: quoteSale
       security: [{ sessionCookie: [], csrfHeader: [] }]
@@ -2552,14 +2575,14 @@ paths:
                       newItem:
                         type: object
                         required: [name]
-                        description: Ficha de producto preparada en el modal; se crea dentro de la transacción de compra y recibe su stock desde esta compra.
+                        description: "Ficha de producto preparada en el modal; se crea dentro de la transacción de compra y recibe su stock desde esta compra."
                         properties:
                           name: { type: string, maxLength: 60 }
                           internalCode: { type: [string, "null"], maxLength: 25 }
                           auxiliaryCode: { type: [string, "null"], maxLength: 25 }
                           barcode: { type: [string, "null"], maxLength: 64 }
                           unit: { type: string, maxLength: 32 }
-                          salePrice: { type: [string, "null"], description: Decimal opcional de hasta 6 posiciones; si se omite, el backend usa el costo unitario de compra. }
+                          salePrice: { type: [string, "null"], description: "Decimal opcional de hasta 6 posiciones; si se omite, el backend usa el costo unitario de compra." }
                           priceIncludesTax: { type: boolean }
                           costPrice: { type: [string, "null"] }
                           description: { type: [string, "null"] }
@@ -2580,6 +2603,75 @@ paths:
       security: [{ sessionCookie: [] }]
       parameters: [{ name: purchase, in: path, required: true, schema: { type: string, format: uuid } }]
       responses: { "200": { description: "Compra con líneas, cuotas y saldo" } }
+  /api/v1/purchases/{purchase}/retention:
+    post:
+      tags: [Retentions]
+      summary: "Emite el comprobante de retención (07, esquema 2.0.0) de una compra y lo continúa a XML, firma y SRI."
+      description: >-
+        Solo un agente de retención según su perfil fiscal (409 WITHHOLDING_AGENT_REQUIRED): sociedades, obligados a
+        llevar contabilidad, contribuyentes especiales o designados; un RIMPE solo si tiene número de agente. La compra
+        es el documento de sustento y necesita el número de la factura del proveedor. Renta se retiene sobre el subtotal
+        y el IVA sobre el IVA de la compra (422 si las bases los superan). A crédito, lo retenido baja la cuenta por
+        pagar. Una retención por compra (409 RETENTION_ALREADY_EXISTS). XML, RIDE y reintentos usan /invoices/{document}.
+      operationId: createRetention
+      security: [{ sessionCookie: [], csrfHeader: [] }]
+      parameters: [{ name: purchase, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [emissionPointPublicId, supportCode, withholdings]
+              properties:
+                emissionPointPublicId: { type: string, format: uuid }
+                supportCode: { type: string, enum: ["00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10"], description: Código de sustento tributario (tabla 5 del ATS). }
+                relatedParty: { type: boolean }
+                withholdings:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [codePublicId, taxableBase]
+                    properties:
+                      codePublicId: { type: string, format: uuid }
+                      taxableBase: { type: string }
+                      percentage: { type: [string, "null"], description: Ajusta el porcentaje sugerido del código. }
+      responses: { "201": { description: Retención numerada (y autorizada si el SRI respondió) }, "409": { description: WITHHOLDING_AGENT_REQUIRED o RETENTION_ALREADY_EXISTS }, "422": { $ref: "#/components/responses/ValidationError" } }
+  /api/v1/withholding-codes:
+    get:
+      tags: [Retentions]
+      summary: Códigos de retención vigentes de Renta e IVA con su porcentaje sugerido.
+      operationId: listWithholdingCodes
+      security: [{ sessionCookie: [] }]
+      parameters: [{ name: tax, in: query, schema: { type: string, enum: [RENTA, IVA] } }]
+      responses: { "200": { description: Códigos } }
+  /api/v1/retentions/eligibility:
+    get:
+      tags: [Retentions]
+      summary: "Si la empresa retiene según su perfil fiscal: canWithhold y reason (COMPANY, ACCOUNTING_REQUIRED, SPECIAL_TAXPAYER, DESIGNATED_AGENT, RIMPE, NOT_REQUIRED)."
+      operationId: retentionEligibility
+      security: [{ sessionCookie: [] }]
+      responses: { "200": { description: Estado de agente de retención } }
+  /api/v1/retentions:
+    get:
+      tags: [Retentions]
+      summary: Retenciones emitidas, paginadas (search por número, RUC o razón social; status).
+      operationId: listRetentions
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses: { "200": { description: Retenciones con meta de paginación } }
+  /api/v1/retentions/{retention}:
+    get:
+      tags: [Retentions]
+      summary: Detalle de una retención con sus líneas.
+      operationId: showRetention
+      security: [{ sessionCookie: [] }]
+      parameters: [{ name: retention, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Retención }, "404": { description: RETENTION_NOT_FOUND } }
   /api/v1/receivables:
     get:
       tags: [Credit]
@@ -2851,6 +2943,9 @@ components:
         hasImage: { type: boolean }
         costPrice: { type: [string, "null"], description: Costo interno (no va al SRI). }
         additionalDetail: { type: [string, "null"], maxLength: 300 }
+        contentQuantity: { type: [string, "null"], description: "Contenido de una unidad (Caneca = 20). Con contentUnit permite gastar parte de ella como insumo." }
+        contentUnit: { type: [string, "null"], enum: [ml, L, g, kg, null] }
+        managedBy: { type: [string, "null"], description: "Módulo que crea y mantiene el artículo (carwash = precio por vehículo de la Lavadora); null = Inventario." }
         stock: { type: [object, "null"], description: Existencia en su bodega (solo productos), properties: { quantity: { type: string }, warehousePublicId: { type: string, format: uuid }, warehouseName: { type: string }, establishmentPublicId: { type: string, format: uuid } } }
         priceTiers: { type: array, description: Precios alternos desde una cantidad (mayorista), items: { type: object, properties: { minQuantity: { type: string }, price: { type: string } } } }
         finalPrice: { type: string, description: "Precio por unidad con impuestos (el mismo precio si ya los incluye), redondeado a centavos." }
@@ -2880,6 +2975,8 @@ components:
         categoryPublicId: { type: [string, "null"], format: uuid }
         brandPublicId: { type: [string, "null"], format: uuid }
         barcode: { type: [string, "null"], maxLength: 64 }
+        contentQuantity: { type: [string, "null"], description: "Contenido de una unidad (Caneca = 20). Con contentUnit permite gastar parte de ella como insumo." }
+        contentUnit: { type: [string, "null"], enum: [ml, L, g, kg, null] }
     UpdateItemRequest:
       type: object
       properties:
@@ -2893,6 +2990,8 @@ components:
         categoryPublicId: { type: [string, "null"], format: uuid }
         brandPublicId: { type: [string, "null"], format: uuid }
         barcode: { type: [string, "null"], maxLength: 64 }
+        contentQuantity: { type: [string, "null"], description: "Contenido de una unidad (Caneca = 20). Con contentUnit permite gastar parte de ella como insumo." }
+        contentUnit: { type: [string, "null"], enum: [ml, L, g, kg, null] }
     ItemResponse:
       type: object
       properties: { data: { $ref: "#/components/schemas/Item" } }
@@ -2924,7 +3023,7 @@ components:
         methodCode: { type: string, description: Snapshot que devuelve la API en la venta. }
         methodName: { type: string, description: Snapshot que devuelve la API en la venta. }
         amount: { type: string, pattern: '^\d+(\.\d{1,2})?$' }
-        reference: { type: [string, "null"], maxLength: 120 }
+        reference: { type: [string, "null"], maxLength: 120, description: Obligatoria para facturar con TRANSFERENCIA (su referencia). }
         term: { type: [string, "null"], pattern: '^\d+(\.\d{1,2})?$' }
         timeUnit: { type: [string, "null"], enum: [DAY, MONTH] }
         isCredit: { type: boolean, description: "Respuesta: pago a crédito (cuotas en sale_installments, nunca entra a la caja)." }

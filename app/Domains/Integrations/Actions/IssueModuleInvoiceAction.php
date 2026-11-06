@@ -166,7 +166,7 @@ final class IssueModuleInvoiceAction
     private function payments(array $payments, string $total): array
     {
         $payments = $payments === [] ? [['code' => '01', 'amount' => $total]] : $payments;
-        $methods = FiscalPaymentMethod::query()->where('is_credit', false)->whereIn('code', array_column($payments, 'code'))->where('is_active', true)
+        $methods = FiscalPaymentMethod::query()->where('is_credit', false)->where('is_transfer', false)->whereIn('code', array_column($payments, 'code'))->where('is_active', true)
             ->whereDate('valid_from', '<=', today())
             ->where(fn ($query) => $query->whereNull('valid_until')->orWhereDate('valid_until', '>=', today()))
             ->pluck('public_id', 'code');
