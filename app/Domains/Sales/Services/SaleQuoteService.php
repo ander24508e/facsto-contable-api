@@ -57,8 +57,18 @@ final class SaleQuoteService
         $calculation = $this->calculator->calculate($lines, $items, (string) ($data['tipAmount'] ?? '0.00'));
         $this->assertTipWithinLimit($calculation);
 
+        $payments = $this->preparePayments($data['paymentMethods'] ?? []);
+
+        return ['customer' => $customer, 'calculation' => $calculation, 'payments' => $payments];
+    }
+
+    /** @param list<array<string, mixed>> $paymentMethods
+     * @return list<array<string, mixed>>
+     */
+    public function preparePayments(array $paymentMethods): array
+    {
         $payments = [];
-        foreach ($data['paymentMethods'] ?? [] as $methodData) {
+        foreach ($paymentMethods as $methodData) {
             $method = FiscalPaymentMethod::query()->valid()
                 ->where('public_id', $methodData['fiscalPaymentMethodPublicId'])
                 ->first();
@@ -87,7 +97,7 @@ final class SaleQuoteService
             ];
         }
 
-        return ['customer' => $customer, 'calculation' => $calculation, 'payments' => $payments];
+        return $payments;
     }
 
     /** POST /sales/quote: totals, taxes per rate, payment balance and what is still missing to invoice. */

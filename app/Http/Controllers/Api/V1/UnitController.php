@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Domains\Catalog\Models\Item;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Inventory\Models\Unit;
 use App\Http\Controllers\Controller;
@@ -18,7 +17,7 @@ final class UnitController extends Controller
 {
     public function index(CompanyContext $context): JsonResponse
     {
-        $this->authorize('viewAny', Item::class);
+        $this->authorize('inventory.view');
         $company = $context->company();
         Unit::ensureDefaults($company->id);
 
@@ -27,7 +26,7 @@ final class UnitController extends Controller
 
     public function store(Request $request, CompanyContext $context, AuditRecorder $audit): JsonResponse
     {
-        $this->authorize('create', Item::class);
+        $this->authorize('inventory.create');
         $name = $this->name($request);
         $company = $context->company();
         $this->assertUnique($company->id, $name);
@@ -39,7 +38,7 @@ final class UnitController extends Controller
 
     public function update(Request $request, Unit $unit, CompanyContext $context, AuditRecorder $audit): JsonResponse
     {
-        $this->authorize('create', Item::class);
+        $this->authorize('inventory.create');
         $company = $context->company();
         abort_unless($unit->company_id === $company->id, 404);
         $name = $this->name($request);

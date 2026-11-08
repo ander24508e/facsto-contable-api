@@ -2,12 +2,14 @@
 
 namespace App\Providers;
 
-use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\Brand;
+use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\Item;
-use App\Domains\Catalog\Policies\CategoryPolicy;
 use App\Domains\Catalog\Policies\BrandPolicy;
+use App\Domains\Catalog\Policies\CategoryPolicy;
 use App\Domains\Catalog\Policies\ItemPolicy;
+use App\Domains\Companies\Access\CompanyAccess;
+use App\Domains\Companies\Access\PermissionCatalog;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Companies\Models\Company;
 use App\Domains\Companies\Policies\CompanyPolicy;
@@ -23,6 +25,7 @@ use App\Domains\Sri\Signing\Contracts\XmlSigner;
 use App\Domains\Sri\Signing\JavaXadesBesSigner;
 use App\Domains\Taxes\Models\CompanyTax;
 use App\Domains\Taxes\Policies\CompanyTaxPolicy;
+use App\Models\User;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
@@ -34,6 +37,8 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->scoped(CompanyContext::class);
+        $this->app->scoped(PermissionCatalog::class);
+        $this->app->scoped(CompanyAccess::class);
         $this->app->bind(XmlSigner::class, JavaXadesBesSigner::class);
         $this->app->bind(SriProvider::class, EcuadorSriProvider::class);
     }
@@ -51,5 +56,23 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(ElectronicDocument::class, InvoicePolicy::class);
         Gate::policy(CompanyTax::class, CompanyTaxPolicy::class);
         Gate::policy(Sale::class, SalePolicy::class);
+
+        // One Gate per permission of the catalog (core and modules): «sales.create», «carwash.operate»…
+        foreach (app(PermissionCatalog::class)->keys() as $permission) {
+            Gate::define($permission, fn (User $user): bool => $this->allows($user, $permission));
+        }
+        // Configuración del sistema: sólo el rol fijo Administrador.
+        Gate::define('company.administer', function (User $user): bool {
+            $context = app(CompanyContext::class);
+
+            return $context->hasCompany() && app(CompanyAccess::class)->isAdministrator($user, $context->company());
+        });
+    }
+
+    private function allows(User $user, string $permission): bool
+    {
+        $context = app(CompanyContext::class);
+
+        return $context->hasCompany() && app(CompanyAccess::class)->allows($user, $context->company(), $permission);
     }
 }

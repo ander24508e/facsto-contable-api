@@ -21,9 +21,16 @@ return new class extends Migration
             $table->foreignId('customer_id')->nullable();
             // Bodega cuyos productos se ofrecen (sólo referencia: no reserva nada).
             $table->foreignId('warehouse_id')->nullable();
+            $table->unsignedBigInteger('converted_sale_id')->nullable();
             $table->foreignId('created_by')->constrained('users')->restrictOnDelete();
+            $table->string('customer_identification_type', 32)->nullable();
             $table->string('customer_identification', 20)->nullable();
             $table->string('customer_name', 180)->nullable();
+            $table->string('customer_address', 255)->nullable();
+            $table->string('customer_email', 254)->nullable();
+            $table->string('customer_phone', 20)->nullable();
+            $table->date('issue_date');
+            $table->date('expiration_date');
             $table->text('notes')->nullable();
             $table->decimal('subtotal', 18, 2)->default(0);
             $table->decimal('discount_total', 18, 2)->default(0);
@@ -32,9 +39,11 @@ return new class extends Migration
             $table->timestamps();
             $table->unique(['company_id', 'id']);
             $table->unique(['company_id', 'number']);
+            $table->unique(['company_id', 'converted_sale_id']);
             $table->index(['company_id', 'created_at']);
             $table->foreign(['company_id', 'customer_id'])->references(['company_id', 'id'])->on('customers')->restrictOnDelete();
             $table->foreign(['company_id', 'warehouse_id'])->references(['company_id', 'id'])->on('warehouses')->restrictOnDelete();
+            $table->foreign(['company_id', 'converted_sale_id'])->references(['company_id', 'id'])->on('sales')->restrictOnDelete();
         });
 
         Schema::create('proforma_lines', function (Blueprint $table): void {
@@ -61,6 +70,7 @@ return new class extends Migration
 
         if (DB::getDriverName() === 'pgsql') {
             DB::statement('ALTER TABLE proforma_lines ADD CONSTRAINT proforma_lines_quantity_positive_check CHECK (quantity > 0)');
+            DB::statement('ALTER TABLE proformas ADD CONSTRAINT proformas_expiration_date_check CHECK (expiration_date >= issue_date)');
         }
     }
 

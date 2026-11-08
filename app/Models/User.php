@@ -31,7 +31,7 @@ class User extends Authenticatable
     public function companyMemberships(): BelongsToMany
     {
         return $this->belongsToMany(Company::class, 'company_memberships')
-            ->withPivot(['id', 'role', 'is_active', 'joined_at'])
+            ->withPivot(['id', 'is_active', 'joined_at'])
             ->withTimestamps();
     }
 

@@ -2,19 +2,15 @@
 
 namespace Tests\Feature\Setup;
 
-use App\Domains\Companies\Enums\CompanyRole;
 use App\Domains\Companies\Models\Company;
 use App\Models\User;
 use Illuminate\Support\Facades\Storage;
 
 final class OnboardingFlowTest extends SetupTestCase
 {
-    private function addMember(Company $company, CompanyRole $role): User
+    private function addMember(Company $company, string $preset): User
     {
-        $user = User::factory()->create();
-        $company->memberships()->create(['user_id' => $user->id, 'role' => $role, 'is_active' => true, 'joined_at' => now()]);
-
-        return $user;
+        return $this->memberAs($company, $preset);
     }
 
     private function setupStatus(User $user, Company $company)
@@ -26,10 +22,10 @@ final class OnboardingFlowTest extends SetupTestCase
     {
         $operator = User::factory()->create();
         $company = $this->createCompany($operator);
-        $clientAdmin = $this->addMember($company, CompanyRole::ADMIN);
-        $thirdAdmin = $this->addMember($company, CompanyRole::ADMIN);
-        $biller = $this->addMember($company, CompanyRole::BILLER);
-        $viewer = $this->addMember($company, CompanyRole::VIEWER);
+        $clientAdmin = $this->addMember($company, 'ADMIN');
+        $thirdAdmin = $this->addMember($company, 'ADMIN');
+        $biller = $this->addMember($company, 'BILLER');
+        $viewer = $this->addMember($company, 'VIEWER');
 
         $this->setupStatus($operator, $company)->assertJsonPath('data.onboardingRequired', true);
         $this->setupStatus($clientAdmin, $company)->assertJsonPath('data.onboardingRequired', true);
@@ -42,7 +38,7 @@ final class OnboardingFlowTest extends SetupTestCase
     {
         $operator = User::factory()->create();
         $company = $this->createCompany($operator);
-        $clientAdmin = $this->addMember($company, CompanyRole::ADMIN);
+        $clientAdmin = $this->addMember($company, 'ADMIN');
 
         $this->actingAs($operator)->postJson('/api/v1/setup/defer')
             ->assertOk()
@@ -58,7 +54,7 @@ final class OnboardingFlowTest extends SetupTestCase
     public function test_employees_cannot_skip_the_company_setup(): void
     {
         $company = $this->createCompany(User::factory()->create());
-        $biller = $this->addMember($company, CompanyRole::BILLER);
+        $biller = $this->addMember($company, 'BILLER');
 
         $this->actingAs($biller)->postJson('/api/v1/setup/defer')
             ->assertForbidden();

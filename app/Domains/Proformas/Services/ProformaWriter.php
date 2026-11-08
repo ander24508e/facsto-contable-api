@@ -24,7 +24,7 @@ final class ProformaWriter
         private readonly AuditRecorder $audit,
     ) {}
 
-    /** @param  array{customerPublicId?: ?string, warehousePublicId?: ?string, notes?: ?string, lines?: list<array<string, mixed>>}  $data */
+    /** @param  array{customerPublicId?: ?string, warehousePublicId?: ?string, issueDate: string, expirationDate: string, notes?: ?string, lines?: list<array<string, mixed>>}  $data */
     public function save(?Proforma $proforma, array $data, User $actor): Proforma
     {
         $company = $this->context->company();
@@ -35,8 +35,14 @@ final class ProformaWriter
             $attributes = [
                 'customer_id' => $customer?->id,
                 'warehouse_id' => $warehouse?->id ?? $proforma?->warehouse_id,
+                'customer_identification_type' => $customer?->identification_type?->value,
                 'customer_identification' => $customer?->identification,
                 'customer_name' => $customer?->legal_name,
+                'customer_address' => $customer?->address,
+                'customer_email' => $customer?->email,
+                'customer_phone' => $customer?->phone,
+                'issue_date' => $data['issueDate'],
+                'expiration_date' => $data['expirationDate'],
                 'notes' => $data['notes'] ?? null,
                 'subtotal' => $calculation['subtotal'],
                 'discount_total' => $calculation['discountTotal'],

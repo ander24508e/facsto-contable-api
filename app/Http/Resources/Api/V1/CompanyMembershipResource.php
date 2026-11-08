@@ -14,7 +14,13 @@ final class CompanyMembershipResource extends JsonResource
             'name' => $this->user->name,
             'email' => $this->user->email,
             'phone' => $this->user->phone,
-            'role' => $this->role->value,
+            'roles' => $this->roles->map(fn ($role) => [
+                'publicId' => $role->public_id,
+                'name' => $role->name,
+                'isFixed' => $role->is_fixed,
+                'isActive' => $role->is_active,
+            ])->values(),
+            'isAdministrator' => $this->roles->contains('is_fixed', true),
             'isActive' => $this->is_active,
             'joinedAt' => $this->joined_at?->toIso8601String(),
         ];

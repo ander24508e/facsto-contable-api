@@ -2,13 +2,13 @@
 
 namespace Tests\Feature\Carwash;
 
+use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\Item;
-use App\Domains\Inventory\Models\Warehouse;
 use App\Domains\Inventory\Models\ItemStock;
 use App\Domains\Inventory\Models\StockMovement;
-use App\Domains\Companies\Enums\CompanyRole;
+use App\Domains\Inventory\Models\Warehouse;
 
-/** Vehicles of FACSTO customers, prices per vehicle that are Inventario items, and their supplies. */
+/** Vehicles of FACSTO customers, Tarifas read from Inventario, prices per vehicle that are Inventario items, and supplies. */
 final class CarwashCatalogTest extends CarwashTestCase
 {
     public function test_vehicle_belongs_to_a_facsto_customer_and_plates_are_unique(): void
@@ -31,47 +31,67 @@ final class CarwashCatalogTest extends CarwashTestCase
             ->assertJsonPath('data.vehicle.plate', 'GBC0123')->assertJsonPath('data.openWorkOrder', null);
     }
 
-    public function test_a_price_per_vehicle_creates_its_inventory_item_with_the_service_iva_and_its_supplies(): void
+    public function test_inventory_items_of_the_turned_on_categories_show_in_tarifas_and_get_prices_per_vehicle(): void
     {
         [$company, $owner] = $this->carwashCompany();
         $setup = $this->carwashSetup($company);
         $iva = $this->companyIva($company, '4');
-        $service = $this->actingAs($owner)->postJson(self::API.'/services', [
-            'name' => 'Lavada Express', 'taxPublicId' => $iva->public_id, 'durationMinutes' => 40, 'isFeatured' => true,
-        ])->assertCreated()->assertJsonPath('data.tax.publicId', $iva->public_id)->assertJsonPath('data.isBookable', true)->json('data.publicId');
-        $polish = Item::query()->create(['company_id' => $company->id, 'internal_code' => 'BRI-001', 'type' => 'PRODUCT', 'name' => 'Brillo', 'unit' => 'Caneca', 'sale_price' => '40', 'is_active' => true, 'content_quantity' => '20', 'content_unit' => 'L']);
-        $cloth = Item::query()->create(['company_id' => $company->id, 'internal_code' => 'PAN-001', 'type' => 'PRODUCT', 'name' => 'Paño', 'unit' => 'UND', 'sale_price' => '2', 'is_active' => true]);
+        $washes = Category::query()->create(['company_id' => $company->id, 'name' => 'Lavadas Automotrices', 'is_active' => true]);
+        $drinks = Category::query()->create(['company_id' => $company->id, 'name' => 'Bebidas', 'is_active' => true]);
+        $universal = Item::query()->create(['company_id' => $company->id, 'category_id' => $washes->id, 'internal_code' => 'LAV-UNI', 'type' => 'SERVICE', 'name' => 'Lavada Universal', 'unit' => 'UND', 'sale_price' => '30', 'is_active' => true]);
+        $universal->taxes()->attach($iva->id, ['company_id' => $company->id]);
+        $polish = Item::query()->create(['company_id' => $company->id, 'category_id' => $washes->id, 'internal_code' => 'BRI-001', 'type' => 'PRODUCT', 'name' => 'Brillo', 'unit' => 'Caneca', 'sale_price' => '40', 'is_active' => true, 'content_quantity' => '20', 'content_unit' => 'L']);
+        Item::query()->create(['company_id' => $company->id, 'category_id' => $drinks->id, 'internal_code' => 'AGU-001', 'type' => 'PRODUCT', 'name' => 'Agua', 'unit' => 'UND', 'sale_price' => '1', 'is_active' => true]);
 
+        // Nothing shows until a category is turned on in the Lavadora; then its services and products do.
+        $this->actingAs($owner)->getJson(self::API.'/services')->assertOk()->assertJsonCount(0, 'data');
+        $this->putJson(self::API.'/categories', ['categoryPublicIds' => [$washes->public_id]])->assertOk()
+            ->assertJsonPath('data.1.name', 'Lavadas Automotrices')->assertJsonPath('data.1.enabled', true)
+            ->assertJsonPath('data.1.servicesCount', 1)->assertJsonPath('data.1.productsCount', 1)->assertJsonPath('data.0.enabled', false);
+        $rates = $this->getJson(self::API.'/services')->assertOk()->assertJsonCount(2, 'data')->json('data');
+        $this->assertSame(['Brillo', 'Lavada Universal'], array_column($rates, 'name'));
+        $this->assertSame(['PRODUCT', 'SERVICE'], array_column($rates, 'type'));
+        [$product, $service] = [$rates[0]['publicId'], $rates[1]['publicId']];
+        $this->patchJson(self::API."/services/{$service}", ['durationMinutes' => 45])->assertOk()->assertJsonPath('data.durationMinutes', 45);
+
+        // A price per vehicle: its own codes, cost and price; the IVA is the base service's, never asked.
         $price = $this->postJson(self::API."/services/{$service}/prices", [
-            'vehicleSpecPublicId' => $setup['spec']->public_id, 'salePrice' => '5.75', 'priceIncludesTax' => true, 'durationMinutes' => 45,
-            'description' => 'Incluye aspirado', 'supplies' => [
-                ['itemPublicId' => $polish->public_id, 'quantity' => '500', 'measure' => 'ml'],
-                ['itemPublicId' => $cloth->public_id, 'quantity' => '1'],
-            ],
+            'vehicleSpecPublicId' => $setup['spec']->public_id, 'auxiliaryCode' => 'AUX-D', 'costPrice' => '12', 'salePrice' => '20',
+            'description' => 'Incluye aspirado', 'supplies' => [['itemPublicId' => $polish->public_id, 'quantity' => '500', 'measure' => 'ml']],
         ])->assertCreated()
-            ->assertJsonPath('data.spec.model', 'Spark')->assertJsonPath('data.vehicleType.publicId', $setup['type']->public_id)
-            ->assertJsonPath('data.price', '5.75')->assertJsonPath('data.effectiveDurationMinutes', 45)->assertJsonCount(2, 'data.supplies')
-            ->json('data');
+            ->assertJsonPath('data.price', '23.00')->assertJsonPath('data.costPrice', '12.000000')->assertJsonPath('data.item.auxiliaryCode', 'AUX-D')
+            ->assertJsonPath('data.effectiveDurationMinutes', 45)->assertJsonCount(1, 'data.supplies')->json('data');
+        $this->assertNotNull($price['item']['barcode']);
         $item = Item::query()->where('public_id', $price['item']['publicId'])->firstOrFail();
-        $this->assertSame('carwash', $item->managed_by);
-        $this->assertSame('SERVICE', $item->type->value);
-        $this->assertStringStartsWith('Lavada Express · Chevrolet', $item->name);
+        $this->assertSame(['carwash', 'SERVICE'], [$item->managed_by, $item->type->value]);
+        $this->assertStringStartsWith('Lavada Universal · Chevrolet', $item->name);
         $this->assertSame([$iva->id], $item->taxes()->pluck('company_taxes.id')->all());
-
-        // One price per specification; a measure needs the product's content per unit.
+        $this->assertSame($washes->id, $item->category_id);
         $this->postJson(self::API."/services/{$service}/prices", ['vehicleSpecPublicId' => $setup['spec']->public_id, 'salePrice' => '6'])
             ->assertConflict()->assertJsonPath('error.code', 'CARWASH_SERVICE_PRICE_DUPLICATE');
-        $this->patchJson(self::API."/service-prices/{$price['publicId']}", ['supplies' => [['itemPublicId' => $cloth->public_id, 'quantity' => '1', 'measure' => 'ml']]])
-            ->assertUnprocessable();
+        $this->postJson(self::API."/services/{$product}/prices", ['vehicleSpecPublicId' => $setup['spec']->public_id, 'salePrice' => '6'])->assertUnprocessable();
+        $this->patchJson(self::API."/service-prices/{$price['publicId']}", ['salePrice' => '10', 'isActive' => false])->assertOk()
+            ->assertJsonPath('data.price', '11.50')->assertJsonPath('data.isActive', false);
+        $this->assertFalse($item->refresh()->is_active);
 
-        // The price is the item's; renaming the service or turning the price off reaches the item.
-        $this->patchJson(self::API."/service-prices/{$price['publicId']}", ['salePrice' => '10', 'priceIncludesTax' => false, 'isActive' => false])->assertOk()
-            ->assertJsonPath('data.price', '11.50')->assertJsonPath('data.isActive', false)->assertJsonCount(2, 'data.supplies');
-        $this->patchJson(self::API."/services/{$service}", ['name' => 'Lavada Premium'])->assertOk()->assertJsonPath('data.pricesCount', 1);
-        $item->refresh();
-        $this->assertStringStartsWith('Lavada Premium · Chevrolet', $item->name);
-        $this->assertFalse($item->is_active);
-        $this->getJson("/api/v1/items/{$item->public_id}")->assertOk()->assertJsonPath('data.managedBy', 'carwash');
+        // The product says how much each price per vehicle uses of it: the same supplies, seen from the product.
+        $this->putJson(self::API."/services/{$product}/usages", ['usages' => [['servicePricePublicId' => $price['publicId'], 'quantity' => '250', 'measure' => 'ml']]])
+            ->assertOk()->assertJsonCount(1, 'data.usages')->assertJsonPath('data.usages.0.quantity', '250.000000')->assertJsonPath('data.usages.0.serviceName', 'Lavada Universal');
+
+        // In Inventario the base service stays on sale with its own price, but it is not edited or deleted while it
+        // has prices; a product used as a supply is not deleted.
+        $this->patchJson("/api/v1/items/{$universal->public_id}", ['name' => 'Otra'])->assertConflict()->assertJsonPath('error.code', 'CARWASH_IN_USE');
+        $this->putJson("/api/v1/items/{$universal->public_id}/taxes", ['taxPublicIds' => []])->assertConflict();
+        $this->deleteJson("/api/v1/items/{$universal->public_id}")->assertConflict();
+        $this->deleteJson("/api/v1/items/{$polish->public_id}")->assertConflict();
+        $this->assertSame('Lavada Universal', $universal->refresh()->name);
+        $this->assertSame(1, $universal->taxes()->count());
+
+        // Taking the category off only hides it in Tarifas: Servicios still offers it.
+        $this->putJson(self::API.'/categories', ['categoryPublicIds' => []])->assertOk();
+        $this->getJson(self::API.'/services')->assertOk()->assertJsonCount(0, 'data');
+        $this->patchJson(self::API."/service-prices/{$price['publicId']}", ['isActive' => true])->assertOk();
+        $this->assertContains('Lavada Universal', array_column($this->getJson(self::API.'/services?for=orders')->json('data'), 'name'));
     }
 
     public function test_finishing_the_wash_uses_up_the_supplies_in_the_kardex(): void
@@ -104,14 +124,13 @@ final class CarwashCatalogTest extends CarwashTestCase
         $this->actingAs($owner)->postJson(self::API.'/vehicle-types', ['name' => 'Camioneta'])->assertCreated();
         $this->actingAs($owner)->postJson(self::API.'/vehicle-types', ['name' => '  camioneta '])->assertConflict()->assertJsonPath('error.code', 'CARWASH_DUPLICATE_NAME');
         $brand = $this->actingAs($owner)->postJson(self::API.'/vehicle-brands', ['name' => 'Toyota'])->assertCreated()->json('data.publicId');
-        $this->actingAs($owner)->postJson(self::API.'/washers', ['name' => 'Luis', 'phone' => '0991234567'])->assertCreated()->assertJsonPath('data.phone', '0991234567');
     }
 
     public function test_a_specification_reuses_brand_and_type_by_name_and_sets_the_vehicle_type(): void
     {
         [$company, $owner] = $this->carwashCompany();
         $setup = $this->carwashSetup($company);
-        $operator = $this->member($company, CompanyRole::BILLER);
+        $operator = $this->member($company, 'BILLER');
 
         $spec = $this->actingAs($operator)->postJson(self::API.'/vehicle-specs', ['brand' => 'Toyota', 'model' => 'Corolla', 'type' => 'SUV'])->assertCreated()
             ->assertJsonPath('data.brand.name', 'Toyota')->assertJsonPath('data.type.name', 'SUV')->json('data');
@@ -156,7 +175,7 @@ final class CarwashCatalogTest extends CarwashTestCase
     {
         [$company, $owner] = $this->carwashCompany();
         $setup = $this->carwashSetup($company);
-        $operator = $this->member($company, CompanyRole::BILLER);
+        $operator = $this->member($company, 'BILLER');
 
         // The «+» next to Marca in Servicios: operators may add a brand on the spot, not rename it.
         $brand = $this->actingAs($operator)->postJson(self::API.'/vehicle-brands', ['name' => 'Mazda'])->assertCreated()->json('data');

@@ -2,7 +2,6 @@
 
 namespace App\Domains\Modules\Services;
 
-use App\Domains\Companies\Enums\CompanyRole;
 use App\Domains\Companies\Models\Company;
 use App\Domains\Modules\Enums\EntitlementStatus;
 use App\Domains\Modules\Models\CompanyEntitlement;
@@ -16,7 +15,7 @@ final class ModuleRegistry
     /** @var array<int, array<string, EntitlementStatus>> */
     private array $statuses = [];
 
-    /** @return array<string, array{name: string, features: array<string, string>, permissions: array<string, list<string>>}> */
+    /** @return array<string, array{name: string, features: array<string, string>, permissions: array<string, string>, read_actions?: list<string>}> */
     public function manifest(): array
     {
         return (array) config('modules.modules', []);
@@ -75,18 +74,14 @@ final class ModuleRegistry
         unset($this->statuses[$company->id]);
     }
 
-    /** May this role run the module action ("view", "operate", "manage")? */
-    public function allows(string $module, string $action, ?CompanyRole $role): bool
-    {
-        return $role !== null && in_array($role->value, $this->manifest()[$module]['permissions'][$action] ?? [], true);
-    }
-
     /**
-     * Modules the company can open, for FACSTO Web: status, enabled features and the actions of the role.
+     * Modules the company can open, for FACSTO Web: status, enabled features and the module actions the user's
+     * permissions («module.action», CompanyAccess) allow. In READ_ONLY only the module's read_actions remain.
      *
+     * @param  list<string>  $permissions
      * @return list<array{module: string, name: string, status: string, features: list<string>, can: list<string>}>
      */
-    public function forCompany(Company $company, ?CompanyRole $role): array
+    public function forCompany(Company $company, array $permissions): array
     {
         $modules = [];
         foreach ($this->manifest() as $key => $module) {
@@ -102,10 +97,10 @@ final class ModuleRegistry
                     array_keys($module['features']),
                     fn (string $feature) => $this->status($company, $feature) !== EntitlementStatus::DISABLED,
                 )),
-                // In READ_ONLY only "view" remains.
                 'can' => array_values(array_filter(
                     array_keys($module['permissions']),
-                    fn (string $action) => $this->allows($key, $action, $role) && ($action === 'view' || $status === EntitlementStatus::ENABLED),
+                    fn (string $action) => in_array("{$key}.{$action}", $permissions, true)
+                        && ($status === EntitlementStatus::ENABLED || in_array($action, $module['read_actions'] ?? ['view'], true)),
                 )),
             ];
         }

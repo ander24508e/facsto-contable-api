@@ -2,8 +2,8 @@
 
 namespace App\Domains\Companies\Models;
 
-use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\Brand;
+use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\Item;
 use App\Domains\Certificates\Models\DigitalCertificate;
 use App\Domains\Companies\Enums\CompanyStatus;
@@ -92,7 +92,7 @@ class Company extends Model
     public function users(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'company_memberships')
-            ->withPivot(['id', 'role', 'is_active', 'joined_at'])
+            ->withPivot(['id', 'is_active', 'joined_at'])
             ->withTimestamps();
     }
 

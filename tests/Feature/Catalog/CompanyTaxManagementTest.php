@@ -3,7 +3,6 @@
 namespace Tests\Feature\Catalog;
 
 use App\Domains\Companies\Actions\AddCompanyMemberAction;
-use App\Domains\Companies\Enums\CompanyRole;
 use App\Domains\Taxes\Models\SriTaxDefinition;
 use App\Models\User;
 
@@ -30,7 +29,7 @@ final class CompanyTaxManagementTest extends CatalogTestCase
         $owner = User::factory()->create();
         $biller = User::factory()->create();
         $company = $this->createCompany($owner, '1799999999001');
-        app(AddCompanyMemberAction::class)->execute($company, $owner, $biller, CompanyRole::BILLER);
+        app(AddCompanyMemberAction::class)->execute($company, $owner, $biller, $this->roleIds($company, 'BILLER'));
         $tax = $this->companyIva($company, '5');
 
         $this->actingAs($biller)->getJson('/api/v1/taxes')->assertOk();

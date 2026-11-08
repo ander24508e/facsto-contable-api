@@ -28,14 +28,18 @@ final class ServicePriceResource extends JsonResource
             'item' => [
                 'publicId' => $this->item?->public_id,
                 'code' => $this->item?->internal_code,
+                'auxiliaryCode' => $this->item?->auxiliary_code,
+                'barcode' => $this->item?->catalogMetadata?->barcode,
                 'name' => $this->item?->name,
                 'isActive' => (bool) $this->item?->is_active,
             ],
             'salePrice' => $this->item?->sale_price,
+            'costPrice' => $this->item?->cost_price,
             'priceIncludesTax' => (bool) $this->item?->price_includes_tax,
             'price' => $this->item ? app(ItemPrice::class)->final($this->item) : null,
             'durationMinutes' => $this->duration_minutes,
             'effectiveDurationMinutes' => $this->duration_minutes ?? $this->service?->duration_minutes,
+            'serviceName' => $this->service?->item?->name,
             'description' => $this->description,
             'supplies' => $this->whenLoaded('supplies', fn () => $this->supplies->map(fn ($supply): array => [
                 'item' => [

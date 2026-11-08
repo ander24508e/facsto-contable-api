@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Carwash;
 
 use App\Domains\Companies\Context\CompanyContext;
+use App\Domains\Companies\Models\Company;
 use App\Http\Controllers\Controller;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -28,6 +29,11 @@ abstract class CarwashController extends Controller
 
     protected function companyId(): int
     {
-        return app(CompanyContext::class)->company()->id;
+        return $this->company()->id;
+    }
+
+    protected function company(): Company
+    {
+        return app(CompanyContext::class)->company();
     }
 }

@@ -6,6 +6,7 @@ use App\Domains\Companies\Actions\ProvisionCompanyAction;
 use App\Domains\Companies\DTOs\ProvisionAdministratorData;
 use App\Domains\Companies\DTOs\ProvisionCompanyData;
 use App\Domains\Companies\Models\Company;
+use App\Domains\Companies\Models\Role;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -30,5 +31,9 @@ final class DevelopmentSeeder extends Seeder
         User::query()
             ->whereIn('email', array_keys($result['credentials']))
             ->update(['password' => Hash::make(self::LOCAL_PASSWORD)]);
+
+        // Example role the company can edit: a Lavadora worker who only sees their own orders.
+        $worker = Role::query()->create(['company_id' => $result['company']->id, 'name' => 'Trabajador', 'notes' => 'Ve su propio trabajo y puede ser asignado a una orden.']);
+        $worker->syncPermissions(['carwash.own_work', 'carwash.assignable']);
     }
 }

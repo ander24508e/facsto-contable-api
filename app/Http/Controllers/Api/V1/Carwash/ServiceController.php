@@ -2,83 +2,105 @@
 
 namespace App\Http\Controllers\Api\V1\Carwash;
 
-use App\Domains\Carwash\Actions\SaveServiceAction;
+use App\Domains\Carwash\Actions\SaveProductUsageAction;
 use App\Domains\Carwash\Actions\SaveServicePriceAction;
-use App\Domains\Carwash\Actions\ServiceImageAction;
 use App\Domains\Carwash\Models\Service;
 use App\Domains\Carwash\Models\ServicePrice;
+use App\Domains\Carwash\Services\AreaTypeCatalog;
+use App\Domains\Carwash\Services\Rates;
+use App\Domains\Companies\Context\CompanyContext;
 use App\Http\Resources\Api\V1\Carwash\ServicePriceResource;
 use App\Http\Resources\Api\V1\Carwash\ServiceResource;
+use App\Shared\Audit\AuditRecorder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
-use Illuminate\Support\Facades\Storage;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
-/** Global services (Lavada Express) and their prices per vehicle specification, with the supplies they use. */
+/**
+ * Tarifas: the Inventario services and products of the categories turned on in the Lavadora. Services get prices
+ * per vehicle with their supplies; products say how much each price per vehicle uses of them.
+ */
 final class ServiceController extends CarwashController
 {
-    private const PRICE_WITH = ['service', 'spec.brand', 'spec.type', 'item.taxes.definition', 'supplies.item'];
+    private const ITEM_WITH = ['item.category', 'item.taxes.definition', 'item.catalogMetadata', 'areaType'];
+
+    private const PRICE_WITH = ['service.item', 'spec.brand', 'spec.type', 'item.taxes.definition', 'item.catalogMetadata', 'supplies.item'];
 
     private const AMOUNT = 'regex:/^\d{1,12}(\.\d{1,6})?$/';
 
-    public function index(Request $request): AnonymousResourceCollection
+    /**
+     * GET /carwash/services — Tarifas (default): items of the turned-on categories. ?for=orders: every service
+     * with an active price, whatever its category (taking a category off only hides it from Tarifas).
+     */
+    public function index(Request $request, Rates $rates): AnonymousResourceCollection
     {
         $includeInactive = $request->boolean('includeInactive');
+        $forOrders = $request->query('for') === 'orders';
+        if (! $forOrders) {
+            $rates->sync($this->companyId());
+        }
+        $query = $forOrders
+            ? Service::query()->where('company_id', $this->companyId())->whereHas('prices', fn ($prices) => $prices->where('is_active', true))
+            : $rates->visible($this->companyId());
 
-        return ServiceResource::collection(Service::query()
-            ->where('company_id', $this->companyId())
-            ->when(! $includeInactive, fn ($query) => $query->where('is_active', true))
-            ->with(['category', 'tax', 'prices' => fn ($prices) => $prices
-                ->when(! $includeInactive, fn ($query) => $query->where('is_active', true))
-                ->with(['service', 'spec.brand', 'spec.type', 'item.taxes.definition'])])
-            ->withCount('prices')
-            ->orderBy('name')
-            ->get());
+        $services = $query
+            ->when(! $includeInactive, fn ($builder) => $builder->whereHas('item', fn ($item) => $item->where('is_active', true)))
+            ->with([...self::ITEM_WITH, 'prices' => fn ($prices) => $prices
+                ->when(! $includeInactive, fn ($builder) => $builder->where('is_active', true))
+                ->with(['service.item', 'spec.brand', 'spec.type', 'item.taxes.definition'])])
+            ->withCount(['prices', 'usages'])
+            ->get()
+            ->sortBy(fn (Service $service): string => mb_strtolower((string) $service->item?->name))
+            ->values();
+
+        return ServiceResource::collection($services);
     }
 
     public function show(string $service): ServiceResource
     {
-        return new ServiceResource($this->owned(Service::class, $service)->load(['category', 'tax', 'prices' => fn ($prices) => $prices->with(self::PRICE_WITH)])->loadCount('prices'));
+        return new ServiceResource($this->owned(Service::class, $service)
+            ->load([
+                ...self::ITEM_WITH,
+                'prices' => fn ($prices) => $prices->with(self::PRICE_WITH),
+                'usages' => fn ($usages) => $usages->with(['price.service.item', 'price.spec.brand', 'price.spec.type']),
+            ])
+            ->loadCount(['prices', 'usages']));
     }
 
-    public function store(Request $request, SaveServiceAction $save): JsonResponse
+    /** PATCH /carwash/services/{service} — only the base duration and the area type: the rest is the Inventario item's. */
+    public function update(Request $request, string $service, CompanyContext $context, AuditRecorder $audit, AreaTypeCatalog $catalog): ServiceResource
     {
-        $service = $save->execute(new Service, $this->serviceData($request, true), $request->user());
-
-        return (new ServiceResource($service->load(['category', 'tax'])->loadCount('prices')))->response()->setStatusCode(201);
-    }
-
-    public function update(Request $request, string $service, SaveServiceAction $save): ServiceResource
-    {
-        $saved = $save->execute($this->owned(Service::class, $service), $this->serviceData($request, false), $request->user());
-
-        return $this->show($saved->public_id);
-    }
-
-    /** GET /carwash/services/{service}/image — the private photo, only for members of the company. */
-    public function image(string $service): StreamedResponse
-    {
+        $data = $request->validate([
+            'durationMinutes' => ['sometimes', 'integer', 'min:5', 'max:1440'],
+            'areaTypePublicId' => ['sometimes', 'nullable', 'uuid'],
+        ]);
         $entry = $this->owned(Service::class, $service);
-        abort_unless($entry->image_path && Storage::disk('private')->exists($entry->image_path), 404);
-
-        return Storage::disk('private')->response($entry->image_path, null, ['Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']);
-    }
-
-    public function updateImage(Request $request, string $service, ServiceImageAction $images): ServiceResource
-    {
-        $image = $request->validate(
-            ['image' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'dimensions:max_width=4096,max_height=4096', 'max:3072']],
-            ['image.max' => 'La foto no puede superar 3 MB.', 'image.mimes' => 'Usa una foto PNG, JPG o WebP.'],
-        )['image'];
-        $images->store($this->owned(Service::class, $service), $image, $request->user());
+        $present = fn (): array => ['durationMinutes' => $entry->duration_minutes, 'areaType' => $entry->areaType()->value('name')];
+        $before = $present();
+        $changes = [];
+        if (array_key_exists('durationMinutes', $data)) {
+            $changes['duration_minutes'] = $data['durationMinutes'];
+        }
+        if (array_key_exists('areaTypePublicId', $data)) {
+            $changes['area_type_id'] = $data['areaTypePublicId'] === null ? null
+                : $catalog->resolve($this->companyId(), [$data['areaTypePublicId']], 'areaTypePublicId', array_filter([$entry->area_type_id]))->first()->id;
+        }
+        $entry->forceFill($changes)->save();
+        $audit->record($request->user(), $context->company(), 'carwash.service.updated', $entry, $before, $present());
 
         return $this->show($service);
     }
 
-    public function deleteImage(Request $request, string $service, ServiceImageAction $images): ServiceResource
+    /** PUT /carwash/services/{service}/usages — for a product: how much each price per vehicle uses of it. */
+    public function usages(Request $request, string $service, SaveProductUsageAction $save): ServiceResource
     {
-        $images->delete($this->owned(Service::class, $service), $request->user());
+        $data = $request->validate([
+            'usages' => ['present', 'array', 'max:200'],
+            'usages.*.servicePricePublicId' => ['required', 'uuid', 'distinct'],
+            'usages.*.quantity' => ['required', 'string', self::AMOUNT, 'not_regex:/^0+(\.0+)?$/'],
+            'usages.*.measure' => ['nullable', 'in:ml,L,g,kg'],
+        ]);
+        $save->execute($this->owned(Service::class, $service)->load('item'), $data['usages'], $request->user());
 
         return $this->show($service);
     }
@@ -88,10 +110,9 @@ final class ServiceController extends CarwashController
         $data = $request->validate([
             'vehicleSpecPublicId' => ['required', 'uuid'],
             'salePrice' => ['required', 'string', self::AMOUNT],
-            'priceIncludesTax' => ['sometimes', 'boolean'],
             ...$this->priceRules(),
         ]);
-        $price = $save->create($this->owned(Service::class, $service), $data, $request->user());
+        $price = $save->create($this->owned(Service::class, $service)->load('item'), $data, $request->user());
 
         return (new ServicePriceResource($price->load(self::PRICE_WITH)))->response()->setStatusCode(201);
     }
@@ -100,17 +121,20 @@ final class ServiceController extends CarwashController
     {
         $data = $request->validate([
             'salePrice' => ['sometimes', 'string', self::AMOUNT],
-            'priceIncludesTax' => ['sometimes', 'boolean'],
             ...$this->priceRules(),
         ]);
 
-        return new ServicePriceResource($save->update($this->owned(ServicePrice::class, $price), $data, $request->user())->load(self::PRICE_WITH));
+        return new ServicePriceResource($save->update($this->owned(ServicePrice::class, $price)->load('item'), $data, $request->user())->load(self::PRICE_WITH));
     }
 
     /** @return array<string, list<string>> */
     private function priceRules(): array
     {
         return [
+            'internalCode' => ['sometimes', 'nullable', 'string', 'max:25'],
+            'auxiliaryCode' => ['sometimes', 'nullable', 'string', 'max:25'],
+            'barcode' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'costPrice' => ['sometimes', 'nullable', 'string', self::AMOUNT],
             'durationMinutes' => ['sometimes', 'nullable', 'integer', 'min:5', 'max:1440'],
             'description' => ['sometimes', 'nullable', 'string', 'max:300'],
             'isActive' => ['sometimes', 'boolean'],
@@ -119,22 +143,5 @@ final class ServiceController extends CarwashController
             'supplies.*.quantity' => ['required', 'string', self::AMOUNT, 'not_regex:/^0+(\.0+)?$/'],
             'supplies.*.measure' => ['nullable', 'in:ml,L,g,kg'],
         ];
-    }
-
-    /** @return array<string, mixed> */
-    private function serviceData(Request $request, bool $creating): array
-    {
-        $required = $creating ? 'required' : 'sometimes';
-
-        return $request->validate([
-            'name' => [$required, 'string', 'max:120'],
-            'description' => ['sometimes', 'nullable', 'string', 'max:500'],
-            'categoryPublicId' => ['sometimes', 'nullable', 'uuid'],
-            'taxPublicId' => [$required, 'uuid'],
-            'durationMinutes' => [$required, 'integer', 'min:5', 'max:1440'],
-            'isFeatured' => ['sometimes', 'boolean'],
-            'isBookable' => ['sometimes', 'boolean'],
-            'isActive' => ['sometimes', 'boolean'],
-        ]);
     }
 }

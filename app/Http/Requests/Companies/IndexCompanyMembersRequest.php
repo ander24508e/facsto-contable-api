@@ -2,7 +2,6 @@
 
 namespace App\Http\Requests\Companies;
 
-use App\Domains\Companies\Enums\CompanyRole;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -17,7 +16,7 @@ final class IndexCompanyMembersRequest extends FormRequest
     {
         return [
             'search' => ['sometimes', 'nullable', 'string', 'max:120'],
-            'role' => ['sometimes', 'nullable', Rule::enum(CompanyRole::class)],
+            'role' => ['sometimes', 'nullable', 'uuid'],
             'status' => ['sometimes', 'nullable', Rule::in(['ACTIVE', 'INACTIVE', 'ALL'])],
             'page' => ['sometimes', 'integer', 'min:1'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],

@@ -2,33 +2,30 @@
 
 namespace App\Domains\Taxes\Policies;
 
-use App\Domains\Companies\Context\CompanyContext;
-use App\Domains\Companies\Enums\CompanyRole;
-use App\Domains\Taxes\Models\CompanyTax;
+use App\Domains\Companies\Access\ModulePolicy;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Model;
 
-/** Every member consults taxes; only OWNER and ADMIN change which official rates the company applies. */
-final class CompanyTaxPolicy
+/**
+ * Tarifas de IVA de la empresa: todo miembro las consulta (las usan Ventas, Inventario, Compras…); sólo «sri.manage»
+ * elige cuáles aplica la empresa.
+ */
+final class CompanyTaxPolicy extends ModulePolicy
 {
-    public function __construct(private readonly CompanyContext $context) {}
+    protected const MODULE = 'sri';
 
     public function viewAny(User $user): bool
     {
-        return $this->membership($user)->exists();
+        return $this->access->isMember($user, $this->context->company());
     }
 
     public function manage(User $user): bool
     {
-        return $this->membership($user)->whereIn('role', [CompanyRole::OWNER->value, CompanyRole::ADMIN->value])->exists();
+        return $this->allows($user, 'manage');
     }
 
-    public function update(User $user, CompanyTax $tax): bool
+    public function update(User $user, Model $record): bool
     {
-        return $this->manage($user) && $tax->company_id === $this->context->company()->id;
-    }
-
-    private function membership(User $user)
-    {
-        return $this->context->company()->memberships()->where('user_id', $user->id)->where('is_active', true);
+        return $this->manage($user) && $this->owns($record);
     }
 }

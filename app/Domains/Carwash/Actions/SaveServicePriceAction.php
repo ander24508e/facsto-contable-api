@@ -18,7 +18,8 @@ use Illuminate\Support\Facades\DB;
 /**
  * A price per vehicle: the service for one specification (brand + model + type), with the price typed by the
  * business, its duration, a description and the supplies each wash uses. One price per service × specification.
- * The price lives in its Inventario item (ServicePriceItems), so Ventas invoices it like any other item.
+ * The price lives in its Inventario item (ServicePriceItems), so Ventas invoices it like any other item; the
+ * IVA is the base service's, never asked here.
  */
 final class SaveServicePriceAction
 {
@@ -29,12 +30,12 @@ final class SaveServicePriceAction
         private readonly AuditRecorder $audit,
     ) {}
 
-    /** @param array<string, mixed> $data vehicleSpecPublicId, salePrice, priceIncludesTax, durationMinutes, description, isActive, supplies */
+    /** @param array<string, mixed> $data vehicleSpecPublicId, internalCode, auxiliaryCode, barcode, costPrice, salePrice, durationMinutes, description, isActive, supplies */
     public function create(Service $service, array $data, User $actor): ServicePrice
     {
         $company = $this->context->company();
-        if (! $service->company_tax_id) {
-            throw new ApiException(ApiErrorCode::VALIDATION_FAILED, 'Elige la tarifa de IVA del servicio antes de ponerle precios.', 422);
+        if ($service->item?->type !== ItemType::SERVICE) {
+            throw new ApiException(ApiErrorCode::VALIDATION_FAILED, 'Sólo los servicios tienen precios por vehículo.', 422);
         }
         $spec = VehicleModel::query()->where('company_id', $company->id)->where('public_id', $data['vehicleSpecPublicId'])->where('is_active', true)->first()
             ?? throw new ApiException(ApiErrorCode::VALIDATION_FAILED, 'La especificación no existe o está inactiva.', 422, ['errors' => ['vehicleSpecPublicId' => ['La especificación no existe o está inactiva.']]]);
@@ -45,11 +46,7 @@ final class SaveServicePriceAction
 
         return DB::transaction(function () use ($service, $spec, $data, $supplies, $actor, $company): ServicePrice {
             $active = (bool) ($data['isActive'] ?? true);
-            $item = $this->items->create($service, $spec, [
-                'salePrice' => (string) $data['salePrice'],
-                'priceIncludesTax' => (bool) ($data['priceIncludesTax'] ?? false),
-                'isActive' => $active,
-            ], $actor);
+            $item = $this->items->create($service, $spec, [...$data, 'isActive' => $active], $actor);
             $price = ServicePrice::query()->create([
                 'company_id' => $company->id, 'service_id' => $service->id, 'vehicle_model_id' => $spec->id, 'item_id' => $item->id,
                 'duration_minutes' => $data['durationMinutes'] ?? null, 'description' => $this->text($data['description'] ?? null), 'is_active' => $active,
@@ -61,7 +58,7 @@ final class SaveServicePriceAction
         });
     }
 
-    /** @param array<string, mixed> $data salePrice, priceIncludesTax, durationMinutes, description, isActive, supplies */
+    /** @param array<string, mixed> $data internalCode, auxiliaryCode, barcode, costPrice, salePrice, durationMinutes, description, isActive, supplies */
     public function update(ServicePrice $price, array $data, User $actor): ServicePrice
     {
         $company = $this->context->company();
@@ -77,7 +74,7 @@ final class SaveServicePriceAction
         if (array_key_exists('isActive', $data)) {
             $attributes['is_active'] = (bool) $data['isActive'];
         }
-        $itemChanges = array_intersect_key($data, array_flip(['salePrice', 'priceIncludesTax']));
+        $itemChanges = array_intersect_key($data, array_flip(['internalCode', 'auxiliaryCode', 'barcode', 'costPrice', 'salePrice', 'isActive']));
 
         return DB::transaction(function () use ($price, $attributes, $itemChanges, $supplies, $actor, $company): ServicePrice {
             $before = $price->only(array_keys($attributes));

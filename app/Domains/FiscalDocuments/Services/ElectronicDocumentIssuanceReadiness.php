@@ -7,6 +7,7 @@ use App\Domains\Companies\Enums\CompanyStatus;
 use App\Domains\Companies\Fiscal\Services\CompanyFiscalReadinessService;
 use App\Domains\Companies\Fiscal\Services\EcuadorRucValidator;
 use App\Domains\Companies\Models\Company;
+use App\Domains\Proformas\Models\Proforma;
 use App\Domains\Sales\Models\Sale;
 use App\Domains\Sales\Services\SaleInvoiceReadinessService;
 use App\Shared\Http\ApiErrorCode;
@@ -50,6 +51,14 @@ final class ElectronicDocumentIssuanceReadiness
 
     public function assertCanIssue(Company $company, Sale $sale): void
     {
+        $sourceProforma = Proforma::query()
+            ->where('company_id', $company->id)
+            ->where('converted_sale_id', $sale->id)
+            ->first();
+        if ($sourceProforma?->expiration_date?->lt(today())) {
+            throw new ApiException(ApiErrorCode::PROFORMA_EXPIRED, 'La proforma de origen venciÃ³. Actualiza su vigencia antes de emitir la factura.', 409);
+        }
+
         $pending = $this->companyPending($company);
         if ($pending !== []) {
             throw new ApiException(ApiErrorCode::FISCAL_SETUP_INCOMPLETE, $this->companyMessage($pending), 409, ['pending' => $pending]);

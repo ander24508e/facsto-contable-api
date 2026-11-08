@@ -15,12 +15,13 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 
 /** Work orders: reception, washing, charge in Ventas and delivery. */
 final class WorkOrderController extends CarwashController
 {
-    public const RELATIONS = ['vehicle.type', 'customer', 'washer', 'lines.service', 'lines.item.taxes.definition', 'sale.electronicDocument'];
+    public const RELATIONS = ['vehicle.type', 'customer', 'washer', 'workArea', 'creator', 'lines.service', 'lines.item.taxes.definition', 'sale.electronicDocument'];
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -64,6 +65,7 @@ final class WorkOrderController extends CarwashController
 
         return WorkOrder::query()
             ->where('company_id', $this->companyId())
+            ->when($this->ownWorkOnly(), fn ($query) => $query->where('washer_id', auth()->id()))
             ->when($filters['washerPublicId'] ?? null, fn ($query, $washer) => $query->whereHas('washer', fn ($owner) => $owner->where('public_id', $washer)))
             ->when($filters['date'] ?? null, function ($query, string $date): void {
                 $day = CarbonImmutable::parse($date, config('app.timezone'));
@@ -76,9 +78,26 @@ final class WorkOrderController extends CarwashController
                 ->when(ctype_digit($number), fn ($byNumber) => $byNumber->orWhere('number', (int) $number))));
     }
 
+    /** The code the next order will take, shown on «Nueva orden»; the real one is assigned when it is saved. */
+    public function nextCode(): JsonResponse
+    {
+        $number = (int) WorkOrder::query()->where('company_id', $this->companyId())->max('number') + 1;
+
+        return response()->json(['data' => ['code' => (new WorkOrder(['number' => $number]))->code()]]);
+    }
+
     public function show(string $workOrder): WorkOrderResource
     {
-        return $this->present($this->owned(WorkOrder::class, $workOrder));
+        $order = $this->owned(WorkOrder::class, $workOrder);
+        abort_if($this->ownWorkOnly() && $order->washer_id !== auth()->id(), 404);
+
+        return $this->present($order);
+    }
+
+    /** «Ver su propio trabajo» without «Ver»: only the orders assigned to the user. */
+    private function ownWorkOnly(): bool
+    {
+        return ! Gate::allows('carwash.view');
     }
 
     public function store(Request $request, CreateWorkOrderAction $create): JsonResponse
@@ -89,6 +108,7 @@ final class WorkOrderController extends CarwashController
             'servicePublicIds.*' => ['uuid', 'distinct'],
             'washerPublicId' => ['nullable', 'uuid'],
             'scheduledAt' => ['nullable', 'date'],
+            'workAreaPublicId' => ['nullable', 'uuid'],
             'notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
@@ -102,6 +122,7 @@ final class WorkOrderController extends CarwashController
             'servicePublicIds.*' => ['uuid', 'distinct'],
             'washerPublicId' => ['sometimes', 'nullable', 'uuid'],
             'scheduledAt' => ['sometimes', 'nullable', 'date'],
+            'workAreaPublicId' => ['sometimes', 'nullable', 'uuid'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
         ]);
 

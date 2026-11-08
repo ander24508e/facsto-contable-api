@@ -9,7 +9,9 @@
  * arma sus planes con estas mismas claves.
  *
  * - features: funciones vendibles; la primera es el módulo mismo, las demás requieren al módulo.
- * - permissions: acción → roles de FACSTO que la pueden ejecutar.
+ * - permissions: acción propia del módulo → su descripción en Roles (la clave guardada es «módulo.acción»). Un módulo
+ *   declara sólo sus acciones: nunca las de otro módulo ni las del núcleo (config/permissions.php).
+ * - read_actions: acciones que siguen disponibles cuando el módulo está en solo lectura (por defecto «view»).
  * El núcleo (Ventas, Caja, Clientes, Catálogo, SRI) nunca depende de un módulo.
  */
 return [
@@ -22,10 +24,13 @@ return [
                 'carwash.online_payments' => 'Pagos en línea',
             ],
             'permissions' => [
-                'view' => ['OWNER', 'ADMIN', 'BILLER', 'VIEWER'],
-                'operate' => ['OWNER', 'ADMIN', 'BILLER'],
-                'manage' => ['OWNER', 'ADMIN'],
+                'view' => 'Ver servicios, órdenes, agenda, áreas y vehículos',
+                'operate' => 'Registrar y atender órdenes',
+                'manage' => 'Administrar tarifas, áreas y configuración',
+                'own_work' => 'Ver su propio trabajo (sus órdenes asignadas)',
+                'assignable' => 'Puede ser asignado como trabajador',
             ],
+            'read_actions' => ['view', 'own_work'],
         ],
     ],
 

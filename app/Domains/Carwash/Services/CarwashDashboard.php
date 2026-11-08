@@ -4,9 +4,9 @@ namespace App\Domains\Carwash\Services;
 
 use App\Domains\Carwash\Enums\BillingStatus;
 use App\Domains\Carwash\Enums\WorkOrderStatus;
-use App\Domains\Carwash\Models\Washer;
 use App\Domains\Carwash\Models\WorkOrder;
 use App\Domains\Companies\Models\Company;
+use App\Models\User;
 use Carbon\CarbonImmutable;
 
 /**
@@ -42,8 +42,8 @@ final class CarwashDashboard
             'averageWashMinutes' => $average,
             'readyUnbilled' => $orders->filter(fn (WorkOrder $order) => $order->status === WorkOrderStatus::READY && $billing($order) === BillingStatus::UNBILLED)->count(),
             'awaitingPayment' => $orders->filter(fn (WorkOrder $order) => $billing($order) === BillingStatus::DRAFT)->count(),
-            'washers' => Washer::query()->where('company_id', $company->id)->where('is_active', true)->orderBy('name')->get()
-                ->map(fn (Washer $washer) => [
+            'washers' => app(WorkerDirectory::class)->list($company)
+                ->map(fn (User $washer) => [
                     'publicId' => $washer->public_id,
                     'name' => $washer->name,
                     'inProgress' => $orders->where('washer_id', $washer->id)->where('status', WorkOrderStatus::IN_PROGRESS)->count(),

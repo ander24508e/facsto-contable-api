@@ -2,13 +2,14 @@
 
 namespace App\Domains\Companies\Models;
 
-use App\Domains\Companies\Enums\CompanyRole;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
-#[Fillable(['company_id', 'user_id', 'role', 'is_active', 'joined_at', 'onboarding_completed_at'])]
+/** Un usuario en su empresa, con uno o varios roles (sus permisos se suman). */
+#[Fillable(['company_id', 'user_id', 'is_active', 'joined_at', 'onboarding_completed_at'])]
 class CompanyMembership extends Model
 {
     public function company(): BelongsTo
@@ -21,10 +22,28 @@ class CompanyMembership extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function roles(): BelongsToMany
+    {
+        return $this->belongsToMany(Role::class, 'company_membership_roles', 'membership_id', 'role_id')
+            ->orderByDesc('company_roles.is_fixed')
+            ->orderBy('company_roles.name');
+    }
+
+    /** @param list<int> $roleIds */
+    public function syncRoles(array $roleIds): void
+    {
+        $this->roles()->sync(collect($roleIds)->unique()->mapWithKeys(fn (int $id) => [$id => ['company_id' => $this->company_id]])->all());
+        $this->unsetRelation('roles');
+    }
+
+    public function isAdministrator(): bool
+    {
+        return $this->roles()->where('company_roles.is_fixed', true)->exists();
+    }
+
     protected function casts(): array
     {
         return [
-            'role' => CompanyRole::class,
             'is_active' => 'boolean',
             'joined_at' => 'datetime',
             'onboarding_completed_at' => 'immutable_datetime',

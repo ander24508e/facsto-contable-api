@@ -3,7 +3,6 @@
 namespace Tests\Feature\Companies;
 
 use App\Domains\Companies\Actions\AddCompanyMemberAction;
-use App\Domains\Companies\Enums\CompanyRole;
 use App\Models\User;
 use Tests\Feature\Sales\SalesTestCase;
 
@@ -44,7 +43,7 @@ final class CompanySettingsTest extends SalesTestCase
         $owner = User::factory()->create();
         $company = $this->createCompany($owner, '1799999999001');
         $biller = User::factory()->create();
-        app(AddCompanyMemberAction::class)->execute($company, $owner, $biller, CompanyRole::BILLER);
+        app(AddCompanyMemberAction::class)->execute($company, $owner, $biller, $this->roleIds($company, 'BILLER'));
 
         $this->actingAs($biller)->getJson('/api/v1/company/settings')->assertOk();
         $this->actingAs($biller)->patchJson('/api/v1/company/settings', ['lowStockThreshold' => 1])->assertForbidden();

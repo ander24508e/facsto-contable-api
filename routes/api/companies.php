@@ -30,12 +30,16 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::post('/company/members', [CompanyMemberController::class, 'store']);
         Route::get('/company/members', [CompanyMemberController::class, 'index']);
         Route::post('/company/users', [CompanyMemberController::class, 'createUser']);
-        Route::get('/company/roles', CompanyRoleController::class);
+        Route::get('/company/roles', [CompanyRoleController::class, 'index']);
+        Route::get('/company/roles/modules', [CompanyRoleController::class, 'modules']);
+        Route::post('/company/roles', [CompanyRoleController::class, 'store']);
+        Route::get('/company/roles/{role}', [CompanyRoleController::class, 'show'])->whereUuid('role');
+        Route::patch('/company/roles/{role}', [CompanyRoleController::class, 'update'])->whereUuid('role');
         Route::get('/company/settings', [CompanySettingsController::class, 'show']);
         Route::patch('/company/settings', [CompanySettingsController::class, 'update']);
         Route::delete('/company/members/{userPublicId}', [CompanyMemberController::class, 'destroy']);
         Route::post('/company/members/{userPublicId}/reactivate', [CompanyMemberController::class, 'reactivate']);
-        Route::patch('/company/members/{userPublicId}/role', [CompanyMemberController::class, 'updateRole']);
+        Route::put('/company/members/{userPublicId}/roles', [CompanyMemberController::class, 'updateRoles']);
         Route::get('/fiscal-profile', [FiscalProfileController::class, 'show']);
         Route::patch('/fiscal-profile', [FiscalProfileController::class, 'update']);
         Route::get('/setup/status', SetupStatusController::class);

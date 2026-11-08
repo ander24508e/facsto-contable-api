@@ -29,7 +29,7 @@ final class CashSessionController extends Controller
 
     public function index(Request $request, CompanyContext $context): JsonResponse
     {
-        $this->authorize('viewAny', Sale::class);
+        $this->authorize('cash.view');
         $filters = $request->validate([
             'status' => ['sometimes', 'nullable', Rule::in([CashSession::OPEN, CashSession::CLOSED])],
             'emissionPoint' => ['sometimes', 'nullable', 'uuid'],
@@ -48,7 +48,7 @@ final class CashSessionController extends Controller
     /** The report of one session: its data, the balance, its invoiced sales by payment and every movement in order. */
     public function show(CashSession $session, CompanyContext $context): JsonResponse
     {
-        $this->authorize('viewAny', Sale::class);
+        $this->authorize('cash.view');
         $this->ensureOwn($session, $context);
         $session->load([...self::RELATIONS, 'movements.creator']);
 
@@ -70,7 +70,7 @@ final class CashSessionController extends Controller
 
     public function store(Request $request, CompanyContext $context, OpenCashSessionAction $open): JsonResponse
     {
-        $this->authorize('create', Sale::class);
+        $this->authorize('cash.operate');
         $data = $request->validate([
             'emissionPointPublicId' => ['required', 'uuid'],
             'warehousePublicId' => ['required', 'uuid'],
@@ -83,7 +83,7 @@ final class CashSessionController extends Controller
 
     public function storeMovement(Request $request, CashSession $session, CompanyContext $context, RegisterCashMovementAction $register): JsonResponse
     {
-        $this->authorize('create', Sale::class);
+        $this->authorize('cash.operate');
         $this->ensureOwn($session, $context);
         $data = $request->validate([
             'type' => ['required', Rule::in([CashMovement::IN, CashMovement::OUT])],
@@ -105,7 +105,7 @@ final class CashSessionController extends Controller
 
     public function close(Request $request, CashSession $session, CompanyContext $context, CloseCashSessionAction $close): JsonResponse
     {
-        $this->authorize('create', Sale::class);
+        $this->authorize('cash.operate');
         $this->ensureOwn($session, $context);
         $data = $request->validate($this->countRules());
         $session = $close->execute($request->user(), $context->company(), $session, $data);
@@ -116,7 +116,7 @@ final class CashSessionController extends Controller
     /** The denominations the counter offers, so the web and the API never disagree. */
     public function denominations(): JsonResponse
     {
-        $this->authorize('viewAny', Sale::class);
+        $this->authorize('cash.view');
 
         return response()->json(['data' => ['bills' => CashDenominations::BILLS, 'coins' => CashDenominations::COINS]]);
     }

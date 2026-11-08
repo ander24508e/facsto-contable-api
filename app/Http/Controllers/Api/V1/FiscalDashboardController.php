@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api\V1;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Dashboard\Services\FiscalDashboard;
 use App\Domains\Dashboard\Services\TaxCalendar;
-use App\Domains\Sales\Models\Sale;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,14 +14,14 @@ final class FiscalDashboardController extends Controller
 {
     public function status(CompanyContext $context, FiscalDashboard $dashboard): JsonResponse
     {
-        $this->authorize('viewAny', Sale::class);
+        $this->authorize('view', $context->company());
 
         return response()->json(['data' => $dashboard->status($context->company())]);
     }
 
     public function taxSummary(Request $request, CompanyContext $context, FiscalDashboard $dashboard): JsonResponse
     {
-        $this->authorize('viewAny', Sale::class);
+        $this->authorize('view', $context->company());
         $period = $request->validate(['period' => ['sometimes', 'date_format:Y-m']])['period'] ?? now((string) config('sri.timezone'))->format('Y-m');
 
         return response()->json(['data' => $dashboard->taxSummary($context->company(), $period)]);
@@ -31,7 +30,7 @@ final class FiscalDashboardController extends Controller
     /** GET /dashboard/trend?period=YYYY-MM — data of the dashboard charts. */
     public function trend(Request $request, CompanyContext $context, FiscalDashboard $dashboard): JsonResponse
     {
-        $this->authorize('viewAny', Sale::class);
+        $this->authorize('view', $context->company());
         $period = $request->validate(['period' => ['sometimes', 'date_format:Y-m']])['period'] ?? now((string) config('sri.timezone'))->format('Y-m');
 
         return response()->json(['data' => $dashboard->trend($context->company(), $period)]);
@@ -40,14 +39,14 @@ final class FiscalDashboardController extends Controller
     /** GET /dashboard/tax-calendar — the next tax returns by the ninth digit of the RUC. */
     public function taxCalendar(CompanyContext $context, TaxCalendar $calendar): JsonResponse
     {
-        $this->authorize('viewAny', Sale::class);
+        $this->authorize('view', $context->company());
 
         return response()->json(['data' => $calendar->upcoming($context->company()->loadMissing('fiscalSettings'))]);
     }
 
     public function actions(CompanyContext $context, FiscalDashboard $dashboard): JsonResponse
     {
-        $this->authorize('viewAny', Sale::class);
+        $this->authorize('view', $context->company());
 
         return response()->json(['data' => $dashboard->actions($context->company())]);
     }

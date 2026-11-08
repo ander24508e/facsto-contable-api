@@ -3,69 +3,173 @@
 namespace App\Domains\Carwash\Services;
 
 use App\Domains\Carwash\Enums\WorkOrderStatus;
+use App\Domains\Carwash\Models\AreaType;
 use App\Domains\Carwash\Models\CarwashSetting;
+use App\Domains\Carwash\Models\Service;
+use App\Domains\Carwash\Models\WorkArea;
 use App\Domains\Carwash\Models\WorkOrder;
 use App\Domains\Companies\Models\Company;
 use App\Shared\Http\ApiErrorCode;
 use App\Shared\Http\ApiException;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Collection;
 
 /**
- * Day agenda: opening hours split into slots of `slot_minutes`; each slot takes `vehicles_per_slot`
- * scheduled orders (cancelled ones do not count). Time zone: the application's (America/Guayaquil).
+ * Day agenda by work areas. The general opening hours are split into slots of `slot_minutes`; each active area is
+ * open inside its own hours and serves `capacity` vehicles at once. A reservation takes its area from
+ * `scheduled_at` until `scheduled_end_at` (the duration of the order's services); cancelled orders free it.
+ * Time zone: the application's (America/Guayaquil).
  */
 final class AgendaService
 {
-    /** @return list<array{start: string, end: string, capacity: int, booked: int, available: int}> */
+    /**
+     * @return array{areas: list<array<string, mixed>>, slots: list<array<string, mixed>>}
+     */
     public function day(Company $company, CarbonInterface $date): array
     {
         $settings = CarwashSetting::for($company);
         $day = CarbonImmutable::parse($date->format('Y-m-d'), config('app.timezone'));
         $open = $day->setTimeFromTimeString((string) $settings->opening_time);
         $close = $day->setTimeFromTimeString((string) $settings->closing_time);
+        $areas = WorkArea::query()->with('types')->where('company_id', $company->id)->where('is_active', true)->orderBy('name')->get();
         $orders = WorkOrder::query()
             ->where('company_id', $company->id)
             ->where('status', '!=', WorkOrderStatus::CANCELLED)
-            ->whereBetween('scheduled_at', [$open, $close])
-            ->pluck('scheduled_at');
+            ->whereNotNull('work_area_id')
+            ->where('scheduled_at', '<', $close)
+            ->where('scheduled_end_at', '>', $open)
+            ->get(['id', 'work_area_id', 'scheduled_at', 'scheduled_end_at'])
+            ->groupBy('work_area_id');
 
         $slots = [];
         for ($start = $open; $start->lt($close); $start = $start->addMinutes($settings->slot_minutes)) {
             $end = $start->addMinutes($settings->slot_minutes);
-            $booked = $orders->filter(fn ($at) => $at !== null && $at->gte($start) && $at->lt($end))->count();
+            $cells = $areas->map(function (WorkArea $area) use ($day, $start, $end, $orders): array {
+                [$areaOpen, $areaClose] = $this->hours($area, $day);
+                $isOpen = $start->gte($areaOpen) && $end->lte($areaClose);
+                $booked = $this->peak($orders->get($area->id, collect()), $start, $end);
+
+                return [
+                    'areaPublicId' => $area->public_id,
+                    'open' => $isOpen,
+                    'capacity' => $isOpen ? $area->capacity : 0,
+                    'booked' => $booked,
+                    'available' => $isOpen ? max(0, $area->capacity - $booked) : 0,
+                ];
+            })->values();
             $slots[] = [
                 'start' => $start->toIso8601String(),
                 'end' => $end->toIso8601String(),
-                'capacity' => $settings->vehicles_per_slot,
-                'booked' => $booked,
-                'available' => max(0, $settings->vehicles_per_slot - $booked),
+                'capacity' => (int) $cells->sum('capacity'),
+                'booked' => (int) $cells->sum('booked'),
+                'available' => (int) $cells->sum('available'),
+                'areas' => $cells->all(),
             ];
         }
 
-        return $slots;
+        return [
+            'areas' => $areas->map(fn (WorkArea $area): array => [
+                'publicId' => $area->public_id,
+                'name' => $area->name,
+                'types' => $area->types->map(fn (AreaType $type): array => ['publicId' => $type->public_id, 'name' => $type->name])->values()->all(),
+                'capacity' => $area->capacity,
+                'opensAt' => substr((string) $area->opens_at, 0, 5),
+                'closesAt' => substr((string) $area->closes_at, 0, 5),
+            ])->values()->all(),
+            'slots' => $slots,
+        ];
     }
 
-    /** A scheduled order must fall within opening hours and in a slot with room. */
-    public function assertAvailable(Company $company, CarbonInterface $at, ?WorkOrder $ignore = null): void
+    /**
+     * A reservation must fit the general hours and the area's, the area must do every area type the order needs and it
+     * must have room during the whole stay. Returns when the area is free again.
+     *
+     * @param  list<int>  $typeIds  the area types of the order's services
+     */
+    public function assertAvailable(Company $company, WorkArea $area, CarbonInterface $at, int $minutes, array $typeIds, ?WorkOrder $ignore = null): CarbonImmutable
     {
+        if (! $area->is_active) {
+            throw new ApiException(ApiErrorCode::CARWASH_WORK_AREA_NOT_FOUND, 'El área de trabajo no existe o está inactiva.', 422, ['errors' => ['workAreaPublicId' => ['El área de trabajo está inactiva.']]]);
+        }
+        $missing = array_values(array_diff($typeIds, $area->types()->pluck('carwash_area_types.id')->all()));
+        if ($missing !== []) {
+            $jobs = mb_strtolower(implode(' y ', AreaType::query()->whereIn('id', $missing)->ordered()->pluck('name')->all()));
+            throw new ApiException(ApiErrorCode::CARWASH_WORK_AREA_TYPE_MISMATCH, "El área «{$area->name}» no hace {$jobs}.", 422, ['errors' => ['workAreaPublicId' => ["El área «{$area->name}» no hace {$jobs}."]]]);
+        }
+
         $settings = CarwashSetting::for($company);
-        $local = CarbonImmutable::instance($at)->setTimezone(config('app.timezone'));
-        $open = $local->setTimeFromTimeString((string) $settings->opening_time);
-        $close = $local->setTimeFromTimeString((string) $settings->closing_time);
-        if ($local->lt($open) || $local->gte($close)) {
-            throw new ApiException(ApiErrorCode::CARWASH_AGENDA_OUTSIDE_HOURS, 'La hora está fuera del horario de atención.', 422, ['errors' => ['scheduledAt' => ['La hora está fuera del horario de atención.']]]);
+        $start = CarbonImmutable::instance($at)->setTimezone(config('app.timezone'))->startOfMinute();
+        $end = $start->addMinutes(max(1, $minutes));
+        $day = $start->startOfDay();
+        [$areaOpen, $areaClose] = $this->hours($area, $day);
+        $open = $day->setTimeFromTimeString((string) $settings->opening_time)->max($areaOpen);
+        $close = $day->setTimeFromTimeString((string) $settings->closing_time)->min($areaClose);
+        if ($start->lt($open) || $end->gt($close)) {
+            $message = "La reserva ({$start->format('H:i')}–{$end->format('H:i')}) queda fuera del horario de «{$area->name}» ({$open->format('H:i')}–{$close->format('H:i')}).";
+            throw new ApiException(ApiErrorCode::CARWASH_AGENDA_OUTSIDE_HOURS, $message, 422, ['errors' => ['scheduledAt' => [$message]]]);
         }
-        $slotStart = $open->addMinutes(intdiv((int) $open->diffInMinutes($local), $settings->slot_minutes) * $settings->slot_minutes);
-        $booked = WorkOrder::query()
+
+        $overlapping = WorkOrder::query()
             ->where('company_id', $company->id)
+            ->where('work_area_id', $area->id)
             ->where('status', '!=', WorkOrderStatus::CANCELLED)
-            ->where('scheduled_at', '>=', $slotStart)
-            ->where('scheduled_at', '<', $slotStart->addMinutes($settings->slot_minutes))
+            ->where('scheduled_at', '<', $end)
+            ->where('scheduled_end_at', '>', $start)
             ->when($ignore, fn ($query) => $query->whereKeyNot($ignore->id))
-            ->count();
-        if ($booked >= $settings->vehicles_per_slot) {
-            throw new ApiException(ApiErrorCode::CARWASH_AGENDA_SLOT_FULL, 'Ese turno ya está completo. Elige otra hora.', 409, ['slotStart' => $slotStart->toIso8601String()]);
+            ->get(['id', 'scheduled_at', 'scheduled_end_at']);
+        if ($this->peak($overlapping, $start, $end) >= $area->capacity) {
+            throw new ApiException(ApiErrorCode::CARWASH_AGENDA_SLOT_FULL, "«{$area->name}» está ocupada a esa hora. Elige otra hora u otra área.", 409, [
+                'errors' => ['scheduledAt' => ["«{$area->name}» está ocupada a esa hora."]],
+            ]);
         }
+
+        return $end;
+    }
+
+    /** The area of the company by its public id (inactive ones are rejected when reserving). */
+    public function area(Company $company, ?string $publicId): WorkArea
+    {
+        if (! $publicId) {
+            throw new ApiException(ApiErrorCode::CARWASH_WORK_AREA_NOT_FOUND, 'Elige el área de trabajo de la reserva.', 422, ['errors' => ['workAreaPublicId' => ['Elige el área de trabajo de la reserva.']]]);
+        }
+
+        return WorkArea::query()->where('company_id', $company->id)->where('public_id', $publicId)->first()
+            ?? throw new ApiException(ApiErrorCode::CARWASH_WORK_AREA_NOT_FOUND, 'El área de trabajo no existe o está inactiva.', 422, ['errors' => ['workAreaPublicId' => ['El área de trabajo no existe.']]]);
+    }
+
+    /**
+     * Takes the area for the order's lines: it stays busy for the sum of their durations and must do the area types
+     * of their services. Returns when it is free again.
+     *
+     * @param  list<array{service_id: int, duration_minutes: int}>  $lines
+     */
+    public function reserve(Company $company, WorkArea $area, CarbonInterface $at, array $lines, ?WorkOrder $ignore = null): CarbonImmutable
+    {
+        $minutes = (int) array_sum(array_column($lines, 'duration_minutes'));
+        $types = Service::query()->whereIn('id', array_column($lines, 'service_id'))->whereNotNull('area_type_id')
+            ->distinct()->pluck('area_type_id')->map(fn ($id) => (int) $id)->values()->all();
+
+        return $this->assertAvailable($company, $area, $at, $minutes, $types, $ignore);
+    }
+
+    /** @return array{0: CarbonImmutable, 1: CarbonImmutable} the area's hours on that day */
+    private function hours(WorkArea $area, CarbonImmutable $day): array
+    {
+        return [$day->setTimeFromTimeString((string) $area->opens_at), $day->setTimeFromTimeString((string) $area->closes_at)];
+    }
+
+    /**
+     * Most orders in the area at the same moment between $from and $to. The peak of overlapping stays is always at
+     * $from or at the start of one of them.
+     *
+     * @param  Collection<int, WorkOrder>  $orders
+     */
+    private function peak(Collection $orders, CarbonImmutable $from, CarbonImmutable $to): int
+    {
+        $stays = $orders->filter(fn (WorkOrder $order) => $order->scheduled_at->lt($to) && $order->scheduled_end_at->gt($from));
+        $moments = $stays->map(fn (WorkOrder $order) => $order->scheduled_at->max($from))->push($from);
+
+        return (int) $moments->map(fn ($moment) => $stays->filter(fn (WorkOrder $order) => $order->scheduled_at->lte($moment) && $order->scheduled_end_at->gt($moment))->count())->max();
     }
 }

@@ -18,6 +18,7 @@ final class VehicleResource extends JsonResource
                 'publicId' => $this->customer?->public_id,
                 'name' => $this->customer?->legal_name,
                 'identification' => $this->customer?->identification,
+                'phone' => $this->customer?->phone,
             ],
             'type' => $ref($this->type),
             'brand' => $ref($this->brand),

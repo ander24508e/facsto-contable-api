@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Sales\Enums\SaleStatus;
-use App\Domains\Sales\Models\Sale;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\DashboardSummaryResource;
 
@@ -13,7 +12,7 @@ final class DashboardSummaryController extends Controller
     public function __invoke(CompanyContext $context): DashboardSummaryResource
     {
         $company = $context->company();
-        $this->authorize('viewAny', Sale::class);
+        $this->authorize('view', $context->company());
 
         return new DashboardSummaryResource([
             'counts' => [

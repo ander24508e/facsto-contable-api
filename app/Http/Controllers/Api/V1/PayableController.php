@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Domains\Catalog\Models\Item;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Credit\Services\CreditPaymentRecorder;
 use App\Domains\Purchases\Models\Purchase;
@@ -18,7 +17,7 @@ final class PayableController extends Controller
 {
     public function index(Request $request, CompanyContext $context): JsonResponse
     {
-        $this->authorize('viewAny', Item::class);
+        $this->authorize('payables.view');
         $query = ReceivableController::withBalance($this->payables($context))->with('supplier')
             ->orderByDesc('issue_date')->orderByDesc('number');
         if ($search = trim((string) $request->query('search'))) {
@@ -36,7 +35,7 @@ final class PayableController extends Controller
 
     public function show(CompanyContext $context, string $purchase): JsonResponse
     {
-        $this->authorize('viewAny', Item::class);
+        $this->authorize('payables.view');
 
         return response()->json(['data' => $this->detail($this->find($context, $purchase))]);
     }
@@ -44,7 +43,7 @@ final class PayableController extends Controller
     /** POST /payables/{purchase}/payments: what is paid to the supplier, covering installments in order. */
     public function pay(Request $request, CompanyContext $context, CreditPaymentRecorder $recorder, string $purchase): JsonResponse
     {
-        $this->authorize('create', Item::class);
+        $this->authorize('payables.create');
         $data = $request->validate([
             'amount' => ['required', 'string', 'regex:/^\d{1,16}(\.\d{1,2})?$/'],
             'notes' => ['nullable', 'string', 'max:255'],

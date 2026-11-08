@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Creates or edits a named entry of the Lavadora (vehicle type, brand, model, service, washer). The name is
+ * Creates or edits a named entry of the Lavadora (vehicle type, brand, model, service, area). The name is
  * trimmed and never repeats, ignoring case, within its scope: the company, or the brand for models.
  */
 final class SaveNamedEntryAction
@@ -50,6 +50,10 @@ final class SaveNamedEntryAction
             $isNew = ! $entry->exists;
             $entry->fill([...$data, 'company_id' => $company->id])->save();
             $this->audit->record($actor, $company, 'carwash.'.class_basename($entry).($isNew ? '.created' : '.updated'), $entry, $before, $entry->only(array_keys($data)));
+            // A new record comes back as the database keeps it (defaults such as is_active included).
+            if ($isNew) {
+                $entry->refresh();
+            }
 
             return $entry;
         });

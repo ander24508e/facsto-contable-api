@@ -4,9 +4,12 @@ namespace Tests;
 
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use RuntimeException;
+use Tests\Support\CreatesCompanyRoles;
 
 abstract class TestCase extends BaseTestCase
 {
+    use CreatesCompanyRoles;
+
     /**
      * Stops the suite before RefreshDatabase can wipe a real database when the
      * container environment overrides the values defined in phpunit.xml.

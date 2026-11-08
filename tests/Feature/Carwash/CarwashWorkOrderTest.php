@@ -2,10 +2,10 @@
 
 namespace Tests\Feature\Carwash;
 
-use App\Domains\Carwash\Models\CarwashSetting;
 use App\Domains\Cash\Models\CashSession;
 use App\Domains\Sales\Models\Sale;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Carbon;
 
 /** Reception → washing → charge in Ventas (the same FACSTO sale) → invoice → delivery. */
 final class CarwashWorkOrderTest extends CarwashTestCase
@@ -93,27 +93,65 @@ final class CarwashWorkOrderTest extends CarwashTestCase
             ->assertUnprocessable()->assertJsonPath('error.code', 'CARWASH_SERVICE_PRICE_MISSING');
     }
 
-    public function test_numbering_is_per_company_and_the_agenda_respects_slot_capacity(): void
+    public function test_numbering_is_per_company_and_a_reservation_takes_its_area_for_the_services_duration(): void
     {
         [$company, $owner] = $this->carwashCompany();
         $setup = $this->carwashSetup($company);
-        CarwashSetting::for($company)->update(['vehicles_per_slot' => 1]);
+        [$wash, $dry, $lube] = $this->areaTypes($company);
+        $area = $this->workArea($company, 'Box 1', [$wash, $dry], 1, '08:00', '17:00');
+        $setup['service']->update(['area_type_id' => $wash->id]);
         $tomorrow = CarbonImmutable::now(config('app.timezone'))->addDay()->setTime(9, 0);
+        $reserve = fn (CarbonImmutable $at, ?string $area) => $this->actingAs($owner)->postJson(self::API.'/work-orders', $this->orderBody($setup, ['scheduledAt' => $at->toIso8601String(), 'workAreaPublicId' => $area]));
 
-        $this->actingAs($owner)->postJson(self::API.'/work-orders', $this->orderBody($setup, ['scheduledAt' => $tomorrow->toIso8601String()]))
-            ->assertCreated()->assertJsonPath('data.source', 'RESERVATION');
-        $this->actingAs($owner)->postJson(self::API.'/work-orders', $this->orderBody($setup, ['scheduledAt' => $tomorrow->addMinutes(10)->toIso8601String()]))
-            ->assertConflict()->assertJsonPath('error.code', 'CARWASH_AGENDA_SLOT_FULL');
-        $this->actingAs($owner)->postJson(self::API.'/work-orders', $this->orderBody($setup, ['scheduledAt' => $tomorrow->setTime(6, 0)->toIso8601String()]))
-            ->assertUnprocessable()->assertJsonPath('error.code', 'CARWASH_AGENDA_OUTSIDE_HOURS');
-        $this->actingAs($owner)->postJson(self::API.'/work-orders', $this->orderBody($setup, ['scheduledAt' => $tomorrow->addMinutes(30)->toIso8601String()]))
-            ->assertCreated()->assertJsonPath('data.code', 'OT-000002');
+        $reserve($tomorrow, null)->assertUnprocessable()->assertJsonPath('error.code', 'CARWASH_WORK_AREA_NOT_FOUND');
+        // The service lasts 40 minutes: the area is busy from 09:00 to 09:40.
+        $reserve($tomorrow, $area->public_id)->assertCreated()->assertJsonPath('data.source', 'RESERVATION')
+            ->assertJsonPath('data.workArea.name', 'Box 1')->assertJsonPath('data.scheduledEndAt', $tomorrow->addMinutes(40)->toIso8601String());
+        $reserve($tomorrow->addMinutes(30), $area->public_id)->assertConflict()->assertJsonPath('error.code', 'CARWASH_AGENDA_SLOT_FULL');
+        $reserve($tomorrow->setTime(6, 0), $area->public_id)->assertUnprocessable()->assertJsonPath('error.code', 'CARWASH_AGENDA_OUTSIDE_HOURS');
+        // It must end before the area closes at 17:00.
+        $reserve($tomorrow->setTime(16, 30), $area->public_id)->assertUnprocessable()->assertJsonPath('error.code', 'CARWASH_AGENDA_OUTSIDE_HOURS');
+        $reserve($tomorrow->addMinutes(40), $area->public_id)->assertCreated()->assertJsonPath('data.code', 'OT-000002');
         $this->actingAs($owner)->getJson(self::API.'/agenda?date='.$tomorrow->toDateString())->assertOk()
-            ->assertJsonPath('data.slots.2.booked', 1)->assertJsonPath('data.slots.2.available', 0);
+            ->assertJsonPath('data.areas.0.name', 'Box 1')
+            ->assertJsonPath('data.slots.2.booked', 1)->assertJsonPath('data.slots.2.available', 0)
+            ->assertJsonPath('data.slots.0.capacity', 1)->assertJsonPath('data.slots.18.capacity', 0);
+
+        // The area does not do lubrication.
+        $setup['service']->update(['area_type_id' => $lube->id]);
+        $reserve($tomorrow->setTime(14, 0), $area->public_id)->assertUnprocessable()->assertJsonPath('error.code', 'CARWASH_WORK_AREA_TYPE_MISMATCH');
 
         [$other, $otherOwner] = $this->carwashCompany('1798888888001', ready: false);
         $otherSetup = $this->carwashSetup($other, 'XYZ9876');
         $this->actingAs($otherOwner)->postJson(self::API.'/work-orders', $this->orderBody($otherSetup))->assertCreated()->assertJsonPath('data.code', 'OT-000001');
+    }
+
+    public function test_a_walk_in_with_an_area_takes_it_from_now(): void
+    {
+        [$company, $owner] = $this->carwashCompany();
+        $setup = $this->carwashSetup($company);
+        $area = $this->workArea($company, 'Box 1', [$this->areaTypes($company)[0]], 1, '08:00', '17:00');
+        $now = CarbonImmutable::now(config('app.timezone'))->addDay()->setTime(10, 15, 30);
+        CarbonImmutable::setTestNow($now);
+        Carbon::setTestNow($now);
+
+        $this->actingAs($owner)->getJson(self::API.'/work-orders/next-code')->assertOk()->assertJsonPath('data.code', 'OT-000001');
+        $this->actingAs($owner)->postJson(self::API.'/work-orders', $this->orderBody($setup, ['workAreaPublicId' => $area->public_id, 'notes' => 'Sin aspirado']))
+            ->assertCreated()->assertJsonPath('data.source', 'COUNTER')->assertJsonPath('data.workArea.name', 'Box 1')
+            ->assertJsonPath('data.scheduledAt', $now->startOfMinute()->toIso8601String())
+            ->assertJsonPath('data.scheduledEndAt', $now->startOfMinute()->addMinutes(40)->toIso8601String())
+            ->assertJsonPath('data.notes', 'Sin aspirado')->assertJsonPath('data.createdBy.name', $owner->name);
+        // The area is busy until 10:55: another walk-in does not fit.
+        $this->actingAs($owner)->postJson(self::API.'/work-orders', $this->orderBody($this->carwashSetup($company, 'XYZ9876'), ['workAreaPublicId' => $area->public_id]))
+            ->assertConflict()->assertJsonPath('error.code', 'CARWASH_AGENDA_SLOT_FULL');
+        $this->actingAs($owner)->getJson(self::API.'/work-orders/next-code')->assertOk()->assertJsonPath('data.code', 'OT-000002');
+
+        CarbonImmutable::setTestNow($now->setTime(20, 0));
+        Carbon::setTestNow($now->setTime(20, 0));
+        $this->actingAs($owner)->postJson(self::API.'/work-orders', $this->orderBody($this->carwashSetup($company, 'QWE1234'), ['workAreaPublicId' => $area->public_id]))
+            ->assertUnprocessable()->assertJsonPath('error.code', 'CARWASH_AGENDA_OUTSIDE_HOURS');
+        CarbonImmutable::setTestNow();
+        Carbon::setTestNow();
     }
 
     public function test_dashboard_and_settings(): void
@@ -123,9 +161,38 @@ final class CarwashWorkOrderTest extends CarwashTestCase
         $this->actingAs($owner)->postJson(self::API.'/work-orders', $this->orderBody($setup))->assertCreated();
 
         $this->actingAs($owner)->getJson(self::API.'/dashboard')->assertOk()->assertJsonPath('data.total', 1)->assertJsonPath('data.byStatus.PENDING', 1);
-        $this->actingAs($owner)->putJson(self::API.'/settings', ['openingTime' => '07:00', 'closingTime' => '06:00', 'slotMinutes' => 30, 'vehiclesPerSlot' => 3])->assertUnprocessable();
-        $this->actingAs($owner)->putJson(self::API.'/settings', ['openingTime' => '07:00', 'closingTime' => '19:00', 'slotMinutes' => 30, 'vehiclesPerSlot' => 3])
-            ->assertOk()->assertJsonPath('data.vehiclesPerSlot', 3);
+        $this->actingAs($owner)->putJson(self::API.'/settings', ['openingTime' => '07:00', 'closingTime' => '06:00', 'slotMinutes' => 30])->assertUnprocessable();
+        $this->actingAs($owner)->putJson(self::API.'/settings', ['openingTime' => '07:00', 'closingTime' => '19:00', 'slotMinutes' => 30])
+            ->assertOk()->assertJsonPath('data.closingTime', '19:00');
+    }
+
+    public function test_work_areas_take_one_or_two_area_types_and_unique_names(): void
+    {
+        [$company, $owner] = $this->carwashCompany();
+        // Lavado, Secado and Lubricación come fixed; the company adds its own.
+        $types = $this->actingAs($owner)->getJson(self::API.'/area-types')->assertOk()->assertJsonCount(3, 'data')
+            ->assertJsonPath('data.0.name', 'Lavado')->assertJsonPath('data.0.isFixed', true)->json('data');
+        [$wash, $dry, $lube] = array_column($types, 'publicId');
+        $this->actingAs($owner)->patchJson(self::API.'/area-types/'.$wash, ['isActive' => false])->assertUnprocessable()->assertJsonPath('error.code', 'CARWASH_AREA_TYPE_FIXED');
+        $bar = $this->actingAs($owner)->postJson(self::API.'/area-types', ['name' => 'Bar'])->assertCreated()
+            ->assertJsonPath('data.isFixed', false)->assertJsonPath('data.isActive', true)->json('data.publicId');
+        $this->actingAs($owner)->postJson(self::API.'/area-types', ['name' => 'bar'])->assertConflict();
+
+        $body = ['name' => 'Box 1', 'areaTypePublicIds' => [$dry, $wash], 'capacity' => 2, 'opensAt' => '08:00', 'closesAt' => '18:00'];
+        $this->actingAs($owner)->postJson(self::API.'/work-areas', [...$body, 'areaTypePublicIds' => [$wash, $dry, $lube]])->assertUnprocessable()->assertJsonValidationErrors(['areaTypePublicIds'], 'error.details.errors');
+        $this->actingAs($owner)->postJson(self::API.'/work-areas', [...$body, 'closesAt' => '07:00'])->assertUnprocessable()->assertJsonValidationErrors(['closesAt'], 'error.details.errors');
+        // A new area comes back active, so the list shows it without reloading.
+        $area = $this->actingAs($owner)->postJson(self::API.'/work-areas', $body)->assertCreated()
+            ->assertJsonPath('data.isActive', true)
+            ->assertJsonPath('data.types.0.name', 'Lavado')->assertJsonPath('data.types.1.name', 'Secado')->json('data.publicId');
+        // A turned-off type is not offered to new areas.
+        $this->actingAs($owner)->patchJson(self::API.'/area-types/'.$bar, ['isActive' => false])->assertOk()->assertJsonPath('data.isActive', false);
+        $this->actingAs($owner)->postJson(self::API.'/work-areas', [...$body, 'name' => 'Barra', 'areaTypePublicIds' => [$bar]])->assertUnprocessable()->assertJsonValidationErrors(['areaTypePublicIds'], 'error.details.errors');
+        $this->actingAs($owner)->postJson(self::API.'/work-areas', [...$body, 'name' => 'box 1'])->assertConflict();
+        $this->actingAs($owner)->patchJson(self::API.'/work-areas/'.$area, ['isActive' => false, 'capacity' => 3])->assertOk()
+            ->assertJsonPath('data.isActive', false)->assertJsonPath('data.capacity', 3);
+        $this->actingAs($owner)->getJson(self::API.'/work-areas')->assertOk()->assertJsonCount(0, 'data');
+        $this->actingAs($owner)->getJson(self::API.'/work-areas?includeInactive=1')->assertOk()->assertJsonCount(1, 'data');
     }
 
     public function test_the_list_filters_by_washer_and_reports_its_cards_and_totals(): void

@@ -3,6 +3,7 @@
 namespace App\Domains\Sales\Actions;
 
 use App\Domains\Companies\Context\CompanyContext;
+use App\Domains\Proformas\Models\Proforma;
 use App\Domains\Sales\Enums\SaleStatus;
 use App\Domains\Sales\Models\Sale;
 use App\Models\User;
@@ -38,6 +39,7 @@ final class CancelSaleDraftAction
             }
             $before = ['status' => $sale->status->value];
             $sale->forceFill(['status' => SaleStatus::CANCELLED])->save();
+            Proforma::query()->where('company_id', $company->id)->where('converted_sale_id', $sale->id)->update(['converted_sale_id' => null]);
             $this->audit->record($actor, $company, 'sale.draft_cancelled', $sale, $before, ['status' => SaleStatus::CANCELLED->value]);
 
             return $sale->refresh()->load(['customer', 'creator', 'details.taxes', 'paymentMethods']);

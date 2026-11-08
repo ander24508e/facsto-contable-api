@@ -2,9 +2,9 @@
 
 namespace App\Domains\Companies\Actions;
 
-use App\Domains\Companies\Enums\CompanyRole;
 use App\Domains\Companies\Models\Company;
 use App\Domains\Companies\Models\CompanyMembership;
+use App\Domains\Companies\Services\CompanyRoles;
 use App\Domains\Identity\Enums\UserStatus;
 use App\Models\User;
 use App\Shared\Audit\AuditRecorder;
@@ -12,25 +12,20 @@ use App\Shared\Http\ApiErrorCode;
 use App\Shared\Http\ApiException;
 use Illuminate\Support\Facades\DB;
 
+/** Usuario nuevo de la empresa: entra con su correo y contraseña y lleva uno o varios roles. */
 final class CreateCompanyUserAction
 {
-    public function __construct(private readonly AuditRecorder $audit) {}
+    public function __construct(private readonly AuditRecorder $audit, private readonly CompanyRoles $roles) {}
 
-    /** @param array{name: string, email: string, phone?: ?string, password: string} $data */
-    public function execute(Company $company, User $actor, CompanyRole $role, array $data): CompanyMembership
+    /**
+     * @param  list<string>  $rolePublicIds
+     * @param  array{name: string, email: string, phone?: ?string, password: string}  $data
+     */
+    public function execute(Company $company, User $actor, array $rolePublicIds, array $data): CompanyMembership
     {
-        return DB::transaction(function () use ($company, $actor, $role, $data): CompanyMembership {
+        return DB::transaction(function () use ($company, $actor, $rolePublicIds, $data): CompanyMembership {
             $lockedCompany = Company::query()->whereKey($company->id)->lockForUpdate()->firstOrFail();
-            $actorRole = $lockedCompany->memberships()
-                ->where('user_id', $actor->id)
-                ->where('is_active', true)
-                ->lockForUpdate()
-                ->value('role');
-            $actorRole = $actorRole instanceof CompanyRole ? $actorRole : ($actorRole ? CompanyRole::from($actorRole) : null);
-
-            if (! $actorRole || ! $actorRole->canManage($role)) {
-                throw new ApiException(ApiErrorCode::COMPANY_ACCESS_DENIED, 'No puedes crear un usuario con ese rol.', 403);
-            }
+            $roles = $this->roles->resolve($lockedCompany, $rolePublicIds);
 
             $email = mb_strtolower(trim($data['email']));
             if (User::query()->where('email', $email)->exists()) {
@@ -47,17 +42,17 @@ final class CreateCompanyUserAction
 
             $membership = $lockedCompany->memberships()->create([
                 'user_id' => $user->id,
-                'role' => $role,
                 'is_active' => true,
                 'joined_at' => now(),
             ]);
+            $this->roles->assign($lockedCompany, $actor, $membership, $roles);
 
             $this->audit->record($actor, $lockedCompany, 'company.user_created', $user, null, [
-                'role' => $role->value,
+                'roles' => $roles->pluck('name')->all(),
                 'isActive' => true,
             ]);
 
-            return $membership->load('user');
+            return $membership->load('user', 'roles');
         });
     }
 }

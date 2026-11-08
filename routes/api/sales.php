@@ -27,6 +27,7 @@ Route::middleware(['auth:sanctum', 'company.context'])->group(function (): void 
     Route::post('/proformas', [ProformaController::class, 'store']);
     Route::get('/proformas/{proforma}', [ProformaController::class, 'show']);
     Route::patch('/proformas/{proforma}', [ProformaController::class, 'update']);
+    Route::post('/proformas/{proforma}/convert', [ProformaController::class, 'convert']);
     Route::delete('/proformas/{proforma}', [ProformaController::class, 'destroy']);
     Route::get('/cash-sessions', [CashSessionController::class, 'index']);
     Route::get('/cash-sessions/denominations', [CashSessionController::class, 'denominations']);

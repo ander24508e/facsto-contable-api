@@ -21,7 +21,7 @@ final class ReceivableController extends Controller
 {
     public function index(Request $request, CompanyContext $context): JsonResponse
     {
-        $this->authorize('viewAny', Sale::class);
+        $this->authorize('receivables.view');
         $query = $this->withBalance($this->receivables($context))
             ->with(['electronicDocument', 'paymentMethods'])
             ->orderByDesc('issue_date')->orderByDesc('number');
@@ -42,7 +42,7 @@ final class ReceivableController extends Controller
 
     public function show(CompanyContext $context, string $sale): JsonResponse
     {
-        $this->authorize('viewAny', Sale::class);
+        $this->authorize('receivables.view');
 
         return response()->json(['data' => $this->detail($this->find($context, $sale))]);
     }
@@ -50,7 +50,7 @@ final class ReceivableController extends Controller
     /** POST /receivables/{sale}/payments: collects installments into the sale's cash register (it must be open). */
     public function collect(Request $request, CompanyContext $context, CreditPaymentRecorder $recorder, string $sale): JsonResponse
     {
-        $this->authorize('create', Sale::class);
+        $this->authorize('receivables.create');
         $data = $request->validate([
             'amount' => ['required', 'string', 'regex:/^\d{1,16}(\.\d{1,2})?$/'],
             'notes' => ['nullable', 'string', 'max:255'],

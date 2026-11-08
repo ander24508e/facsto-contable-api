@@ -8,15 +8,17 @@ use App\Domains\Carwash\Models\VehicleModel;
 use App\Domains\Catalog\Actions\CreateItemAction;
 use App\Domains\Catalog\Actions\UpdateItemAction;
 use App\Domains\Catalog\Models\Item;
+use App\Domains\Catalog\Services\BarcodeGenerator;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Inventory\Services\ItemCodeSuggester;
 use App\Domains\Taxes\Services\ItemTaxService;
 use App\Models\User;
 
 /**
- * The Inventario item behind each price per vehicle: a SERVICE named «Lavada Express · Chevrolet Spark», with the
- * service's category and IVA and the price typed for that vehicle (same rule as an item: with or without IVA).
- * Ventas and the invoice use it as any other item. It is created and kept by the Lavadora (managed_by).
+ * The Inventario item behind each price per vehicle: a SERVICE named «Lavada Universal · Chevrolet D-MAX» that copies
+ * the base item's category, IVA (taxes) and «price includes IVA», with its own codes, cost and sale price. Ventas and
+ * the invoice use it as any other item; the base item stays on sale with its own price. Created and kept by the
+ * Lavadora (managed_by), through the same actions Inventario uses.
  */
 final class ServicePriceItems
 {
@@ -28,69 +30,62 @@ final class ServicePriceItems
         private readonly UpdateItemAction $update,
         private readonly ItemTaxService $taxes,
         private readonly ItemCodeSuggester $codes,
+        private readonly BarcodeGenerator $barcodes,
     ) {}
 
-    /** @param array{salePrice: string, priceIncludesTax: bool, isActive: bool} $price */
-    public function create(Service $service, VehicleModel $spec, array $price, User $actor): Item
+    /** @param array<string, mixed> $data internalCode, auxiliaryCode, barcode, costPrice, salePrice, isActive */
+    public function create(Service $service, VehicleModel $spec, array $data, User $actor): Item
     {
-        $name = $this->name($service, $spec);
+        $company = $this->context->company();
+        $base = $service->item()->with(['category', 'taxes'])->firstOrFail();
+        $name = $this->name($base, $spec);
         $item = $this->create->execute([
             'type' => 'SERVICE',
-            'internal_code' => $this->codes->suggest($this->context->company(), $name, $service->category?->name),
+            'internal_code' => $this->text($data['internalCode'] ?? null) ?? $this->codes->suggest($company, $name, $base->category?->name),
+            'auxiliary_code' => $this->text($data['auxiliaryCode'] ?? null),
+            'barcode' => $this->text($data['barcode'] ?? null) ?? $this->barcodes->next($company),
             'name' => $name,
-            'description' => $service->description,
+            'description' => $base->description,
             'unit' => 'UND',
-            'sale_price' => $price['salePrice'],
-            'price_includes_tax' => $price['priceIncludesTax'],
-            'category_public_id' => $service->category?->public_id,
-            'is_active' => $service->is_active && $price['isActive'],
+            'sale_price' => $data['salePrice'],
+            'cost_price' => $this->text($data['costPrice'] ?? null),
+            'price_includes_tax' => (bool) $base->price_includes_tax,
+            'category_public_id' => $base->category?->is_active ? $base->category->public_id : null,
+            'is_active' => (bool) ($data['isActive'] ?? true),
         ], $actor);
         $item->forceFill(['managed_by' => self::MODULE])->save();
-        $this->syncTaxes($item, $service);
+        $this->taxes->sync($item, $base->taxes->pluck('public_id')->all());
 
         return $item;
     }
 
-    /** @param array{salePrice?: string, priceIncludesTax?: bool} $changes */
+    /** @param array<string, mixed> $changes internalCode, auxiliaryCode, barcode, costPrice, salePrice, isActive */
     public function update(ServicePrice $price, array $changes, User $actor): void
     {
-        $price->loadMissing(['service.category', 'service.tax', 'spec.brand', 'item']);
-        $attributes = [
-            'name' => $this->name($price->service, $price->spec),
-            'description' => $price->service->description,
-            'category_public_id' => $price->service->category?->public_id,
-            'is_active' => $price->service->is_active && $price->is_active,
-        ];
-        if (array_key_exists('salePrice', $changes)) {
-            $attributes['sale_price'] = $changes['salePrice'];
+        $map = ['internalCode' => 'internal_code', 'auxiliaryCode' => 'auxiliary_code', 'barcode' => 'barcode', 'costPrice' => 'cost_price', 'salePrice' => 'sale_price', 'isActive' => 'is_active'];
+        $attributes = [];
+        foreach ($map as $key => $column) {
+            if (array_key_exists($key, $changes)) {
+                $attributes[$column] = is_bool($changes[$key]) ? $changes[$key] : $this->text($changes[$key]);
+            }
         }
-        if (array_key_exists('priceIncludesTax', $changes)) {
-            $attributes['price_includes_tax'] = $changes['priceIncludesTax'];
+        if (($attributes['internal_code'] ?? '') === null) {
+            unset($attributes['internal_code']);
         }
-        $this->update->execute($price->item, $attributes, $actor);
-        $this->syncTaxes($price->item, $price->service);
-    }
-
-    /** A change of the service (name, category, IVA, on/off) reaches the items of all its prices. */
-    public function refreshService(Service $service, User $actor): void
-    {
-        $service->load(['category', 'tax', 'prices.spec.brand', 'prices.item']);
-        foreach ($service->prices as $price) {
-            $price->setRelation('service', $service);
-            $this->update($price, [], $actor);
+        if ($attributes !== []) {
+            $this->update->execute($price->item, $attributes, $actor);
         }
     }
 
-    private function name(Service $service, VehicleModel $spec): string
+    private function name(Item $base, VehicleModel $spec): string
     {
         $spec->loadMissing('brand');
 
-        return mb_substr($service->name.' · '.$spec->brand->name.' '.$spec->name, 0, 60);
+        return mb_substr($base->name.' · '.$spec->brand->name.' '.$spec->name, 0, 60);
     }
 
-    private function syncTaxes(Item $item, Service $service): void
+    private function text(mixed $value): ?string
     {
-        $service->loadMissing('tax');
-        $this->taxes->sync($item, $service->tax ? [$service->tax->public_id] : []);
+        return trim((string) $value) ?: null;
     }
 }

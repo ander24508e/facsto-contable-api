@@ -2,47 +2,10 @@
 
 namespace App\Domains\Catalog\Policies;
 
-use App\Domains\Catalog\Models\Item;
-use App\Domains\Companies\Context\CompanyContext;
-use App\Domains\Companies\Enums\CompanyRole;
-use App\Models\User;
+use App\Domains\Companies\Access\ModulePolicy;
 
-final class ItemPolicy
+/** Inventario: productos (unidades e importación de productos usan los mismos permisos). */
+final class ItemPolicy extends ModulePolicy
 {
-    public function __construct(private readonly CompanyContext $context) {}
-
-    public function viewAny(User $user): bool
-    {
-        return $this->activeMember($user);
-    }
-
-    public function view(User $user, Item $item): bool
-    {
-        return $this->activeMember($user) && $item->company_id === $this->context->company()->id;
-    }
-
-    public function create(User $user): bool
-    {
-        return $this->canWrite($user);
-    }
-
-    public function update(User $user, Item $item): bool
-    {
-        return $this->canWrite($user) && $item->company_id === $this->context->company()->id;
-    }
-
-    public function delete(User $user, Item $item): bool
-    {
-        return $this->update($user, $item);
-    }
-
-    private function activeMember(User $user): bool
-    {
-        return $this->context->company()->memberships()->where('user_id', $user->id)->where('is_active', true)->exists();
-    }
-
-    private function canWrite(User $user): bool
-    {
-        return $this->context->company()->memberships()->where('user_id', $user->id)->where('is_active', true)->whereIn('role', [CompanyRole::OWNER->value, CompanyRole::ADMIN->value, CompanyRole::BILLER->value])->exists();
-    }
+    protected const MODULE = 'inventory';
 }

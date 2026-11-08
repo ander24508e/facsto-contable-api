@@ -23,7 +23,8 @@ final class WorkOrderLineResolver
     {
         $lines = [];
         foreach (array_values(array_unique($servicePublicIds)) as $index => $publicId) {
-            $service = Service::query()->where('company_id', $vehicle->company_id)->where('public_id', $publicId)->where('is_active', true)->first();
+            $service = Service::query()->with('item')->where('company_id', $vehicle->company_id)->where('public_id', $publicId)
+                ->whereHas('item', fn ($item) => $item->where('is_active', true))->first();
             $price = $service && $vehicle->vehicle_model_id ? ServicePrice::query()
                 ->with('item')
                 ->where('service_id', $service->id)
@@ -41,7 +42,7 @@ final class WorkOrderLineResolver
                 'service_id' => $service->id,
                 'service_price_id' => $price->id,
                 'item_id' => $price->item_id,
-                'description' => $service->name,
+                'description' => $service->item->name,
                 'quantity' => '1',
                 'duration_minutes' => $price->effectiveDuration(),
             ];

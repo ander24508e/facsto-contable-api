@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Domains\Catalog\Models\Item;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Inventory\Models\Warehouse;
 use App\Http\Controllers\Controller;
@@ -17,7 +16,7 @@ final class WarehouseController extends Controller
 {
     public function index(Request $request, CompanyContext $context): JsonResponse
     {
-        $this->authorize('viewAny', Item::class);
+        $this->authorize('warehouses.view');
         $query = Warehouse::query()->where('company_id', $context->company()->id)->with('establishment')
             ->withCount(['stocks as products_count' => fn ($builder) => $builder->where('quantity', '>', 0)])
             ->withSum('stocks as units_total', 'quantity')
@@ -39,7 +38,7 @@ final class WarehouseController extends Controller
 
     public function show(Warehouse $warehouse, CompanyContext $context): JsonResponse
     {
-        $this->authorize('viewAny', Item::class);
+        $this->authorize('warehouses.view');
         if ($warehouse->company_id !== $context->company()->id) {
             throw new ApiException(ApiErrorCode::WAREHOUSE_NOT_FOUND, 'La bodega no existe en la empresa activa.', 404);
         }
@@ -49,7 +48,7 @@ final class WarehouseController extends Controller
 
     public function store(Request $request, CompanyContext $context, AuditRecorder $audit): JsonResponse
     {
-        $this->authorize('create', Item::class);
+        $this->authorize('warehouses.create');
         $data = $request->validate(['establishmentPublicId' => ['required', 'uuid'], 'name' => ['required', 'string', 'max:80']]);
         $company = $context->company();
         $establishment = $company->establishments()->where('public_id', $data['establishmentPublicId'])->where('is_active', true)->first();
@@ -66,7 +65,7 @@ final class WarehouseController extends Controller
 
     public function update(Request $request, Warehouse $warehouse, CompanyContext $context, AuditRecorder $audit): JsonResponse
     {
-        $this->authorize('create', Item::class);
+        $this->authorize('warehouses.create');
         $company = $context->company();
         if ($warehouse->company_id !== $company->id) {
             throw new ApiException(ApiErrorCode::WAREHOUSE_NOT_FOUND, 'La bodega no existe en la empresa activa.', 404);
@@ -98,7 +97,7 @@ final class WarehouseController extends Controller
 
     private function setActive(Request $request, Warehouse $warehouse, CompanyContext $context, AuditRecorder $audit, bool $active): JsonResponse
     {
-        $this->authorize('create', Item::class);
+        $this->authorize('warehouses.create');
         $company = $context->company();
         if ($warehouse->company_id !== $company->id) {
             throw new ApiException(ApiErrorCode::WAREHOUSE_NOT_FOUND, 'La bodega no existe en la empresa activa.', 404);

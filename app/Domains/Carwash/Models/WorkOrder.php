@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /** Work order OT-000001. Its charge is the FACSTO sale in sale_id; the billing state is read from it. */
 #[Fillable([
-    'company_id', 'number', 'source', 'vehicle_id', 'customer_id', 'washer_id', 'status', 'scheduled_at',
+    'company_id', 'number', 'source', 'vehicle_id', 'customer_id', 'washer_id', 'status', 'scheduled_at', 'work_area_id', 'scheduled_end_at',
     'arrived_at', 'started_at', 'ready_at', 'delivered_at', 'cancelled_at', 'cancel_reason', 'notes', 'sale_id', 'created_by',
 ])]
 class WorkOrder extends Model
@@ -41,7 +41,12 @@ class WorkOrder extends Model
 
     public function washer(): BelongsTo
     {
-        return $this->belongsTo(Washer::class);
+        return $this->belongsTo(User::class, 'washer_id');
+    }
+
+    public function workArea(): BelongsTo
+    {
+        return $this->belongsTo(WorkArea::class);
     }
 
     public function sale(): BelongsTo
@@ -66,6 +71,7 @@ class WorkOrder extends Model
             'source' => WorkOrderSource::class,
             'status' => WorkOrderStatus::class,
             'scheduled_at' => 'datetime',
+            'scheduled_end_at' => 'datetime',
             'arrived_at' => 'datetime',
             'started_at' => 'datetime',
             'ready_at' => 'datetime',

@@ -4,6 +4,7 @@ namespace App\Domains\Proformas\Models;
 
 use App\Domains\Customers\Models\Customer;
 use App\Domains\Inventory\Models\Warehouse;
+use App\Domains\Sales\Models\Sale;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
@@ -12,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
 /** An offer to a third party: priced like a sale, but it never touches stock, cash, sales or the SRI. */
-#[Fillable(['company_id', 'number', 'customer_id', 'warehouse_id', 'created_by', 'customer_identification', 'customer_name', 'notes', 'subtotal', 'discount_total', 'tax_total', 'total'])]
+#[Fillable(['company_id', 'number', 'customer_id', 'warehouse_id', 'converted_sale_id', 'created_by', 'customer_identification_type', 'customer_identification', 'customer_name', 'customer_address', 'customer_email', 'customer_phone', 'issue_date', 'expiration_date', 'notes', 'subtotal', 'discount_total', 'tax_total', 'total'])]
 class Proforma extends Model
 {
     protected static function booted(): void
@@ -41,6 +42,11 @@ class Proforma extends Model
         return $this->belongsTo(Warehouse::class);
     }
 
+    public function convertedSale(): BelongsTo
+    {
+        return $this->belongsTo(Sale::class, 'converted_sale_id');
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
@@ -53,6 +59,13 @@ class Proforma extends Model
 
     protected function casts(): array
     {
-        return ['subtotal' => 'decimal:2', 'discount_total' => 'decimal:2', 'tax_total' => 'decimal:2', 'total' => 'decimal:2'];
+        return [
+            'issue_date' => 'date',
+            'expiration_date' => 'date',
+            'subtotal' => 'decimal:2',
+            'discount_total' => 'decimal:2',
+            'tax_total' => 'decimal:2',
+            'total' => 'decimal:2',
+        ];
     }
 }

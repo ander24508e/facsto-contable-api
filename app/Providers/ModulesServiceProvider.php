@@ -2,8 +2,7 @@
 
 namespace App\Providers;
 
-use App\Domains\Companies\Context\CompanyContext;
-use App\Domains\Companies\Enums\CompanyRole;
+use App\Domains\Carwash\Services\CatalogGuard;
 use App\Domains\Modules\Commands\ModuleEntitlementCommand;
 use App\Domains\Modules\Commands\PushEntitlementsCommand;
 use App\Domains\Modules\Services\ModuleRegistry;
@@ -18,7 +17,8 @@ use Illuminate\Support\ServiceProvider;
  * Vertical modules of FACSTO (Lavadora…) and the entitlements Condore Platform sends.
  *  - /internal/v1/platform/*: signed Platform API (routes/internal.php).
  *  - "module:{feature}" middleware: the company must have the module (READ_ONLY only reads).
- *  - Gate "{module}.{action}" for every action of the manifest (config/modules.php), by FACSTO role.
+ *  - Each module's actions (config/modules.php) are permissions of the company roles: PermissionCatalog shows them
+ *    in Roles as the module's own card and AppServiceProvider defines their Gate «{module}.{action}».
  *  - Each module registers its API routes here (routes/api/{module}.php under /api/v1/{module}).
  * Core domains never reference a module (tests/Feature/Modules/ModuleBoundaryTest).
  */
@@ -46,22 +46,13 @@ final class ModulesServiceProvider extends ServiceProvider
                 ->group(base_path("routes/api/{$module}.php"));
         }
 
-        foreach ((array) config('modules.modules', []) as $module => $definition) {
-            foreach (array_keys($definition['permissions']) as $action) {
-                Gate::define("{$module}.{$action}", fn (User $user): bool => app(ModuleRegistry::class)->allows($module, $action, $this->role($user)));
-            }
-        }
+        // Lavadora: keeps Tarifas and the invoice in step by listening to Inventario's own item events.
+        CatalogGuard::register();
+        // Lavadora: «carwash.orders» opens Órdenes to «Ver» or to «Ver su propio trabajo».
+        Gate::define('carwash.orders', fn (User $user): bool => Gate::forUser($user)->any(['carwash.view', 'carwash.own_work']));
 
         if ($this->app->runningInConsole()) {
             $this->commands([ModuleEntitlementCommand::class, PushEntitlementsCommand::class]);
         }
-    }
-
-    private function role(User $user): ?CompanyRole
-    {
-        $role = app(CompanyContext::class)->company()->memberships()
-            ->where('user_id', $user->id)->where('is_active', true)->value('role');
-
-        return $role instanceof CompanyRole ? $role : ($role ? CompanyRole::tryFrom((string) $role) : null);
     }
 }

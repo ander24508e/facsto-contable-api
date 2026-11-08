@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Domains\Catalog\Models\Item;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Purchases\Models\Purchase;
 use App\Domains\Purchases\Services\PurchaseWriter;
@@ -17,7 +16,7 @@ final class PurchaseController extends Controller
 {
     public function index(Request $request, CompanyContext $context): JsonResponse
     {
-        $this->authorize('viewAny', Item::class);
+        $this->authorize('investments.view');
         $query = Purchase::query()->where('company_id', $context->company()->id)->with('supplier')->withCount('lines')
             ->orderByDesc('issue_date')->orderByDesc('number');
         if ($search = trim((string) $request->query('search'))) {
@@ -37,7 +36,7 @@ final class PurchaseController extends Controller
 
     public function store(Request $request, CompanyContext $context, PurchaseWriter $writer): JsonResponse
     {
-        $this->authorize('create', Item::class);
+        $this->authorize('investments.create');
         $money = ['required', 'string', 'regex:/^\d{1,16}(\.\d{1,6})?$/'];
         $data = $request->validate([
             'supplierPublicId' => ['required', 'uuid'],
@@ -93,7 +92,7 @@ final class PurchaseController extends Controller
 
     public function show(CompanyContext $context, Purchase $purchase): JsonResponse
     {
-        $this->authorize('viewAny', Item::class);
+        $this->authorize('investments.view');
         if ($purchase->company_id !== $context->company()->id) {
             throw new ApiException(ApiErrorCode::PURCHASE_NOT_FOUND, 'La compra no existe en la empresa actual.', 404);
         }

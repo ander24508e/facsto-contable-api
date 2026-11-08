@@ -4,9 +4,9 @@ namespace App\Domains\Companies\Actions;
 
 use App\Domains\Companies\DTOs\ProvisionAdministratorData;
 use App\Domains\Companies\DTOs\ProvisionCompanyData;
-use App\Domains\Companies\Enums\CompanyRole;
 use App\Domains\Companies\Fiscal\Actions\ProvisionDefaultFiscalSettingsAction;
 use App\Domains\Companies\Models\Company;
+use App\Domains\Companies\Services\CompanyRoles;
 use App\Domains\Identity\Enums\UserStatus;
 use App\Models\User;
 use App\Shared\Http\ApiErrorCode;
@@ -47,12 +47,11 @@ final class ProvisionCompanyAction
             $company = $this->createCompany->execute($operator, ['slug' => $slug]);
 
             if ($data->clientAdmin) {
-                $company->memberships()->create([
+                app(CompanyRoles::class)->makeAdministrator($company->memberships()->create([
                     'user_id' => $this->createUser($data->clientAdmin, $credentials)->id,
-                    'role' => CompanyRole::ADMIN,
                     'is_active' => true,
                     'joined_at' => now(),
-                ]);
+                ]));
             }
 
             $this->provisionSettings->execute($company);

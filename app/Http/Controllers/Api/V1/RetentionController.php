@@ -25,7 +25,7 @@ final class RetentionController extends Controller
 {
     public function codes(Request $request): JsonResponse
     {
-        $this->authorize('viewAny', ElectronicDocument::class);
+        $this->authorize('retentions.view');
         $tax = $request->validate(['tax' => ['sometimes', Rule::in([SriWithholdingCode::RENTA, SriWithholdingCode::IVA])]])['tax'] ?? null;
         $codes = SriWithholdingCode::query()->where('is_active', true)->when($tax, fn ($query) => $query->where('tax', $tax))->orderBy('tax')->orderBy('code')->get();
 
@@ -38,14 +38,14 @@ final class RetentionController extends Controller
     /** Whether the company withholds, read from its own fiscal profile. */
     public function eligibility(CompanyContext $context, WithholdingAgentStatus $agent): JsonResponse
     {
-        $this->authorize('viewAny', ElectronicDocument::class);
+        $this->authorize('retentions.view');
 
         return response()->json(['data' => $agent->of($context->company())]);
     }
 
     public function index(Request $request, CompanyContext $context): JsonResponse
     {
-        $this->authorize('viewAny', ElectronicDocument::class);
+        $this->authorize('retentions.view');
         $query = $this->retentions($context)->with(['withholdings', 'purchase'])->orderByDesc('issue_date')->orderByDesc('id');
         if ($search = trim((string) $request->query('search'))) {
             $query->where(fn ($builder) => $builder->where('full_number', 'like', '%'.$search.'%')
@@ -65,7 +65,7 @@ final class RetentionController extends Controller
 
     public function show(CompanyContext $context, string $retention): JsonResponse
     {
-        $this->authorize('viewAny', ElectronicDocument::class);
+        $this->authorize('retentions.view');
         $model = $this->retentions($context)->where('public_id', $retention)->with(['withholdings', 'taxes', 'purchase'])->first()
             ?? throw new ApiException(ApiErrorCode::RETENTION_NOT_FOUND, 'La retención no existe en la empresa actual.', 404);
 
@@ -75,7 +75,7 @@ final class RetentionController extends Controller
     /** Numbers the retention of a purchase and continues it to XML → signature → SRI, like an invoice. */
     public function store(Request $request, CompanyContext $context, Purchase $purchase, CreateRetentionAction $create, ContinueInvoiceIssuanceAction $continue): JsonResponse
     {
-        $this->authorize('create', ElectronicDocument::class);
+        $this->authorize('retentions.create');
         if ($purchase->company_id !== $context->company()->id) {
             throw new ApiException(ApiErrorCode::PURCHASE_NOT_FOUND, 'La compra no existe en la empresa actual.', 404);
         }

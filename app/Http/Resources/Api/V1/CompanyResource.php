@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Api\V1;
 
 use App\Domains\Certificates\Enums\CertificateStatus;
+use App\Domains\Companies\Access\CompanyAccess;
 use App\Domains\Companies\Fiscal\Services\ElectronicInvoicingRequirements;
 use App\Domains\Companies\Models\Company;
 use App\Domains\Modules\Services\ModuleRegistry;
@@ -15,7 +16,8 @@ final class CompanyResource extends JsonResource
     {
         /** @var Company $company */
         $company = $this->resource;
-        $membership = $company->memberships->firstWhere('user_id', $request->user()->id);
+        $access = app(CompanyAccess::class);
+        $permissions = $access->permissions($request->user(), $company);
         $certificate = $company->digitalCertificates()->where('is_active', true)->first();
 
         return [
@@ -31,7 +33,9 @@ final class CompanyResource extends JsonResource
             'accountingRequired' => $company->fiscalSettings?->accounting_required ?? false,
             'sriEnvironment' => $company->fiscalSettings?->sri_environment?->value,
             'status' => $company->status->value,
-            'role' => $membership?->role->value,
+            // Rol fijo Administrador: configuración del sistema. Los permisos «módulo.acción» deciden el resto.
+            'isAdministrator' => $access->isAdministrator($request->user(), $company),
+            'permissions' => $permissions,
             // Expose only the readiness boolean needed by this view, not certificate notices/metadata.
             'activeCertificate' => $certificate ? [
                 'usable' => $certificate->status === CertificateStatus::VALID
@@ -45,8 +49,8 @@ final class CompanyResource extends JsonResource
                 'enabled' => (bool) $company->fiscalSettings?->sri_submission_enabled,
                 'requirements' => app(ElectronicInvoicingRequirements::class)->check($company),
             ],
-            // Módulos contratados (derechos de Condore Platform) y lo que el rol puede hacer en cada uno.
-            'modules' => app(ModuleRegistry::class)->forCompany($company, $membership?->role),
+            // Módulos contratados (derechos de Condore Platform) y lo que el usuario puede hacer en cada uno.
+            'modules' => app(ModuleRegistry::class)->forCompany($company, $permissions),
         ];
     }
 }

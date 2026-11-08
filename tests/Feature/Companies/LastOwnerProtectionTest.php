@@ -17,9 +17,9 @@ final class LastOwnerProtectionTest extends CompanyTestCase
 
         try {
             app(RemoveCompanyMemberAction::class)->execute($company, $membership, $owner);
-            $this->fail('Se esperaba proteger al último owner activo.');
+            $this->fail('Se esperaba proteger al último Administrador activo.');
         } catch (ApiException $exception) {
-            $this->assertSame('LAST_OWNER_REQUIRED', $exception->errorCode->value);
+            $this->assertSame('LAST_ADMINISTRATOR_REQUIRED', $exception->errorCode->value);
         }
 
         $this->assertDatabaseHas('company_memberships', ['id' => $membership->id, 'is_active' => true]);

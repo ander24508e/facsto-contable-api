@@ -2,38 +2,33 @@
 
 namespace App\Domains\FiscalDocuments\Policies;
 
-use App\Domains\Companies\Context\CompanyContext;
-use App\Domains\Companies\Enums\CompanyRole;
-use App\Domains\FiscalDocuments\Models\ElectronicDocument;
+use App\Domains\Companies\Access\ModulePolicy;
+use App\Domains\FiscalDocuments\Enums\DocumentType;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Model;
 
-final class InvoicePolicy
+/**
+ * Comprobantes electrónicos. Los de una venta (factura, nota de crédito) son de Ventas: se ven con «sales.view» y se
+ * emiten o procesan con «sales.create». Una retención es de Retenciones («retentions.view» / «retentions.create»).
+ */
+final class InvoicePolicy extends ModulePolicy
 {
-    public function __construct(private readonly CompanyContext $context) {}
+    protected const MODULE = 'sales';
 
-    public function viewAny(User $user): bool
+    public function view(User $user, Model $record): bool
     {
-        return $this->member($user);
+        return $this->allowsFor($user, $record, 'view') && $this->owns($record);
     }
 
-    public function view(User $user, ElectronicDocument $invoice): bool
+    public function process(User $user, Model $record): bool
     {
-        return $this->member($user) && $invoice->company_id === $this->context->company()->id;
+        return $this->allowsFor($user, $record, 'create') && $this->owns($record);
     }
 
-    public function create(User $user): bool
+    private function allowsFor(User $user, Model $record, string $action): bool
     {
-        return $this->context->company()->memberships()->where('user_id', $user->id)->where('is_active', true)
-            ->whereIn('role', [CompanyRole::OWNER->value, CompanyRole::ADMIN->value, CompanyRole::BILLER->value])->exists();
-    }
+        $module = $record->getAttribute('document_type') === DocumentType::RETENTION ? 'retentions' : 'sales';
 
-    public function process(User $user, ElectronicDocument $invoice): bool
-    {
-        return $invoice->company_id === $this->context->company()->id && $this->create($user);
-    }
-
-    private function member(User $user): bool
-    {
-        return $this->context->company()->memberships()->where('user_id', $user->id)->where('is_active', true)->exists();
+        return $this->access->allows($user, $this->context->company(), "{$module}.{$action}");
     }
 }

@@ -2,10 +2,9 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Domains\Catalog\Models\Item;
 use App\Domains\Companies\Context\CompanyContext;
-use App\Domains\Purchases\Actions\CreateSupplierAction;
 use App\Domains\Companies\Fiscal\Services\EcuadorRucValidator;
+use App\Domains\Purchases\Actions\CreateSupplierAction;
 use App\Domains\Purchases\Models\Supplier;
 use App\Http\Controllers\Controller;
 use App\Shared\Audit\AuditRecorder;
@@ -22,7 +21,7 @@ final class SupplierController extends Controller
 {
     public function index(Request $request, CompanyContext $context): JsonResponse
     {
-        $this->authorize('viewAny', Item::class);
+        $this->authorize('suppliers.view');
         $query = Supplier::query()->where('company_id', $context->company()->id)->withCount('purchases')->orderBy('legal_name');
         if ($search = trim((string) $request->query('search'))) {
             $query->where(fn ($builder) => $builder->where('identification', 'like', $search.'%')
@@ -43,14 +42,14 @@ final class SupplierController extends Controller
 
     public function show(CompanyContext $context, string $supplier): JsonResponse
     {
-        $this->authorize('viewAny', Item::class);
+        $this->authorize('suppliers.view');
 
         return response()->json(['data' => $this->present($this->find($context, $supplier)->loadCount('purchases'))]);
     }
 
     public function store(Request $request, CompanyContext $context, EcuadorRucValidator $validator, CreateSupplierAction $create): JsonResponse
     {
-        $this->authorize('create', Item::class);
+        $this->authorize('suppliers.create');
         $company = $context->company();
         $data = $this->validated($request, $validator, true);
         $supplier = $create->execute($company, $data, $request->user());
@@ -61,7 +60,7 @@ final class SupplierController extends Controller
     /** The identification never changes: it is what the supplier's purchases point to. */
     public function update(Request $request, CompanyContext $context, EcuadorRucValidator $validator, AuditRecorder $audit, string $supplier): JsonResponse
     {
-        $this->authorize('create', Item::class);
+        $this->authorize('suppliers.create');
         $model = $this->find($context, $supplier);
         $before = $model->only(['legal_name', 'email', 'phone', 'address']);
         $model->forceFill($this->validated($request, $validator, false))->save();
@@ -82,7 +81,7 @@ final class SupplierController extends Controller
 
     private function toggle(Request $request, CompanyContext $context, AuditRecorder $audit, string $supplier, bool $active): JsonResponse
     {
-        $this->authorize('create', Item::class);
+        $this->authorize('suppliers.create');
         $model = $this->find($context, $supplier);
         $model->forceFill(['is_active' => $active])->save();
         $audit->record($request->user(), $context->company(), $active ? 'supplier.activated' : 'supplier.deactivated', $model, ['is_active' => ! $active], ['is_active' => $active]);

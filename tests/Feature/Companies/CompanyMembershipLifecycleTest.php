@@ -5,20 +5,19 @@ namespace Tests\Feature\Companies;
 use App\Domains\Companies\Actions\AddCompanyMemberAction;
 use App\Domains\Companies\Actions\ReactivateCompanyMemberAction;
 use App\Domains\Companies\Actions\RemoveCompanyMemberAction;
-use App\Domains\Companies\Actions\UpdateCompanyMemberRoleAction;
-use App\Domains\Companies\Enums\CompanyRole;
+use App\Domains\Companies\Actions\UpdateCompanyMemberRolesAction;
 use App\Domains\Companies\Models\CompanyMembership;
 use App\Models\User;
 use App\Shared\Http\ApiException;
 
 final class CompanyMembershipLifecycleTest extends CompanyTestCase
 {
-    public function test_removed_membership_is_retained_and_can_be_reactivated(): void
+    public function test_removed_membership_is_retained_and_can_be_reactivated_with_other_roles(): void
     {
         $owner = User::factory()->create();
         $member = User::factory()->create();
         $company = $this->createCompany($owner, '1799999999001');
-        $membership = app(AddCompanyMemberAction::class)->execute($company, $owner, $member, CompanyRole::BILLER);
+        $membership = app(AddCompanyMemberAction::class)->execute($company, $owner, $member, $this->roleIds($company, 'BILLER'));
 
         app(RemoveCompanyMemberAction::class)->execute($company, $membership, $owner);
         $this->assertDatabaseHas('company_memberships', ['id' => $membership->id, 'is_active' => false]);
@@ -27,55 +26,76 @@ final class CompanyMembershipLifecycleTest extends CompanyTestCase
         $this->assertTrue($explicitlyReactivated->is_active);
         app(RemoveCompanyMemberAction::class)->execute($company, $explicitlyReactivated, $owner);
 
-        $reactivated = app(AddCompanyMemberAction::class)->execute($company, $owner, $member, CompanyRole::VIEWER);
+        $reactivated = app(AddCompanyMemberAction::class)->execute($company, $owner, $member, $this->roleIds($company, 'VIEWER'));
         $this->assertSame($membership->id, $reactivated->id);
         $this->assertTrue($reactivated->is_active);
-        $this->assertSame(CompanyRole::VIEWER, $reactivated->role);
+        $this->assertSame(['Viewer'], $reactivated->roles->pluck('name')->all());
         $this->assertDatabaseCount('company_memberships', 2);
     }
 
-    public function test_admin_cannot_create_remove_or_demote_an_owner(): void
+    public function test_only_an_administrator_gives_takes_or_changes_the_administrator_role(): void
     {
         $owner = User::factory()->create();
-        $admin = User::factory()->create();
         $company = $this->createCompany($owner, '1799999999001');
-        app(AddCompanyMemberAction::class)->execute($company, $owner, $admin, CompanyRole::ADMIN);
+        // A user who manages users but is not Administrador.
+        $manager = $this->memberAs($company, ['users.view', 'users.manage']);
         $ownerMembership = CompanyMembership::query()->where('company_id', $company->id)->where('user_id', $owner->id)->firstOrFail();
-        $secondOwner = User::factory()->create();
-        $secondOwnerMembership = app(AddCompanyMemberAction::class)->execute($company, $owner, $secondOwner, CompanyRole::OWNER);
-        app(RemoveCompanyMemberAction::class)->execute($company, $secondOwnerMembership, $owner);
 
         $operations = [
-            fn () => app(AddCompanyMemberAction::class)->execute($company, $admin, User::factory()->create(), CompanyRole::OWNER),
-            fn () => app(RemoveCompanyMemberAction::class)->execute($company, $ownerMembership, $admin),
-            fn () => app(UpdateCompanyMemberRoleAction::class)->execute($company, $ownerMembership, $admin, CompanyRole::BILLER),
-            fn () => app(AddCompanyMemberAction::class)->execute($company, $admin, $secondOwner, CompanyRole::VIEWER),
+            fn () => app(AddCompanyMemberAction::class)->execute($company, $manager, User::factory()->create(), $this->roleIds($company, 'ADMIN')),
+            fn () => app(RemoveCompanyMemberAction::class)->execute($company, $ownerMembership, $manager),
+            fn () => app(UpdateCompanyMemberRolesAction::class)->execute($company, $ownerMembership, $manager, $this->roleIds($company, 'BILLER')),
         ];
         foreach ($operations as $operation) {
             try {
                 $operation();
-                $this->fail('Un ADMIN no debe administrar un OWNER.');
+                $this->fail('Sólo un Administrador cambia el rol Administrador.');
             } catch (ApiException $exception) {
                 $this->assertSame('COMPANY_ACCESS_DENIED', $exception->errorCode->value);
             }
         }
 
         $this->assertTrue($ownerMembership->fresh()->is_active);
-        $this->assertSame(CompanyRole::OWNER, $ownerMembership->fresh()->role);
+        $this->assertTrue($ownerMembership->fresh()->isAdministrator());
     }
 
-    public function test_admin_can_manage_biller_and_viewer_roles(): void
+    public function test_the_company_keeps_at_least_one_active_administrator(): void
     {
         $owner = User::factory()->create();
-        $admin = User::factory()->create();
+        $company = $this->createCompany($owner, '1799999999001');
+        $ownerMembership = CompanyMembership::query()->where('company_id', $company->id)->where('user_id', $owner->id)->firstOrFail();
+
+        foreach ([
+            fn () => app(RemoveCompanyMemberAction::class)->execute($company, $ownerMembership, $owner),
+            fn () => app(UpdateCompanyMemberRolesAction::class)->execute($company, $ownerMembership, $owner, $this->roleIds($company, 'VIEWER')),
+        ] as $operation) {
+            try {
+                $operation();
+                $this->fail('La empresa debe conservar un Administrador activo.');
+            } catch (ApiException $exception) {
+                $this->assertSame('LAST_ADMINISTRATOR_REQUIRED', $exception->errorCode->value);
+            }
+        }
+
+        // With a second Administrador the first one can leave.
+        $second = User::factory()->create();
+        app(AddCompanyMemberAction::class)->execute($company, $owner, $second, $this->roleIds($company, 'ADMIN'));
+        app(RemoveCompanyMemberAction::class)->execute($company, $ownerMembership, $second);
+        $this->assertFalse($ownerMembership->fresh()->is_active);
+    }
+
+    public function test_a_user_manager_changes_the_roles_of_other_users(): void
+    {
+        $owner = User::factory()->create();
         $member = User::factory()->create();
         $company = $this->createCompany($owner, '1799999999001');
-        app(AddCompanyMemberAction::class)->execute($company, $owner, $admin, CompanyRole::ADMIN);
-        $membership = app(AddCompanyMemberAction::class)->execute($company, $admin, $member, CompanyRole::BILLER);
+        $manager = $this->memberAs($company, ['users.view', 'users.manage']);
+        $membership = app(AddCompanyMemberAction::class)->execute($company, $manager, $member, $this->roleIds($company, 'BILLER'));
 
-        $updated = app(UpdateCompanyMemberRoleAction::class)->execute($company, $membership, $admin, CompanyRole::VIEWER);
-        $this->assertSame(CompanyRole::VIEWER, $updated->role);
-        app(RemoveCompanyMemberAction::class)->execute($company, $updated, $admin);
+        $roles = [...$this->roleIds($company, 'VIEWER'), $this->roleWith($company, ['carwash.assignable'], 'Trabajador')->public_id];
+        $updated = app(UpdateCompanyMemberRolesAction::class)->execute($company, $membership, $manager, $roles);
+        $this->assertSame(['Trabajador', 'Viewer'], $updated->roles->pluck('name')->all());
+        app(RemoveCompanyMemberAction::class)->execute($company, $updated, $manager);
         $this->assertFalse($updated->fresh()->is_active);
     }
 }

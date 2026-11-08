@@ -1,18 +1,26 @@
 <?php
 
+use App\Http\Controllers\Api\V1\Carwash\AreaTypeController;
 use App\Http\Controllers\Api\V1\Carwash\OperationsController;
 use App\Http\Controllers\Api\V1\Carwash\ServiceController;
 use App\Http\Controllers\Api\V1\Carwash\VehicleCatalogController;
 use App\Http\Controllers\Api\V1\Carwash\VehicleController;
 use App\Http\Controllers\Api\V1\Carwash\WasherController;
+use App\Http\Controllers\Api\V1\Carwash\WorkAreaController;
 use App\Http\Controllers\Api\V1\Carwash\WorkOrderController;
 use Illuminate\Support\Facades\Route;
 
 /*
  * Módulo Lavadora: /api/v1/carwash. ModulesServiceProvider ya aplica auth:sanctum, company.context y
- * module:carwash (sin derecho → 403; en solo lectura no se escribe). Los permisos son los del manifiesto:
- * carwash.view (todos), carwash.operate (OWNER/ADMIN/BILLER), carwash.manage (OWNER/ADMIN).
+ * module:carwash (sin derecho → 403; en solo lectura no se escribe). Los permisos son los del bloque Lavadora de los
+ * roles de la empresa: carwash.view, carwash.operate, carwash.manage; carwash.own_work ve sólo sus órdenes asignadas.
  */
+// «Ver su propio trabajo»: la lista y el detalle de órdenes, filtrados a las suyas (WorkOrderController).
+Route::middleware('can:carwash.orders')->group(function (): void {
+    Route::get('/work-orders', [WorkOrderController::class, 'index']);
+    Route::get('/work-orders/{workOrder}', [WorkOrderController::class, 'show'])->whereUuid('workOrder');
+});
+
 Route::middleware('can:carwash.view')->group(function (): void {
     Route::get('/dashboard', [OperationsController::class, 'dashboard']);
     Route::get('/agenda', [OperationsController::class, 'agenda']);
@@ -25,10 +33,11 @@ Route::middleware('can:carwash.view')->group(function (): void {
     Route::get('/vehicles/{vehicle}', [VehicleController::class, 'show'])->whereUuid('vehicle');
     Route::get('/services', [ServiceController::class, 'index']);
     Route::get('/services/{service}', [ServiceController::class, 'show'])->whereUuid('service');
-    Route::get('/services/{service}/image', [ServiceController::class, 'image'])->whereUuid('service');
+    Route::get('/categories', [OperationsController::class, 'categories']);
     Route::get('/washers', [WasherController::class, 'index']);
-    Route::get('/work-orders', [WorkOrderController::class, 'index']);
-    Route::get('/work-orders/{workOrder}', [WorkOrderController::class, 'show'])->whereUuid('workOrder');
+    Route::get('/area-types', [AreaTypeController::class, 'index']);
+    Route::get('/work-areas', [WorkAreaController::class, 'index']);
+    Route::get('/work-orders/next-code', [WorkOrderController::class, 'nextCode']);
 });
 
 Route::middleware('can:carwash.operate')->group(function (): void {
@@ -49,12 +58,13 @@ Route::middleware('can:carwash.manage')->group(function (): void {
     Route::patch('/vehicle-types/{type}', [VehicleCatalogController::class, 'updateType'])->whereUuid('type');
     Route::patch('/vehicle-brands/{brand}', [VehicleCatalogController::class, 'updateBrand'])->whereUuid('brand');
     Route::patch('/vehicle-specs/{spec}', [VehicleCatalogController::class, 'updateSpec'])->whereUuid('spec');
-    Route::post('/services', [ServiceController::class, 'store']);
+    Route::put('/categories', [OperationsController::class, 'updateCategories']);
     Route::patch('/services/{service}', [ServiceController::class, 'update'])->whereUuid('service');
-    Route::post('/services/{service}/image', [ServiceController::class, 'updateImage'])->whereUuid('service');
-    Route::delete('/services/{service}/image', [ServiceController::class, 'deleteImage'])->whereUuid('service');
+    Route::put('/services/{service}/usages', [ServiceController::class, 'usages'])->whereUuid('service');
     Route::post('/services/{service}/prices', [ServiceController::class, 'storePrice'])->whereUuid('service');
     Route::patch('/service-prices/{price}', [ServiceController::class, 'updatePrice'])->whereUuid('price');
-    Route::post('/washers', [WasherController::class, 'store']);
-    Route::patch('/washers/{washer}', [WasherController::class, 'update'])->whereUuid('washer');
+    Route::post('/area-types', [AreaTypeController::class, 'store']);
+    Route::patch('/area-types/{areaType}', [AreaTypeController::class, 'update'])->whereUuid('areaType');
+    Route::post('/work-areas', [WorkAreaController::class, 'store']);
+    Route::patch('/work-areas/{workArea}', [WorkAreaController::class, 'update'])->whereUuid('workArea');
 });

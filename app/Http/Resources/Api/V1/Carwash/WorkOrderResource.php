@@ -39,7 +39,9 @@ final class WorkOrderResource extends JsonResource
                 'publicId' => $this->customer?->public_id,
                 'name' => $this->customer?->legal_name,
                 'identification' => $this->customer?->identification,
+                'phone' => $this->customer?->phone,
             ],
+            'createdBy' => $this->whenLoaded('creator', fn () => $this->creator ? ['name' => $this->creator->name] : null),
             'washer' => $this->washer ? ['publicId' => $this->washer->public_id, 'name' => $this->washer->name] : null,
             'lines' => $this->whenLoaded('lines', fn () => $this->lines->map(fn ($line) => [
                 'description' => $line->description,
@@ -58,6 +60,8 @@ final class WorkOrderResource extends JsonResource
             'notes' => $this->notes,
             'cancelReason' => $this->cancel_reason,
             'scheduledAt' => $this->scheduled_at?->toIso8601String(),
+            'scheduledEndAt' => $this->scheduled_end_at?->toIso8601String(),
+            'workArea' => $this->workArea ? ['publicId' => $this->workArea->public_id, 'name' => $this->workArea->name] : null,
             'timeline' => [
                 'createdAt' => $this->created_at?->toIso8601String(),
                 'arrivedAt' => $this->arrived_at?->toIso8601String(),

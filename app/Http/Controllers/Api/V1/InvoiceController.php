@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Domains\Companies\Context\CompanyContext;
-use App\Domains\FiscalDocuments\Actions\IssueSaleInvoiceAction;
+use App\Domains\FiscalDocuments\Actions\IssueSaleInvoiceWithProformaAction;
 use App\Domains\FiscalDocuments\Models\ElectronicDocument;
 use App\Domains\Sales\Models\Sale;
 use App\Http\Controllers\Controller;
@@ -55,7 +55,7 @@ final class InvoiceController extends Controller
      * F04 → F05 → F06 queue. 201 when the sale was numbered by this call, 200 when it only resumed. A draft is
      * issued from an open cash register: `cashSessionPublicId`, its own, or the only one the user opened.
      */
-    public function issue(Sale $sale, IssueSaleInvoiceAction $issue, Request $request): JsonResponse
+    public function issue(Sale $sale, IssueSaleInvoiceWithProformaAction $issue, Request $request): JsonResponse
     {
         $this->authorize('create', ElectronicDocument::class);
         $data = $request->validate(['cashSessionPublicId' => ['nullable', 'uuid']]);

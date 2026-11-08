@@ -39,7 +39,7 @@ final class ElectronicInvoicingSwitchTest extends InvoiceFeatureTestCase
         $owner = User::factory()->create();
         $company = $this->readyCompany($owner);
         $biller = User::factory()->create();
-        $company->memberships()->create(['user_id' => $biller->id, 'role' => 'BILLER', 'is_active' => true, 'joined_at' => now()]);
+        $company->memberships()->create(['user_id' => $biller->id, 'is_active' => true, 'joined_at' => now()])->syncRoles([$this->presetRole($company, 'BILLER')->id]);
 
         $this->actingAs($biller)->putJson('/api/v1/company/electronic-invoicing', ['enabled' => true])->assertForbidden();
     }

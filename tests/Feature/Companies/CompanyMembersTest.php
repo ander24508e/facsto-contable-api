@@ -13,22 +13,22 @@ final class CompanyMembersTest extends CompanyTestCase
         $employee = User::factory()->create();
 
         $this->actingAs($owner)
-            ->postJson('/api/v1/company/members', ['userPublicId' => $employee->public_id, 'role' => 'BILLER'])
+            ->postJson('/api/v1/company/members', ['userPublicId' => $employee->public_id, 'rolePublicIds' => $this->roleIds($company, 'BILLER')])
             ->assertCreated()
-            ->assertJsonPath('data.role', 'BILLER');
+            ->assertJsonPath('data.roles.0.name', 'Biller');
 
-        $this->assertDatabaseHas('company_memberships', ['company_id' => $company->id, 'user_id' => $employee->id, 'role' => 'BILLER']);
+        $this->assertDatabaseHas('company_memberships', ['company_id' => $company->id, 'user_id' => $employee->id, 'is_active' => true]);
     }
 
     public function test_a_user_of_another_company_cannot_be_added(): void
     {
         $owner = User::factory()->create();
-        $this->createCompany($owner, '1799999999001');
+        $company = $this->createCompany($owner, '1799999999001');
         $foreignUser = User::factory()->create();
         $this->createCompany($foreignUser, '1799999999002');
 
         $this->actingAs($owner)
-            ->postJson('/api/v1/company/members', ['userPublicId' => $foreignUser->public_id, 'role' => 'BILLER'])
+            ->postJson('/api/v1/company/members', ['userPublicId' => $foreignUser->public_id, 'rolePublicIds' => $this->roleIds($company, 'BILLER')])
             ->assertConflict()
             ->assertJsonPath('error.code', 'USER_BELONGS_TO_ANOTHER_COMPANY');
     }

@@ -28,7 +28,8 @@ final class ProvisionCompanyTest extends TestCase
         $this->assertSame(0, $this->provision());
 
         $company = Company::query()->where('slug', 'lavadora-endara')->sole();
-        $this->assertSame(['OWNER', 'ADMIN'], $company->memberships()->orderBy('id')->get()->map(fn ($membership): string => $membership->role->value)->all());
+        // The operator and the client's administrator both get the fixed Administrador role.
+        $this->assertSame([true, true], $company->memberships()->orderBy('id')->get()->map(fn ($membership): bool => $membership->isAdministrator())->all());
         $this->assertTrue(User::query()->where('email', 'admin@endara.com')->exists());
 
         // The client enters every fiscal datum in the welcome flow; nothing looks "already done".
