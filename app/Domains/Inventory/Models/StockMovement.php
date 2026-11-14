@@ -2,18 +2,23 @@
 
 namespace App\Domains\Inventory\Models;
 
-use Illuminate\Database\Eloquent\Attributes\Fillable;
+use App\Domains\Catalog\Models\Item;
 use App\Domains\FiscalDocuments\Models\ElectronicDocument;
+use App\Domains\Proformas\Models\Proforma;
+use App\Domains\Purchases\Models\Purchase;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 
 /**
  * One change of stock (the kardex): signed quantity and the resulting balance. Never edited. SALE and
- * RETURN carry the invoice or credit note that caused them; PURCHASE carries the purchase of Inversiones.
+ * RETURN carry the invoice or credit note that caused them; PURCHASE the purchase of Inversiones; ENTRY and EXIT
+ * are by hand with their reason; ADJUSTMENT of a mass count carries its AJ-000001; PROFORMA / PROFORMA_RELEASE the
+ * proforma with an advance or on credit that took the units or gave them back.
  */
-#[Fillable(['company_id', 'item_id', 'warehouse_id', 'type', 'quantity', 'balance', 'electronic_document_id', 'purchase_id', 'source_module', 'source_reference', 'user_id', 'note'])]
+#[Fillable(['company_id', 'item_id', 'warehouse_id', 'type', 'quantity', 'balance', 'electronic_document_id', 'purchase_id', 'stock_adjustment_id', 'proforma_id', 'reason', 'source_module', 'source_reference', 'user_id', 'note'])]
 class StockMovement extends Model
 {
     public const INITIAL = 'INITIAL';
@@ -28,6 +33,21 @@ class StockMovement extends Model
 
     /** Internal consumption (supplies used, not sold), with the module and reference that caused it. */
     public const CONSUMPTION = 'CONSUMPTION';
+
+    /** By hand, with its reason. */
+    public const ENTRY = 'ENTRY';
+
+    public const EXIT = 'EXIT';
+
+    /** A proforma with an advance or on credit takes its products; giving them back (sale, rejection) is a release. */
+    public const PROFORMA = 'PROFORMA';
+
+    public const PROFORMA_RELEASE = 'PROFORMA_RELEASE';
+
+    /** A product moved to another warehouse: it leaves the origin (−) and arrives at the destination (+). */
+    public const TRANSFER = 'TRANSFER';
+
+    public const REASONS = ['COUNT', 'DAMAGE', 'LOSS', 'DONATION', 'INTERNAL_USE', 'OTHER'];
 
     public const UPDATED_AT = null;
 
@@ -48,7 +68,22 @@ class StockMovement extends Model
 
     public function purchase(): BelongsTo
     {
-        return $this->belongsTo(\App\Domains\Purchases\Models\Purchase::class);
+        return $this->belongsTo(Purchase::class);
+    }
+
+    public function adjustment(): BelongsTo
+    {
+        return $this->belongsTo(StockAdjustment::class, 'stock_adjustment_id');
+    }
+
+    public function proforma(): BelongsTo
+    {
+        return $this->belongsTo(Proforma::class);
+    }
+
+    public function item(): BelongsTo
+    {
+        return $this->belongsTo(Item::class);
     }
 
     public function user(): BelongsTo

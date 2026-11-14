@@ -14,7 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * Cuentas por cobrar: the invoiced sales on CREDITO, their installments and what has been collected.
+ * Cartera por cobrar: sales invoiced on CREDITO, their installments and collected amounts.
  * A collection enters the cash register of the sale.
  */
 final class ReceivableController extends Controller
@@ -22,7 +22,7 @@ final class ReceivableController extends Controller
     public function index(Request $request, CompanyContext $context): JsonResponse
     {
         $this->authorize('receivables.view');
-        $query = $this->withBalance($this->receivables($context))
+        $query = $this->withBalance($this->customerReceivables($context))
             ->with(['electronicDocument', 'paymentMethods'])
             ->orderByDesc('issue_date')->orderByDesc('number');
         if ($search = trim((string) $request->query('search'))) {
@@ -104,7 +104,7 @@ final class ReceivableController extends Controller
         ])->values()->all();
     }
 
-    private function receivables(CompanyContext $context): Builder
+    private function customerReceivables(CompanyContext $context): Builder
     {
         return Sale::query()->where('company_id', $context->company()->id)
             ->where('status', SaleStatus::DOCUMENT_PREPARED->value)->whereHas('installments');
@@ -112,7 +112,7 @@ final class ReceivableController extends Controller
 
     private function find(CompanyContext $context, string $publicId): Sale
     {
-        return $this->withBalance($this->receivables($context))->where('public_id', $publicId)
+        return $this->withBalance($this->customerReceivables($context))->where('public_id', $publicId)
             ->with(['electronicDocument', 'paymentMethods', 'installments', 'creditPayments.creator', 'creditPayments.cashMovement.session.emissionPoint.establishment', 'cashSession.emissionPoint.establishment'])
             ->first() ?? throw new ApiException(ApiErrorCode::RECEIVABLE_NOT_FOUND, 'La cuenta por cobrar no existe en la empresa actual.', 404);
     }

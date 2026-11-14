@@ -46,7 +46,8 @@ return new class extends Migration
             $table->decimal('quantity', 18, 6)->default(0);
             $table->timestamps();
             // Un producto pertenece a una sola bodega.
-            $table->unique('item_id');
+            // A product may have units in several warehouses (Traslado); its first row is its main warehouse.
+            $table->unique(['item_id', 'warehouse_id']);
             $table->index('warehouse_id');
             $table->foreign(['company_id', 'item_id'])->references(['company_id', 'id'])->on('items')->cascadeOnDelete();
             $table->foreign(['company_id', 'warehouse_id'])->references(['company_id', 'id'])->on('warehouses')->restrictOnDelete();

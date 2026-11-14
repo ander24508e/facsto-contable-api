@@ -3,11 +3,14 @@
 namespace App\Http\Controllers\Api\V1\Carwash;
 
 use App\Domains\Carwash\Actions\ChargeWorkOrderAction;
+use App\Domains\Carwash\Actions\CheckoutWorkOrderAction;
 use App\Domains\Carwash\Actions\CreateWorkOrderAction;
 use App\Domains\Carwash\Actions\TransitionWorkOrderAction;
 use App\Domains\Carwash\Actions\UpdateWorkOrderAction;
 use App\Domains\Carwash\Enums\WorkOrderStatus;
+use App\Domains\Carwash\Models\CarwashSetting;
 use App\Domains\Carwash\Models\WorkOrder;
+use App\Domains\Carwash\Services\WorkOrderPricing;
 use App\Domains\Sales\Enums\SaleStatus;
 use App\Http\Resources\Api\V1\Carwash\WorkOrderResource;
 use Carbon\CarbonImmutable;
@@ -21,7 +24,7 @@ use Illuminate\Validation\Rule;
 /** Work orders: reception, washing, charge in Ventas and delivery. */
 final class WorkOrderController extends CarwashController
 {
-    public const RELATIONS = ['vehicle.type', 'customer', 'washer', 'workArea', 'creator', 'lines.service', 'lines.item.taxes.definition', 'sale.electronicDocument'];
+    public const RELATIONS = ['vehicle.type', 'customer', 'washer', 'workArea', 'creator', 'lines.service', 'lines.item.taxes.definition', 'sale.electronicDocument', 'sale.paymentMethods'];
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -61,7 +64,8 @@ final class WorkOrderController extends CarwashController
     private function filtered(array $filters): Builder
     {
         $search = trim((string) ($filters['search'] ?? ''));
-        $number = ltrim(strtoupper(str_replace(['OT-', 'OT'], '', strtoupper($search))), '0');
+        // «OT-000012», «LV12» or «12»: the number without its prefix (Configuración › Órdenes).
+        $number = ltrim((string) preg_replace('/^[A-Z]{1,6}-?/', '', strtoupper($search)), '0');
 
         return WorkOrder::query()
             ->where('company_id', $this->companyId())
@@ -81,9 +85,10 @@ final class WorkOrderController extends CarwashController
     /** The code the next order will take, shown on «Nueva orden»; the real one is assigned when it is saved. */
     public function nextCode(): JsonResponse
     {
-        $number = (int) WorkOrder::query()->where('company_id', $this->companyId())->max('number') + 1;
+        $settings = CarwashSetting::forCompany($this->companyId());
+        $number = max((int) WorkOrder::query()->where('company_id', $this->companyId())->max('number') + 1, (int) $settings->order_start_number);
 
-        return response()->json(['data' => ['code' => (new WorkOrder(['number' => $number]))->code()]]);
+        return response()->json(['data' => ['code' => (new WorkOrder(['number' => $number, 'code_prefix' => $settings->order_prefix]))->code()]]);
     }
 
     public function show(string $workOrder): WorkOrderResource
@@ -110,6 +115,7 @@ final class WorkOrderController extends CarwashController
             'scheduledAt' => ['nullable', 'date'],
             'workAreaPublicId' => ['nullable', 'uuid'],
             'notes' => ['nullable', 'string', 'max:1000'],
+            'dirty' => ['sometimes', 'boolean'],
         ]);
 
         return $this->present($create->execute($data, $request->user()))->response()->setStatusCode(201);
@@ -124,6 +130,7 @@ final class WorkOrderController extends CarwashController
             'scheduledAt' => ['sometimes', 'nullable', 'date'],
             'workAreaPublicId' => ['sometimes', 'nullable', 'uuid'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'dirty' => ['sometimes', 'boolean'],
         ]);
 
         return $this->present($update->execute($this->owned(WorkOrder::class, $workOrder), $data, $request->user()));
@@ -134,9 +141,51 @@ final class WorkOrderController extends CarwashController
         $data = $request->validate([
             'status' => ['required', Rule::enum(WorkOrderStatus::class)],
             'reason' => ['nullable', 'string', 'max:300'],
+            // Configuración › Servicios «Checklist de recepción», answered when the vehicle is received.
+            'checklist' => ['sometimes', 'nullable', 'array', 'max:30'],
+            'checklist.*.label' => ['required', 'string', 'max:80'],
+            'checklist.*.checked' => ['sometimes', 'boolean'],
+            'checklist.*.note' => ['sometimes', 'nullable', 'string', 'max:200'],
         ]);
 
-        return $this->present($transition->execute($this->owned(WorkOrder::class, $workOrder), WorkOrderStatus::from($data['status']), $data['reason'] ?? null, $request->user()));
+        return $this->present($transition->execute($this->owned(WorkOrder::class, $workOrder), WorkOrderStatus::from($data['status']), $data['reason'] ?? null, $request->user(), $data['checklist'] ?? null));
+    }
+
+    /** The checkout window's totals: the order's lines with the Lavadora's discounts plus the products added. */
+    public function quote(Request $request, string $workOrder, WorkOrderPricing $pricing): JsonResponse
+    {
+        $data = $request->validate([
+            'extraLines' => ['sometimes', 'array', 'max:30'],
+            'extraLines.*.itemPublicId' => ['required', 'uuid'],
+            'extraLines.*.quantity' => ['required', 'string', 'regex:/^\d{1,9}(\.\d{1,2})?$/', 'not_regex:/^0+(\.0+)?$/'],
+        ]);
+
+        return response()->json(['data' => $pricing->quote($this->owned(WorkOrder::class, $workOrder), $data['extraLines'] ?? [])]);
+    }
+
+    /**
+     * The checkout window: charges the order in the open cash register (consumidor final or another customer, products
+     * added, payment), issues the invoice when «Factura» is on (else the sale stays as a draft in Ventas) and delivers it
+     * when «Entregar» is chosen.
+     */
+    public function checkout(Request $request, string $workOrder, CheckoutWorkOrderAction $checkout): WorkOrderResource
+    {
+        $data = $request->validate([
+            'customerPublicId' => ['required', 'uuid'],
+            'cashSessionPublicId' => ['required', 'uuid'],
+            'extraLines' => ['sometimes', 'array', 'max:30'],
+            'extraLines.*.itemPublicId' => ['required', 'uuid'],
+            'extraLines.*.quantity' => ['required', 'string', 'regex:/^\d{1,9}(\.\d{1,2})?$/', 'not_regex:/^0+(\.0+)?$/'],
+            'paymentMethods' => ['required', 'array', 'min:1', 'max:10'],
+            'paymentMethods.*.fiscalPaymentMethodPublicId' => ['required', 'uuid'],
+            'paymentMethods.*.amount' => ['required', 'string', 'regex:/^\d{1,16}(\.\d{1,2})?$/'],
+            'paymentMethods.*.reference' => ['nullable', 'string', 'max:120'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+            'invoice' => ['required', 'boolean'],
+            'deliver' => ['required', 'boolean'],
+        ]);
+
+        return $this->present($checkout->execute($this->owned(WorkOrder::class, $workOrder), $data, $request->user()));
     }
 
     /** «Cobrar»: creates (or refreshes) the sale draft in Ventas. */

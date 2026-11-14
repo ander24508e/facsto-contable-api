@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Api\V1;
 
+use App\Domains\Inventory\Services\StockReservations;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -18,15 +19,26 @@ final class ItemResource extends JsonResource
             'contentQuantity' => $this->content_quantity,
             'contentUnit' => $this->content_unit,
             'managedBy' => $this->managed_by,
-            // A product lives in exactly one warehouse.
+            // The main warehouse is its first row; `quantity` adds every warehouse and `warehouses` has each one.
             'stock' => $this->whenLoaded('stocks', function () {
-                $stock = $this->stocks->first();
+                $rows = $this->stocks->sortBy('id')->values();
+                $stock = $rows->first();
 
-                return $stock === null ? null : [
-                    'quantity' => $stock->quantity,
+                if ($stock === null) {
+                    return null;
+                }
+                $total = bcadd((string) $rows->sum('quantity'), '0', 6);
+                $reserved = app(StockReservations::class)->forItems($this->company_id, [$this->id])[$this->id] ?? '0';
+
+                return [
+                    'quantity' => $total,
+                    // Units held by open proformas (yellow) and what a sale may still take.
+                    'reserved' => $reserved,
+                    'available' => bcsub($total, $reserved, 6),
                     'warehousePublicId' => $stock->warehouse->public_id,
                     'warehouseName' => $stock->warehouse->name,
                     'establishmentPublicId' => $stock->warehouse->establishment->public_id,
+                    'warehouses' => $rows->map(fn ($row): array => ['publicId' => $row->warehouse->public_id, 'name' => $row->warehouse->name, 'quantity' => (string) $row->quantity])->all(),
                 ];
             }),
             'priceTiers' => $this->whenLoaded('priceTiers', fn () => $this->priceTiers->map(fn ($tier): array => ['minQuantity' => $tier->min_quantity, 'price' => $tier->price])->values()),

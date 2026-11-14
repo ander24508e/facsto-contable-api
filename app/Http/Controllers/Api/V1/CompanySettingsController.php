@@ -46,15 +46,36 @@ final class CompanySettingsController extends Controller
             'defaultTaxPublicId' => ['sometimes', 'nullable', 'uuid'],
             'defaultUnit' => ['sometimes', 'nullable', 'string', 'max:32'],
             'idleTimeoutMinutes' => ['sometimes', 'integer', Rule::in(CompanySetting::IDLE_TIMEOUTS)],
+            'salesInterface' => ['sometimes', Rule::in(['LIST', 'GRID'])],
+            'proformasInterface' => ['sometimes', Rule::in(['LIST', 'GRID'])],
+            'investmentsInterface' => ['sometimes', Rule::in(['LIST', 'GRID'])],
+            'moduleInterfaces' => ['sometimes', 'array'],
+            'moduleInterfaces.*' => ['sometimes', Rule::in(['LIST', 'GRID'])],
         ]);
 
         $setting = $this->settings->for($company);
         $before = $this->present($setting);
-        $map = ['lowStockThreshold' => 'low_stock_threshold', 'allowNegativeStock' => 'allow_negative_stock', 'defaultCustomer' => 'default_customer', 'idleTimeoutMinutes' => 'idle_timeout_minutes'];
+        $map = [
+            'lowStockThreshold' => 'low_stock_threshold',
+            'allowNegativeStock' => 'allow_negative_stock',
+            'defaultCustomer' => 'default_customer',
+            'idleTimeoutMinutes' => 'idle_timeout_minutes',
+            'salesInterface' => 'sales_interface',
+            'proformasInterface' => 'proformas_interface',
+            'investmentsInterface' => 'investments_interface',
+        ];
         foreach ($map as $input => $column) {
             if (array_key_exists($input, $data)) {
                 $setting->{$column} = $data[$input];
             }
+        }
+        if (array_key_exists('moduleInterfaces', $data)) {
+            $allowedModules = ['dashboard', 'cashRegister', 'sales', 'proformas', 'investments', 'receivables', 'payables', 'customers', 'suppliers', 'users', 'roles', 'warehouses', 'categories', 'brands', 'inventory', 'stock', 'retentions', 'sri'];
+            $unknownModules = array_diff(array_keys($data['moduleInterfaces']), $allowedModules);
+            if ($unknownModules !== []) {
+                throw ValidationException::withMessages(['moduleInterfaces' => ['La configuración incluye un módulo no disponible.']]);
+            }
+            $setting->module_interfaces = array_merge($setting->module_interfaces ?? [], $data['moduleInterfaces']);
         }
         if (array_key_exists('defaultPaymentMethod', $data)) {
             $code = $data['defaultPaymentMethod'];
@@ -98,6 +119,10 @@ final class CompanySettingsController extends Controller
             'defaultTaxPublicId' => $setting->defaultTax?->public_id,
             'defaultUnit' => $setting->default_unit,
             'idleTimeoutMinutes' => $setting->idle_timeout_minutes,
+            'salesInterface' => $setting->sales_interface,
+            'proformasInterface' => $setting->proformas_interface,
+            'investmentsInterface' => $setting->investments_interface,
+            'moduleInterfaces' => array_merge(array_fill_keys(['dashboard', 'cashRegister', 'sales', 'proformas', 'investments', 'receivables', 'payables', 'customers', 'suppliers', 'users', 'roles', 'warehouses', 'categories', 'brands', 'inventory', 'stock', 'retentions', 'sri'], 'LIST'), $setting->module_interfaces ?? []),
             // Read only: the SRI's global rule for today, so the sale screen never hard-codes it.
             'finalConsumerLimit' => $this->finalConsumerLimit(),
         ];

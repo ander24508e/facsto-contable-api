@@ -2,6 +2,7 @@
 
 namespace App\Domains\Sales\Actions;
 
+use App\Domains\Cash\Services\SaleCashRecorder;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Proformas\Models\Proforma;
 use App\Domains\Sales\Enums\SaleStatus;
@@ -17,6 +18,7 @@ final class CancelSaleDraftAction
     public function __construct(
         private readonly CompanyContext $context,
         private readonly AuditRecorder $audit,
+        private readonly SaleCashRecorder $cash,
     ) {}
 
     public function execute(Sale $sale, User $actor): Sale
@@ -39,6 +41,8 @@ final class CancelSaleDraftAction
             }
             $before = ['status' => $sale->status->value];
             $sale->forceFill(['status' => SaleStatus::CANCELLED])->save();
+            // A draft paid «por facturar» gives its cash back to the open drawer.
+            $this->cash->forgetDraft($sale);
             Proforma::query()->where('company_id', $company->id)->where('converted_sale_id', $sale->id)->update(['converted_sale_id' => null]);
             $this->audit->record($actor, $company, 'sale.draft_cancelled', $sale, $before, ['status' => SaleStatus::CANCELLED->value]);
 

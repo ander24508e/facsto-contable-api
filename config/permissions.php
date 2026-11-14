@@ -117,6 +117,14 @@ return [
                 'update' => 'Editar, activar y desactivar productos',
             ],
         ],
+        'stock' => [
+            'name' => 'Stock',
+            'permissions' => [
+                'view' => 'Ver el stock, lo reservado y los últimos movimientos',
+                'move' => 'Registrar ingresos y egresos de un producto',
+                'adjust' => 'Guardar ajustes masivos (conteo físico)',
+            ],
+        ],
         'sri' => [
             'name' => 'SRI',
             'permissions' => [

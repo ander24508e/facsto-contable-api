@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Domains\Carwash\Console\ReleaseNoShowsCommand;
 use App\Domains\Carwash\Services\CatalogGuard;
 use App\Domains\Modules\Commands\ModuleEntitlementCommand;
 use App\Domains\Modules\Commands\PushEntitlementsCommand;
@@ -11,6 +12,7 @@ use App\Http\Middleware\VerifyPlatformSignature;
 use App\Models\User;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -52,7 +54,9 @@ final class ModulesServiceProvider extends ServiceProvider
         Gate::define('carwash.orders', fn (User $user): bool => Gate::forUser($user)->any(['carwash.view', 'carwash.own_work']));
 
         if ($this->app->runningInConsole()) {
-            $this->commands([ModuleEntitlementCommand::class, PushEntitlementsCommand::class]);
+            $this->commands([ModuleEntitlementCommand::class, PushEntitlementsCommand::class, ReleaseNoShowsCommand::class]);
+            // Lavadora › Configuración › Agenda «Tolerancia de llegada»: frees the reservations whose customer did not come.
+            $this->app->booted(fn () => Schedule::command('carwash:release-no-shows')->everyFiveMinutes()->withoutOverlapping()->onOneServer());
         }
     }
 }

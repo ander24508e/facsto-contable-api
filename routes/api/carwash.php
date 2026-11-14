@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\Carwash\AreaTypeController;
+use App\Http\Controllers\Api\V1\Carwash\ComboController;
 use App\Http\Controllers\Api\V1\Carwash\OperationsController;
 use App\Http\Controllers\Api\V1\Carwash\ServiceController;
 use App\Http\Controllers\Api\V1\Carwash\VehicleCatalogController;
@@ -21,10 +22,16 @@ Route::middleware('can:carwash.orders')->group(function (): void {
     Route::get('/work-orders/{workOrder}', [WorkOrderController::class, 'show'])->whereUuid('workOrder');
 });
 
+// «Ver comisiones»: el reporte de Configuración › Trabajadores.
+Route::get('/commissions', [OperationsController::class, 'commissions'])->middleware('can:carwash.commissions');
+
 Route::middleware('can:carwash.view')->group(function (): void {
     Route::get('/dashboard', [OperationsController::class, 'dashboard']);
     Route::get('/agenda', [OperationsController::class, 'agenda']);
     Route::get('/settings', [OperationsController::class, 'settings']);
+    Route::get('/settings/pending', [OperationsController::class, 'pending']);
+    Route::get('/supplies', [OperationsController::class, 'supplies']);
+    Route::get('/combos', [ComboController::class, 'index']);
     Route::get('/vehicle-types', [VehicleCatalogController::class, 'types']);
     Route::get('/vehicle-brands', [VehicleCatalogController::class, 'brands']);
     Route::get('/vehicle-specs', [VehicleCatalogController::class, 'specs']);
@@ -50,10 +57,15 @@ Route::middleware('can:carwash.operate')->group(function (): void {
     Route::patch('/work-orders/{workOrder}', [WorkOrderController::class, 'update'])->whereUuid('workOrder');
     Route::post('/work-orders/{workOrder}/transitions', [WorkOrderController::class, 'transition'])->whereUuid('workOrder');
     Route::post('/work-orders/{workOrder}/charge', [WorkOrderController::class, 'charge'])->whereUuid('workOrder')->middleware('throttle:30,1');
+    Route::post('/work-orders/{workOrder}/quote', [WorkOrderController::class, 'quote'])->whereUuid('workOrder');
+    Route::post('/work-orders/{workOrder}/checkout', [WorkOrderController::class, 'checkout'])->whereUuid('workOrder')->middleware('throttle:30,1');
 });
 
 Route::middleware('can:carwash.manage')->group(function (): void {
     Route::put('/settings', [OperationsController::class, 'updateSettings']);
+    Route::post('/settings/setup-complete', [OperationsController::class, 'completeSetup']);
+    Route::post('/combos', [ComboController::class, 'store']);
+    Route::patch('/combos/{combo}', [ComboController::class, 'update'])->whereUuid('combo');
     Route::post('/vehicle-types', [VehicleCatalogController::class, 'storeType']);
     Route::patch('/vehicle-types/{type}', [VehicleCatalogController::class, 'updateType'])->whereUuid('type');
     Route::patch('/vehicle-brands/{brand}', [VehicleCatalogController::class, 'updateBrand'])->whereUuid('brand');

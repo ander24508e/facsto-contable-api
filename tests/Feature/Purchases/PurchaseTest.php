@@ -75,7 +75,7 @@ final class PurchaseTest extends SalesTestCase
         $this->getJson("/api/v1/payables/{$purchase['publicId']}")->assertNotFound();
     }
 
-    public function test_a_product_of_another_warehouse_is_not_bought_into_this_one(): void
+    public function test_a_purchase_adds_the_units_to_its_own_warehouse(): void
     {
         $user = User::factory()->create();
         $company = $this->createCompany($user, '1799999999001');
@@ -89,7 +89,10 @@ final class PurchaseTest extends SalesTestCase
         $this->postJson('/api/v1/purchases', [
             'supplierPublicId' => $supplier, 'warehousePublicId' => $other->public_id, 'fiscalPaymentMethodPublicId' => $cash,
             'lines' => [['itemPublicId' => $water, 'quantity' => '1', 'unitCost' => '0.40']],
-        ])->assertUnprocessable()->assertJsonPath('error.code', 'ITEM_NOT_IN_WAREHOUSE');
-        $this->assertDatabaseCount('purchases', 0);
+        ])->assertCreated();
+        // A product may have units in several warehouses: the purchase opens Bodega 2 and the main one keeps its 5.
+        $itemId = Item::query()->where('public_id', $water)->value('id');
+        $this->assertSame('1.000000', ItemStock::query()->where('item_id', $itemId)->where('warehouse_id', $other->id)->value('quantity'));
+        $this->assertSame('5.000000', ItemStock::query()->where('item_id', $itemId)->where('warehouse_id', '<>', $other->id)->value('quantity'));
     }
 }

@@ -1,15 +1,21 @@
 <?php
 
-use App\Http\Controllers\Api\V1\CategoryController;
 use App\Http\Controllers\Api\V1\BrandController;
+use App\Http\Controllers\Api\V1\CategoryController;
 use App\Http\Controllers\Api\V1\FiscalPaymentMethodController;
 use App\Http\Controllers\Api\V1\ItemController;
+use App\Http\Controllers\Api\V1\StockController;
 use App\Http\Controllers\Api\V1\TaxController;
 use App\Http\Controllers\Api\V1\UnitController;
 use App\Http\Controllers\Api\V1\WarehouseController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.context'])->group(function (): void {
+    // Stock (Catálogo › Stock): sólo productos.
+    Route::get('/stock', [StockController::class, 'index']);
+    Route::get('/stock/movements', [StockController::class, 'movements']);
+    Route::post('/stock/movements', [StockController::class, 'move']);
+    Route::post('/stock/adjustments', [StockController::class, 'adjust']);
     Route::get('/items', [ItemController::class, 'index']);
     Route::get('/items/frequent', [ItemController::class, 'frequent']);
     Route::get('/items/next-code', [ItemController::class, 'nextCode']);

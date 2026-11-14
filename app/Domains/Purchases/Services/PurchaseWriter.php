@@ -151,11 +151,9 @@ final class PurchaseWriter
 
     private function receive(Purchase $purchase, Item $item, string $quantity, User $actor): void
     {
-        $stock = ItemStock::query()->where('item_id', $item->id)->lockForUpdate()->first()
+        // The units arrive at the purchase's warehouse (a product may have units in several).
+        $stock = ItemStock::query()->where('item_id', $item->id)->where('warehouse_id', $purchase->warehouse_id)->lockForUpdate()->first()
             ?? ItemStock::query()->create(['company_id' => $item->company_id, 'item_id' => $item->id, 'warehouse_id' => $purchase->warehouse_id, 'quantity' => '0']);
-        if ($stock->warehouse_id !== $purchase->warehouse_id) {
-            throw new ApiException(ApiErrorCode::ITEM_NOT_IN_WAREHOUSE, "«{$item->name}» está en otra bodega: cómpralo en su bodega o cámbialo de bodega en Inventario.", 422, ['items' => [$item->name]]);
-        }
         $balance = bcadd((string) $stock->quantity, $quantity, 6);
         $stock->forceFill(['quantity' => $balance])->save();
         StockMovement::query()->create([

@@ -5,6 +5,7 @@ namespace App\Domains\Carwash\Actions;
 use App\Domains\Carwash\Enums\BillingStatus;
 use App\Domains\Carwash\Enums\WorkOrderStatus;
 use App\Domains\Carwash\Models\WorkOrder;
+use App\Domains\Carwash\Services\WorkOrderPricing;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Sales\Actions\CreateSaleDraftAction;
 use App\Domains\Sales\Actions\UpdateSaleDraftAction;
@@ -17,7 +18,8 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * «Cobrar»: the order becomes a sale draft in Ventas, with the vehicle's customer and one line per service
- * (the catalog item, so price and taxes are FACSTO's). The cashier adds the payment and issues it there.
+ * (the catalog item, so price and taxes are FACSTO's), with the combo, loyalty and rounding discounts of
+ * Configuración (WorkOrderPricing). The cashier adds the payment and issues it there.
  * Charging again refreshes the same draft; a cancelled draft is replaced by a new one. Uses the Sales
  * actions, in the same transaction: the core never knows the Lavadora exists.
  */
@@ -28,6 +30,7 @@ final class ChargeWorkOrderAction
         private readonly CreateSaleDraftAction $create,
         private readonly UpdateSaleDraftAction $update,
         private readonly AuditRecorder $audit,
+        private readonly WorkOrderPricing $pricing,
     ) {}
 
     public function execute(WorkOrder $order, User $actor): WorkOrder
@@ -44,14 +47,12 @@ final class ChargeWorkOrderAction
                 throw new ApiException(ApiErrorCode::CARWASH_ORDER_ALREADY_BILLED, 'La orden ya tiene factura.', 409);
             }
 
+            $priced = $this->pricing->lines($order);
+            $extras = [...array_map(fn (string $combo) => 'Combo '.$combo, $priced['combos']), ...($priced['loyaltyFree'] ? ['Lavado gratis por fidelidad'] : [])];
             $draft = SaleDraftData::fromValidated([
                 'customerPublicId' => $order->customer->public_id,
-                'lines' => $order->lines->map(fn ($line) => [
-                    'itemPublicId' => $line->item->public_id,
-                    'quantity' => (string) $line->quantity,
-                    'discountAmount' => '0.00',
-                ])->values()->all(),
-                'notes' => trim($order->code().' · Placa '.$order->vehicle->plate.($order->notes ? ' · '.$order->notes : '')),
+                'lines' => $priced['lines'],
+                'notes' => mb_substr(trim(implode(' · ', array_filter([$order->code(), 'Placa '.$order->vehicle->plate, ...$extras, $order->notes]))), 0, 1000),
             ]);
             $sale = $billing === BillingStatus::DRAFT
                 ? $this->update->execute($order->sale, $draft, $actor)
@@ -59,6 +60,7 @@ final class ChargeWorkOrderAction
             $sale->forceFill(['source_module' => 'carwash', 'source_reference' => $order->public_id])->saveQuietly();
 
             $order->sale_id = $sale->id;
+            $order->loyalty_free = $priced['loyaltyFree'];
             $order->save();
             $this->audit->record($actor, $company, 'carwash.work_order.charged', $order, null, ['sale' => $sale->public_id, 'number' => $sale->displayNumber()]);
 

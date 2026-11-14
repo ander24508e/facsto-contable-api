@@ -490,6 +490,13 @@ paths:
                 defaultTaxPublicId: { type: string, format: uuid, nullable: true }
                 defaultUnit: { type: string, maxLength: 32, nullable: true }
                 idleTimeoutMinutes: { type: integer, enum: [0, 15, 30, 60, 480] }
+                salesInterface: { type: string, enum: [LIST, GRID], description: Presentación del buscador de productos en Ventas. }
+                proformasInterface: { type: string, enum: [LIST, GRID], description: Presentación del buscador de productos en Proformas. }
+                investmentsInterface: { type: string, enum: [LIST, GRID], description: Presentación del buscador de productos en Inversiones. }
+                moduleInterfaces:
+                  type: object
+                  description: Presentación de listas de los módulos principales de Aurenza por empresa. Los módulos verticales se configuran aparte.
+                  additionalProperties: { type: string, enum: [LIST, GRID] }
       responses: { "200": { description: Ajustes guardados }, "403": { $ref: "#/components/responses/CompanyAccessError" }, "422": { $ref: "#/components/responses/ValidationError" } }
   /api/v1/company/roles:
     get:
@@ -604,13 +611,16 @@ paths:
       summary: Devuelve un resumen operativo agregado para la empresa activa.
       operationId: getDashboardSummary
       security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: period, in: query, required: false, description: Mes para las métricas mensuales en formato YYYY-MM; por defecto, el mes actual., schema: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$', example: "2026-11" } }
       responses:
         "200":
-          description: Conteos y borradores recientes; no incluye métricas fiscales inexistentes.
+          description: Resumen de clientes, facturas e inventario de la empresa activa, además de ventas recientes.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DashboardSummaryResponse" }
         "403": { $ref: "#/components/responses/CompanyAccessError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
   /api/v1/sales:
     get:
       tags: [Sales]
@@ -1497,6 +1507,10 @@ paths:
       parameters:
         - { name: search, in: query, schema: { type: string } }
         - {
+            name: sort,
+            description: "Daily order: BEST_SELLERS_TODAY uses prepared sales dated today; MOST_PURCHASED_TODAY uses purchase movements for today.",
+            schema: { type: string, enum: [BEST_SELLERS_TODAY, MOST_PURCHASED_TODAY, NAME_ASC, NAME_DESC, NEWEST, OLDEST], default: NAME_ASC },
+          }        - {
             name: type,
             in: query,
             schema: { $ref: "#/components/schemas/ItemType" },
@@ -2456,7 +2470,13 @@ paths:
       operationId: getDashboardTrend
       security: [{ sessionCookie: [] }]
       parameters: [{ name: period, in: query, required: false, schema: { type: string, example: "2026-10" } }]
-      responses: { "200": { description: Serie diaria del mes y de los últimos 7 días }, "422": { $ref: "#/components/responses/ValidationError" } }
+      responses:
+        "200":
+          description: Serie diaria del mes, estados recientes y totales netos autorizados.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DashboardTrendResponse" }
+        "422": { $ref: "#/components/responses/ValidationError" }
   /api/v1/dashboard/actions:
     get:
       tags: [Dashboard]
@@ -2712,7 +2732,7 @@ paths:
   /api/v1/receivables:
     get:
       tags: [Credit]
-      summary: "Cuentas por cobrar: ventas facturadas con CREDITO, su abono, lo pagado, el saldo y la próxima cuota."
+      summary: "Cartera por cobrar: ventas facturadas con CREDITO, abonos, saldo y próxima cuota."
       operationId: listReceivables
       security: [{ sessionCookie: [] }]
       parameters:
@@ -2749,7 +2769,7 @@ paths:
   /api/v1/payables:
     get:
       tags: [Credit]
-      summary: "Cuentas por pagar: compras con CREDITO, su abono, lo pagado, el saldo y la próxima cuota."
+      summary: "Obligaciones por pagar: compras con CREDITO, pagos, saldo y próxima cuota a proveedores."
       operationId: listPayables
       security: [{ sessionCookie: [] }]
       parameters:
@@ -3158,6 +3178,7 @@ components:
         data:
           type: object
           properties:
+            period: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$', example: "2026-11" }
             counts:
               type: object
               properties:
@@ -3166,7 +3187,58 @@ components:
                 items: { type: integer }
                 activeItems: { type: integer }
                 draftSales: { type: integer }
+            customerGrowth:
+              type: array
+              description: Conteo por día del mes; cumulativeCustomers incluye los clientes existentes antes del periodo.
+              items:
+                type: object
+                properties:
+                  date: { type: string, format: date }
+                  newCustomers: { type: integer }
+                  cumulativeCustomers: { type: integer }
+            invoiceStates:
+              type: object
+              description: Facturas autorizadas, borradores de venta y documentos con errores para el periodo seleccionado.
+              properties:
+                total: { type: integer }
+                authorized: { type: integer }
+                draft: { type: integer }
+                errors: { type: integer }
+            inventory:
+              type: object
+              description: Existencias actuales agregadas por artículo activo en las bodegas de la empresa.
+              properties:
+                stockTotal: { type: string, description: Suma decimal de unidades en existencia. }
+                totalTrackedItems: { type: integer }
+                normalStockItems: { type: integer }
+                lowStockItems: { type: integer }
+                outOfStockItems: { type: integer }
+                lowStockThreshold: { type: integer, description: Umbral configurado para stock bajo. }
             recentSales: { type: array, items: { $ref: "#/components/schemas/Sale" } }
+    DashboardTrendResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            period: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$', example: "2026-11" }
+            days:
+              type: array
+              items:
+                type: object
+                properties:
+                  date: { type: string, format: date }
+                  invoiced: { type: string, description: Monto autorizado en formato decimal. }
+                  credited: { type: string, description: Monto autorizado en notas de crédito, en formato decimal. }
+            lastSevenDays: { type: array, items: { type: object } }
+            salesTotals:
+              type: object
+              properties:
+                invoiced: { type: string }
+                credited: { type: string }
+                net: { type: string, description: Facturas autorizadas menos notas de crédito autorizadas. }
+                invoicedShare: { type: string, description: Participación porcentual para la visualización. }
+                creditedShare: { type: string, description: Participación porcentual para la visualización. }
     CompanySetupStatus:
       type: object
       required: [state, ready, canIssueDocuments, issuerReady, emissionReady, certificateReady, onboardingRequired]

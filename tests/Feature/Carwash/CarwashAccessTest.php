@@ -26,7 +26,7 @@ final class CarwashAccessTest extends CarwashTestCase
             ->assertJsonPath('data.modules.0.module', 'carwash')
             ->assertJsonPath('data.modules.0.status', 'ENABLED')
             ->assertJsonPath('data.modules.0.features', ['carwash'])
-            ->assertJsonPath('data.modules.0.can', ['view', 'operate', 'manage', 'own_work', 'assignable']);
+            ->assertJsonPath('data.modules.0.can', ['view', 'operate', 'manage', 'own_work', 'assignable', 'commissions']);
         $this->actingAs($viewer)->getJson('/api/v1/company')->assertOk()->assertJsonPath('data.modules.0.can', ['view']);
     }
 

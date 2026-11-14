@@ -10,13 +10,17 @@ use App\Models\User;
 
 /**
  * Writes the stock a user typed by hand. The difference is kept as a movement (INITIAL on creation,
- * ADJUSTMENT afterwards), so the kardex has history from day one. A product belongs to one warehouse:
- * moving it takes all its units out of the previous one (with its own movement) and into the new one.
+ * ADJUSTMENT afterwards), so the kardex has history from day one. This is the product's main warehouse:
+ * changing it takes all its units out of the previous one (with its own movement) and into the new one. Once the
+ * product has units in several warehouses (Stock › Traslado), they are managed only from Stock.
  */
 final class SetItemStockAction
 {
     public function execute(Item $item, Warehouse $warehouse, string $quantity, User $actor, bool $initial = false): void
     {
+        if ($item->stocks()->count() > 1) {
+            return;
+        }
         $stock = $item->stocks()->lockForUpdate()->first()
             ?? new ItemStock(['company_id' => $item->company_id, 'item_id' => $item->id, 'warehouse_id' => $warehouse->id, 'quantity' => '0']);
 

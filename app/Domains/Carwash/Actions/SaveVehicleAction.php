@@ -2,6 +2,7 @@
 
 namespace App\Domains\Carwash\Actions;
 
+use App\Domains\Carwash\Models\CarwashSetting;
 use App\Domains\Carwash\Models\Vehicle;
 use App\Domains\Carwash\Models\VehicleModel;
 use App\Domains\Carwash\Models\VehicleType;
@@ -67,6 +68,8 @@ final class SaveVehicleAction
             }
         }
 
+        $this->assertRequired($company->id, $vehicle, $attributes);
+
         return DB::transaction(function () use ($vehicle, $attributes, $actor, $company): Vehicle {
             $before = $vehicle->exists ? $vehicle->only(array_keys($attributes)) : null;
             $isNew = ! $vehicle->exists;
@@ -75,5 +78,33 @@ final class SaveVehicleAction
 
             return $vehicle->load(['customer', 'type', 'brand', 'model']);
         });
+    }
+
+    /**
+     * Configuración › Vehículos: the data the company requires (color, brand and model, year) and, when it says so, an
+     * Ecuadorian plate (cars ABC1234 or ABC123, motorcycles AB123C).
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private function assertRequired(int $companyId, Vehicle $vehicle, array $attributes): void
+    {
+        $settings = CarwashSetting::forCompany($companyId);
+        $value = fn (string $column) => array_key_exists($column, $attributes) ? $attributes[$column] : $vehicle->{$column};
+        $errors = [];
+        if (isset($attributes['plate']) && $settings->validate_ec_plate && ! preg_match('/^([A-Z]{3}\d{3,4}|[A-Z]{2}\d{3}[A-Z])$/', $attributes['plate'])) {
+            $errors['plate'] = ['La placa no tiene el formato de Ecuador (ABC1234 o AB123C para motos).'];
+        }
+        if ($settings->require_color && blank($value('color'))) {
+            $errors['color'] = ['El color es obligatorio.'];
+        }
+        if ($settings->require_brand_model && blank($value('vehicle_model_id'))) {
+            $errors['vehicleSpecPublicId'] = ['La marca y el modelo son obligatorios.'];
+        }
+        if ($settings->require_year && blank($value('year'))) {
+            $errors['year'] = ['El año es obligatorio.'];
+        }
+        if ($errors !== []) {
+            throw new ApiException(ApiErrorCode::CARWASH_VEHICLE_DATA_REQUIRED, collect($errors)->flatten()->first(), 422, ['errors' => $errors]);
+        }
     }
 }

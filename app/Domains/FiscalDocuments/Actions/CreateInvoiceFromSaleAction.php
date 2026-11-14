@@ -107,7 +107,9 @@ final class CreateInvoiceFromSaleAction
                 ]);
                 $this->writeContent($document, $sale, $totals['tax_groups']);
                 $sale->forceFill(['status' => SaleStatus::DOCUMENT_PREPARED, 'issue_date' => $issueDate, 'cash_session_id' => $session->id])->save();
-                // The products leave the cash register's warehouse; any failure undoes the numbering too.
+                // The products leave the cash register's warehouse; any failure undoes the numbering too. A converted
+                // proforma with an advance or on credit first gives back the units it had taken.
+                $this->stock->releaseProformaForSale($sale, $actor);
                 $this->stock->syncInvoice($document, $sale, $session->warehouse, $this->settings->allowsNegativeStock($company), $actor);
                 $this->cash->record($sale, $document, $actor);
                 $this->audit->record($actor, $company, 'invoice.numbered', $document, null, ['fullNumber' => $fullNumber, 'status' => DocumentStatus::NUMBERED->value]);

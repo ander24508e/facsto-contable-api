@@ -11,10 +11,10 @@ use App\Domains\Catalog\Actions\SyncItemTaxesAction;
 use App\Domains\Catalog\Actions\UpdateItemAction;
 use App\Domains\Catalog\Actions\UpdateItemImageAction;
 use App\Domains\Catalog\Models\Item;
+use App\Domains\Catalog\Services\BarcodeGenerator;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Companies\Services\CompanySettings;
 use App\Domains\Inventory\Models\StockMovement;
-use App\Domains\Catalog\Services\BarcodeGenerator;
 use App\Domains\Inventory\Services\ItemCodeSuggester;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Catalog\StoreItemRequest;
@@ -52,7 +52,8 @@ final class ItemController extends Controller
     public function index(Request $request, CompanyContext $context): AnonymousResourceCollection
     {
         $this->authorize('viewAny', Item::class);
-        $query = $context->company()->items()->with(['taxes.definition', 'category', 'catalogMetadata.brand', 'stocks.warehouse.establishment', 'priceTiers'])->orderBy('name');
+        $company = $context->company();
+        $query = $company->items()->with(['taxes.definition', 'category', 'catalogMetadata.brand', 'stocks.warehouse.establishment', 'priceTiers']);
         if ($search = trim((string) $request->query('search'))) {
             $query->where(fn ($q) => $q->whereRaw('LOWER(name) LIKE ?', ['%'.strtolower($search).'%'])
                 ->orWhereRaw('LOWER(internal_code) LIKE ?', ['%'.strtolower($search).'%'])
@@ -77,6 +78,37 @@ final class ItemController extends Controller
         }
         if ($request->query('status') === 'INACTIVE') {
             $query->where('is_active', false);
+        }
+
+        $sort = (string) $request->query('sort', 'NAME_ASC');
+        if ($sort === 'BEST_SELLERS_TODAY') {
+            $soldToday = DB::table('sale_details')
+                ->join('sales', 'sales.id', '=', 'sale_details.sale_id')
+                ->where('sale_details.company_id', $company->id)
+                ->where('sales.status', 'DOCUMENT_PREPARED')
+                ->whereDate('sales.issue_date', today())
+                ->groupBy('sale_details.item_id')
+                ->selectRaw('sale_details.item_id, SUM(sale_details.quantity) as units_sold');
+            $query->leftJoinSub($soldToday, 'sold_today', 'sold_today.item_id', '=', 'items.id')
+                ->orderByRaw('COALESCE(sold_today.units_sold, 0) DESC')->orderBy('items.name');
+        } elseif ($sort === 'MOST_PURCHASED_TODAY') {
+            $purchasedToday = DB::table('stock_movements')
+                ->join('purchases', 'purchases.id', '=', 'stock_movements.purchase_id')
+                ->where('stock_movements.company_id', $company->id)
+                ->where('stock_movements.type', StockMovement::PURCHASE)
+                ->whereDate('purchases.issue_date', today())
+                ->groupBy('stock_movements.item_id')
+                ->selectRaw('stock_movements.item_id, SUM(stock_movements.quantity) as units_purchased');
+            $query->leftJoinSub($purchasedToday, 'purchased_today', 'purchased_today.item_id', '=', 'items.id')
+                ->orderByRaw('COALESCE(purchased_today.units_purchased, 0) DESC')->orderBy('items.name');
+        } elseif ($sort === 'NAME_DESC') {
+            $query->orderByDesc('items.name')->orderBy('items.id');
+        } elseif ($sort === 'NEWEST') {
+            $query->orderByDesc('items.created_at')->orderByDesc('items.id');
+        } elseif ($sort === 'OLDEST') {
+            $query->orderBy('items.created_at')->orderBy('items.id');
+        } else {
+            $query->orderBy('items.name')->orderBy('items.id');
         }
 
         return ItemResource::collection($query->paginate(min(max((int) $request->query('per_page', 15), 1), 100)));

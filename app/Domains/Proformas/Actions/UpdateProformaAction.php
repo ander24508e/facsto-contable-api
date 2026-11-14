@@ -27,6 +27,9 @@ final class UpdateProformaAction
             if (! $locked) {
                 throw new ApiException(ApiErrorCode::PROFORMA_NOT_FOUND, 'La proforma no existe en la empresa activa.', 404);
             }
+            if (! $locked->isOpen()) {
+                throw new ApiException(ApiErrorCode::PROFORMA_NOT_OPEN, 'La proforma ya fue rechazada o convertida: no se edita.', 409);
+            }
             if ($locked->converted_sale_id !== null) {
                 throw new ApiException(ApiErrorCode::PROFORMA_CONVERSION_PENDING, 'Cancela la venta vinculada antes de editar esta proforma.', 409);
             }

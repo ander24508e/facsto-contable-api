@@ -4,6 +4,7 @@ namespace App\Domains\Carwash\Services;
 
 use App\Domains\Carwash\Enums\BillingStatus;
 use App\Domains\Carwash\Enums\WorkOrderStatus;
+use App\Domains\Carwash\Models\CarwashSetting;
 use App\Domains\Carwash\Models\WorkOrder;
 use App\Domains\Companies\Models\Company;
 use App\Models\User;
@@ -42,6 +43,10 @@ final class CarwashDashboard
             'averageWashMinutes' => $average,
             'readyUnbilled' => $orders->filter(fn (WorkOrder $order) => $order->status === WorkOrderStatus::READY && $billing($order) === BillingStatus::UNBILLED)->count(),
             'awaitingPayment' => $orders->filter(fn (WorkOrder $order) => $billing($order) === BillingStatus::DRAFT)->count(),
+            // Configuración › Insumos «Aviso de insumo bajo»: supplies at or below the low-stock threshold of Sistema.
+            'lowSupplies' => CarwashSetting::for($company)->supply_alert
+                ? collect(app(CarwashReports::class)->supplies($company))->where('low', true)->map(fn (array $supply) => ['name' => $supply['name'], 'stock' => $supply['stock'], 'unit' => $supply['unit']])->values()->all()
+                : [],
             'washers' => app(WorkerDirectory::class)->list($company)
                 ->map(fn (User $washer) => [
                     'publicId' => $washer->public_id,

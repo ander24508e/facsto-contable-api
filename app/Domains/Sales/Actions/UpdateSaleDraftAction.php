@@ -2,6 +2,8 @@
 
 namespace App\Domains\Sales\Actions;
 
+use App\Domains\Cash\Models\CashMovement;
+use App\Domains\Cash\Services\SaleCashRecorder;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Sales\DTOs\SaleDraftData;
 use App\Domains\Sales\Enums\SaleStatus;
@@ -17,6 +19,7 @@ final class UpdateSaleDraftAction
     public function __construct(
         private readonly CompanyContext $context,
         private readonly SaleDraftWriter $writer,
+        private readonly SaleCashRecorder $cash,
     ) {}
 
     public function execute(Sale $sale, SaleDraftData $data, User $actor): Sale
@@ -32,7 +35,13 @@ final class UpdateSaleDraftAction
                 throw new ApiException(ApiErrorCode::SALE_NOT_EDITABLE, 'Sólo se pueden editar borradores activos.', 409);
             }
 
-            return $this->writer->update($sale, $data->toArray(), $actor);
+            $updated = $this->writer->update($sale, $data->toArray(), $actor);
+            // A draft already paid «por facturar» keeps its cash in step with its new payments.
+            if (CashMovement::query()->where('sale_id', $updated->id)->where('source', CashMovement::SALE)->whereNull('electronic_document_id')->exists()) {
+                $this->cash->recordDraft($updated->load('paymentMethods'), $actor);
+            }
+
+            return $updated;
         });
     }
 }

@@ -3,10 +3,11 @@
 namespace App\Domains\Carwash\Actions;
 
 use App\Domains\Carwash\Enums\BillingStatus;
+use App\Domains\Carwash\Enums\WorkOrderSource;
 use App\Domains\Carwash\Enums\WorkOrderStatus;
 use App\Domains\Carwash\Models\WorkOrder;
 use App\Domains\Carwash\Services\AgendaService;
-use App\Domains\Carwash\Services\WorkerDirectory;
+use App\Domains\Carwash\Services\WasherAssigner;
 use App\Domains\Carwash\Services\WorkOrderLineResolver;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Companies\Models\Company;
@@ -29,9 +30,10 @@ final class UpdateWorkOrderAction
         private readonly WorkOrderLineResolver $lines,
         private readonly AgendaService $agenda,
         private readonly AuditRecorder $audit,
+        private readonly WasherAssigner $washers,
     ) {}
 
-    /** @param array<string, mixed> $data servicePublicIds, washerPublicId, scheduledAt, workAreaPublicId, notes */
+    /** @param array<string, mixed> $data servicePublicIds, washerPublicId, scheduledAt, workAreaPublicId, notes, dirty */
     public function execute(WorkOrder $order, array $data, User $actor): WorkOrder
     {
         $company = $this->context->company();
@@ -43,7 +45,7 @@ final class UpdateWorkOrderAction
             if ($order->status->isClosed()) {
                 throw new ApiException(ApiErrorCode::CARWASH_ORDER_NOT_EDITABLE, 'La orden ya está cerrada.', 409);
             }
-            $editingContent = array_key_exists('servicePublicIds', $data) || array_key_exists('notes', $data);
+            $editingContent = array_key_exists('servicePublicIds', $data) || array_key_exists('notes', $data) || array_key_exists('dirty', $data);
             if ($editingContent && (! $order->status->isEditable() || BillingStatus::of($order->sale) !== BillingStatus::UNBILLED)) {
                 throw new ApiException(ApiErrorCode::CARWASH_ORDER_NOT_EDITABLE, 'Los servicios sólo se cambian antes de lavar y antes de cobrar.', 409);
             }
@@ -51,7 +53,7 @@ final class UpdateWorkOrderAction
             $rescheduling = array_key_exists('scheduledAt', $data) || array_key_exists('workAreaPublicId', $data);
 
             if (array_key_exists('washerPublicId', $data)) {
-                $order->washer_id = app(WorkerDirectory::class)->resolve($company, $data['washerPublicId'], $order->washer_id)?->id;
+                $order->washer_id = $this->washers->assign($company, $data['washerPublicId'], $order->washer_id, $order)?->id;
             }
             if ($rescheduling) {
                 if ($order->status !== WorkOrderStatus::PENDING) {
@@ -67,19 +69,26 @@ final class UpdateWorkOrderAction
             if (array_key_exists('notes', $data)) {
                 $order->notes = trim((string) $data['notes']) ?: null;
             }
-            if (array_key_exists('servicePublicIds', $data)) {
-                $lines = $this->lines->resolve($order->vehicle, $data['servicePublicIds']);
-                $order->lines()->delete();
-                $order->lines()->createMany($lines);
+            if (array_key_exists('dirty', $data)) {
+                $order->dirty = (bool) $data['dirty'];
+            }
+            if (array_key_exists('servicePublicIds', $data) || array_key_exists('dirty', $data) || $rescheduling) {
+                // The services (or, if they are not sent, the ones it has) again, with the surcharges of its time and dirt.
+                $services = $data['servicePublicIds'] ?? $order->lines()->where('kind', 'SERVICE')->with('service')->get()->pluck('service.public_id')->filter()->values()->all();
+                if (array_key_exists('servicePublicIds', $data) || $order->status->isEditable() && BillingStatus::of($order->sale) === BillingStatus::UNBILLED) {
+                    $lines = [...$this->lines->resolve($order->vehicle, $services), ...$this->lines->surcharges($company->id, (bool) $order->dirty, $order->scheduled_at)];
+                    $order->lines()->delete();
+                    $order->lines()->createMany($lines);
+                }
             }
             if ($order->scheduled_at === null) {
                 // Without a time it is a walk-in again: it frees its area.
                 $order->work_area_id = null;
                 $order->scheduled_end_at = null;
-            } elseif ($rescheduling || array_key_exists('servicePublicIds', $data)) {
+            } elseif ($rescheduling || array_key_exists('servicePublicIds', $data) || array_key_exists('dirty', $data)) {
                 $area = $order->work_area_id ? $order->workArea()->first() : $this->agenda->area($company, null);
                 $lines = $order->lines()->get(['service_id', 'duration_minutes'])->map(fn ($line) => ['service_id' => $line->service_id, 'duration_minutes' => $line->duration_minutes])->all();
-                $order->scheduled_end_at = $this->agenda->reserve($company, $area, $order->scheduled_at, $lines, $order);
+                $order->scheduled_end_at = $this->agenda->reserve($company, $area, $order->scheduled_at, $lines, $order, $order->source === WorkOrderSource::RESERVATION);
             }
             $order->save();
             $this->audit->record($actor, $company, 'carwash.work_order.updated', $order, $before, [

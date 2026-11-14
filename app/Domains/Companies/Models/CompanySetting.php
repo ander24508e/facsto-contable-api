@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /** Sistema: the rules and defaults of one company (stock threshold, sale and product defaults, idle timeout). */
-#[Fillable(['company_id', 'low_stock_threshold', 'allow_negative_stock', 'default_payment_method', 'default_customer', 'default_company_tax_id', 'default_unit', 'idle_timeout_minutes'])]
+#[Fillable(['company_id', 'low_stock_threshold', 'allow_negative_stock', 'default_payment_method', 'default_customer', 'default_company_tax_id', 'default_unit', 'idle_timeout_minutes', 'sales_interface', 'proformas_interface', 'investments_interface', 'module_interfaces'])]
 class CompanySetting extends Model
 {
     public const DEFAULT_CUSTOMERS = ['EMPTY', 'FINAL_CONSUMER'];
@@ -21,6 +21,10 @@ class CompanySetting extends Model
         'allow_negative_stock' => false,
         'default_customer' => 'EMPTY',
         'idle_timeout_minutes' => 0,
+        'sales_interface' => 'LIST',
+        'proformas_interface' => 'LIST',
+        'investments_interface' => 'LIST',
+        'module_interfaces' => [],
     ];
 
     public function defaultTax(): BelongsTo
@@ -30,6 +34,6 @@ class CompanySetting extends Model
 
     protected function casts(): array
     {
-        return ['low_stock_threshold' => 'integer', 'allow_negative_stock' => 'boolean', 'idle_timeout_minutes' => 'integer'];
+        return ['low_stock_threshold' => 'integer', 'allow_negative_stock' => 'boolean', 'idle_timeout_minutes' => 'integer', 'module_interfaces' => 'array'];
     }
 }

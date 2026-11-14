@@ -7,9 +7,13 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['company_id', 'work_order_id', 'service_id', 'service_price_id', 'item_id', 'description', 'quantity', 'duration_minutes'])]
+#[Fillable(['company_id', 'work_order_id', 'kind', 'service_id', 'service_price_id', 'item_id', 'description', 'quantity', 'duration_minutes'])]
 class WorkOrderLine extends Model
 {
+    public const SERVICE = 'SERVICE';
+
+    public const SURCHARGE = 'SURCHARGE';
+
     protected $table = 'carwash_work_order_lines';
 
     public function service(): BelongsTo

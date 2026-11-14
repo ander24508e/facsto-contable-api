@@ -22,6 +22,7 @@ final class ConvertProformaToSaleAction
         private readonly SaleQuoteService $quotes,
         private readonly CashSessionResolver $cashSessions,
         private readonly AuditRecorder $audit,
+        private readonly ProformaFollowUpAction $followUp,
     ) {}
 
     /** @param array<string, mixed> $data */
@@ -43,11 +44,19 @@ final class ConvertProformaToSaleAction
                     return $existing->load(['customer', 'creator', 'cashSession', 'details.taxes', 'paymentMethods', 'installments', 'electronicDocument']);
                 }
 
-                throw new ApiException(ApiErrorCode::PROFORMA_CONVERSION_CONFLICT, 'La conversiÃ³n de esta proforma ya fue iniciada y requiere revisiÃ³n.', 409);
+                throw new ApiException(ApiErrorCode::PROFORMA_CONVERSION_CONFLICT, 'La conversión de esta proforma ya fue iniciada y requiere revisiÃ³n.', 409);
             }
 
+            if (! $locked->isOpen()) {
+                throw new ApiException(ApiErrorCode::PROFORMA_NOT_OPEN, 'La proforma ya fue rechazada o convertida.', 409);
+            }
             if ($locked->expiration_date->lt(today())) {
-                throw new ApiException(ApiErrorCode::PROFORMA_EXPIRED, 'La proforma estÃ¡ vencida. Actualiza su fecha de vencimiento antes de convertirla.', 409);
+                throw new ApiException(ApiErrorCode::PROFORMA_EXPIRED, 'La proforma está vencida. Actualiza su fecha de vencimiento antes de convertirla.', 409);
+            }
+
+            if (! empty($data['itemPublicIds'])) {
+                $this->followUp->splitForConversion($locked, $data['itemPublicIds'], $actor);
+                $locked = $locked->refresh()->load(['customer', 'lines']);
             }
 
             $session = $this->cashSessions->open($company, $data['cashSessionPublicId']);

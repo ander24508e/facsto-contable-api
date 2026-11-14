@@ -14,13 +14,62 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Horario de atención general y largo de los turnos de la Agenda; la capacidad la dan las áreas de trabajo.
+        // Configuración de la Lavadora, una pestaña por submódulo. Cada ajuste tiene un valor por defecto que deja el
+        // módulo como antes: si la empresa no lo toca, nada cambia.
         Schema::create('carwash_settings', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('company_id')->unique()->constrained()->cascadeOnDelete();
+            // Agenda: horario general, largo del turno, anticipación, tolerancia de llegada, días cerrados y cupo.
             $table->time('opening_time')->default('08:00');
             $table->time('closing_time')->default('18:00');
             $table->unsignedSmallInteger('slot_minutes')->default(30);
+            $table->unsignedSmallInteger('min_advance_minutes')->default(0);
+            $table->unsignedSmallInteger('max_advance_days')->default(60);
+            $table->unsignedSmallInteger('arrival_tolerance_minutes')->nullable();
+            $table->unsignedSmallInteger('vehicles_per_slot')->nullable();
+            $table->json('closed_weekdays')->nullable();
+            $table->json('closed_dates')->nullable();
+            // Servicios: checklist de recepción y pasos opcionales (Llegó, Listo).
+            $table->json('reception_checklist')->nullable();
+            $table->boolean('require_checklist')->default(false);
+            $table->boolean('use_arrived_step')->default(true);
+            $table->boolean('use_ready_step')->default(true);
+            // Órdenes: prefijo y número inicial, cobro manual o automático, entrega sin factura.
+            $table->string('order_prefix', 6)->default('OT');
+            $table->unsignedInteger('order_start_number')->default(1);
+            $table->string('billing_mode', 10)->default('MANUAL');
+            $table->boolean('allow_unbilled_delivery')->default(false);
+            // Áreas: limpieza entre vehículos, uno por área, asignación automática.
+            $table->unsignedSmallInteger('cleanup_minutes')->default(0);
+            $table->boolean('one_vehicle_per_area')->default(false);
+            $table->boolean('auto_assign_area')->default(false);
+            // Vehículos: datos obligatorios y placa ecuatoriana.
+            $table->boolean('require_color')->default(false);
+            $table->boolean('require_brand_model')->default(false);
+            $table->boolean('require_year')->default(false);
+            $table->boolean('validate_ec_plate')->default(false);
+            // Tarifas: precio por vehículo o único, recargos (artículos de Inventario) y redondeo hacia abajo.
+            $table->string('pricing_mode', 12)->default('BY_VEHICLE');
+            $table->foreignId('dirty_surcharge_item_id')->nullable();
+            $table->foreignId('peak_surcharge_item_id')->nullable();
+            $table->time('peak_from')->nullable();
+            $table->time('peak_to')->nullable();
+            $table->decimal('rounding_step', 4, 2)->nullable();
+            // Trabajadores: comisión por defecto, asignación y máximo de órdenes a la vez.
+            $table->string('commission_type', 8)->default('PERCENT');
+            $table->decimal('commission_value', 10, 2)->default(0);
+            $table->string('assignment_mode', 10)->default('MANUAL');
+            $table->unsignedSmallInteger('max_orders_per_washer')->nullable();
+            // Insumos: cuándo se descuentan y aviso de insumo bajo.
+            $table->string('consume_supplies_on', 10)->default('READY');
+            $table->boolean('supply_alert')->default(true);
+            // Clientes: avisos (se envían cuando estén el correo y WhatsApp) y fidelización (cada N lavados, uno gratis).
+            $table->boolean('notify_ready')->default(false);
+            $table->boolean('notify_reminder')->default(false);
+            $table->unsignedSmallInteger('reminder_hours')->default(24);
+            $table->unsignedSmallInteger('loyalty_every')->nullable();
+            // Asistente inicial: se muestra hasta que la empresa lo termina.
+            $table->timestamp('setup_completed_at')->nullable();
             $table->timestamps();
         });
 
@@ -89,6 +138,9 @@ return new class extends Migration
             $table->unsignedSmallInteger('duration_minutes')->default(30);
             // Tipo de área que necesita (Lavado, Secado…): al reservar sólo sirven las áreas que lo hacen.
             $table->foreignId('area_type_id')->nullable();
+            // Comisión propia del servicio; vacía: la de Configuración › Trabajadores.
+            $table->string('commission_type', 8)->nullable();
+            $table->decimal('commission_value', 10, 2)->nullable();
             $table->timestamps();
             $table->unique(['company_id', 'item_id']);
             $table->unique(['company_id', 'id']);
@@ -123,6 +175,8 @@ return new class extends Migration
             $table->uuid('public_id')->unique();
             $table->foreignId('company_id')->constrained()->cascadeOnDelete();
             $table->unsignedInteger('number');
+            // Prefijo con el que nació (Configuración › Órdenes); cambiarlo no renombra las órdenes anteriores.
+            $table->string('code_prefix', 6)->default('OT');
             $table->string('source', 20)->default('COUNTER');
             $table->foreignId('vehicle_id');
             $table->foreignId('customer_id');
@@ -140,6 +194,11 @@ return new class extends Migration
             $table->timestamp('cancelled_at')->nullable();
             $table->string('cancel_reason', 300)->nullable();
             $table->string('notes', 1000)->nullable();
+            // Checklist de recepción respondido al llegar: [{label, checked, note}].
+            $table->json('checklist')->nullable();
+            // Suciedad extrema (recargo) y lavado gratis por fidelización.
+            $table->boolean('dirty')->default(false);
+            $table->boolean('loyalty_free')->default(false);
             $table->foreignId('sale_id')->nullable()->unique();
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
@@ -159,8 +218,10 @@ return new class extends Migration
             $table->id();
             $table->foreignId('company_id')->constrained()->cascadeOnDelete();
             $table->foreignId('work_order_id');
-            $table->foreignId('service_id');
-            $table->foreignId('service_price_id');
+            // SERVICE: un servicio de Tarifas (con su precio por vehículo, o sin él con precio único); SURCHARGE: un recargo.
+            $table->string('kind', 10)->default('SERVICE');
+            $table->foreignId('service_id')->nullable();
+            $table->foreignId('service_price_id')->nullable();
             $table->foreignId('item_id');
             $table->string('description', 300);
             $table->decimal('quantity', 12, 6)->default(1);
@@ -175,6 +236,9 @@ return new class extends Migration
 
         if (DB::getDriverName() === 'pgsql') {
             DB::statement('ALTER TABLE carwash_settings ADD CONSTRAINT carwash_settings_hours_check CHECK (closing_time > opening_time AND slot_minutes BETWEEN 5 AND 240)');
+            DB::statement("ALTER TABLE carwash_settings ADD CONSTRAINT carwash_settings_modes_check CHECK (billing_mode IN ('MANUAL','AUTO') AND pricing_mode IN ('BY_VEHICLE','SINGLE') AND commission_type IN ('PERCENT','FIXED') AND assignment_mode IN ('MANUAL','ROTATION') AND consume_supplies_on IN ('READY','DELIVERED'))");
+            DB::statement("ALTER TABLE carwash_services ADD CONSTRAINT carwash_services_commission_check CHECK (commission_type IS NULL OR commission_type IN ('PERCENT','FIXED'))");
+            DB::statement("ALTER TABLE carwash_work_order_lines ADD CONSTRAINT carwash_work_order_lines_kind_check CHECK (kind IN ('SERVICE','SURCHARGE') AND (kind = 'SURCHARGE' OR service_id IS NOT NULL))");
             DB::statement("ALTER TABLE carwash_vehicles ADD CONSTRAINT carwash_vehicles_plate_check CHECK (plate ~ '^[A-Z0-9]{5,10}$')");
             DB::statement('ALTER TABLE carwash_vehicles ADD CONSTRAINT carwash_vehicles_year_check CHECK (year IS NULL OR year BETWEEN 1950 AND 2100)');
             DB::statement('ALTER TABLE carwash_services ADD CONSTRAINT carwash_services_duration_check CHECK (duration_minutes BETWEEN 5 AND 1440)');

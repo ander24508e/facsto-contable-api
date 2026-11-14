@@ -29,6 +29,7 @@ return [
                 'manage' => 'Administrar tarifas, áreas y configuración',
                 'own_work' => 'Ver su propio trabajo (sus órdenes asignadas)',
                 'assignable' => 'Puede ser asignado como trabajador',
+                'commissions' => 'Ver comisiones de los trabajadores',
             ],
             'read_actions' => ['view', 'own_work'],
         ],

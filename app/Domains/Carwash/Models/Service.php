@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * category, IVA, photo and status are the item's; the Lavadora keeps only the base duration, the area type it needs and, for a service,
  * its prices per vehicle (each one its own Inventario item, which is what gets invoiced).
  */
-#[Fillable(['company_id', 'item_id', 'duration_minutes', 'area_type_id'])]
+#[Fillable(['company_id', 'item_id', 'duration_minutes', 'area_type_id', 'commission_type', 'commission_value'])]
 class Service extends Model
 {
     use HasPublicId;
@@ -45,6 +45,6 @@ class Service extends Model
 
     protected function casts(): array
     {
-        return ['duration_minutes' => 'integer'];
+        return ['duration_minutes' => 'integer', 'commission_value' => 'decimal:2'];
     }
 }

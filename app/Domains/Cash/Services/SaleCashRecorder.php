@@ -46,6 +46,48 @@ final class SaleCashRecorder
     }
 
     /**
+     * A draft already paid (cobrado sin factura, «Por facturar»): its cash enters the drawer now with the same SALE
+     * movement the invoice later takes over (record() rewrites it with the invoice number). Cancelling the draft takes it
+     * out again (forgetDraft) while its session is open.
+     */
+    public function recordDraft(Sale $sale, User $actor): void
+    {
+        $session = CashSession::query()->whereKey($sale->cash_session_id)->lockForUpdate()->first();
+        if (! $session || $session->status !== CashSession::OPEN) {
+            return;
+        }
+        $sale->loadMissing('paymentMethods');
+        $amount = $this->cashOf($sale);
+        $movement = CashMovement::query()->where('sale_id', $sale->id)->where('source', CashMovement::SALE)->first();
+        if (bccomp($amount, '0', 2) <= 0) {
+            $movement?->delete();
+
+            return;
+        }
+        $values = ['amount' => $amount, 'concept' => 'Venta '.$sale->displayNumber().' (por facturar)'];
+        if ($movement) {
+            $movement->forceFill($values)->save();
+
+            return;
+        }
+        CashMovement::query()->create([
+            ...$values,
+            'company_id' => $sale->company_id, 'cash_session_id' => $session->id, 'type' => CashMovement::IN,
+            'source' => CashMovement::SALE, 'sale_id' => $sale->id, 'created_by' => $actor->id,
+        ]);
+    }
+
+    /** A paid draft cancelled before its invoice: its cash leaves the open drawer. */
+    public function forgetDraft(Sale $sale): void
+    {
+        $movement = CashMovement::query()->where('sale_id', $sale->id)->where('source', CashMovement::SALE)->whereNull('electronic_document_id')->first();
+        $session = $movement ? CashSession::query()->whereKey($movement->cash_session_id)->lockForUpdate()->first() : null;
+        if ($movement && $session?->status === CashSession::OPEN) {
+            $movement->delete();
+        }
+    }
+
+    /**
      * Writes (or, after a correction, rewrites) the SALE movement of the invoice. A closed session is
      * history and is never changed.
      */

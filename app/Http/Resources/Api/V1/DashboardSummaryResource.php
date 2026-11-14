@@ -11,6 +11,10 @@ final class DashboardSummaryResource extends JsonResource
     {
         return [
             'counts' => $this['counts'],
+            'period' => $this['period'],
+            'customerGrowth' => $this['customerGrowth'],
+            'invoiceStates' => $this['invoiceStates'],
+            'inventory' => $this['inventory'],
             'recentSales' => SaleResource::collection($this['recentSales']),
         ];
     }

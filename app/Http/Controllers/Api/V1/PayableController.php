@@ -12,13 +12,13 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-/** Cuentas por pagar: the purchases on CREDITO, their installments and what has been paid to the supplier. */
+/** Obligaciones por pagar: purchases on CREDITO, their installments and amounts paid to suppliers. */
 final class PayableController extends Controller
 {
     public function index(Request $request, CompanyContext $context): JsonResponse
     {
         $this->authorize('payables.view');
-        $query = ReceivableController::withBalance($this->payables($context))->with('supplier')
+        $query = ReceivableController::withBalance($this->supplierObligations($context))->with('supplier')
             ->orderByDesc('issue_date')->orderByDesc('number');
         if ($search = trim((string) $request->query('search'))) {
             $query->whereHas('supplier', fn (Builder $supplier) => $supplier->where('identification', 'like', $search.'%')
@@ -53,14 +53,14 @@ final class PayableController extends Controller
         return response()->json(['data' => $this->detail($this->find($context, $purchase))], 201);
     }
 
-    private function payables(CompanyContext $context): Builder
+    private function supplierObligations(CompanyContext $context): Builder
     {
         return Purchase::query()->where('company_id', $context->company()->id)->where('is_credit', true)->whereHas('installments');
     }
 
     private function find(CompanyContext $context, string $publicId): Purchase
     {
-        return ReceivableController::withBalance($this->payables($context))->where('public_id', $publicId)
+        return ReceivableController::withBalance($this->supplierObligations($context))->where('public_id', $publicId)
             ->with(['supplier', 'installments', 'payments.creator'])
             ->first() ?? throw new ApiException(ApiErrorCode::PURCHASE_NOT_FOUND, 'La cuenta por pagar no existe en la empresa actual.', 404);
     }

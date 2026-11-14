@@ -69,6 +69,8 @@ final class FiscalDashboard
             ->groupBy('issue_date', 'document_type')
             ->selectRaw('issue_date, document_type, SUM(total) as amount')
             ->get();
+        $invoicedTotal = '0.00';
+        $creditedTotal = '0.00';
         $days = [];
         for ($day = $start; $day <= $end; $day = $day->addDay()) {
             $days[$day->toDateString()] = ['date' => $day->toDateString(), 'invoiced' => '0.00', 'credited' => '0.00'];
@@ -76,8 +78,15 @@ final class FiscalDashboard
         foreach ($totals as $row) {
             // SQLite returns the date with a time part; PostgreSQL without it.
             $date = substr((string) $row->getRawOriginal('issue_date'), 0, 10);
-            $key = $row->getRawOriginal('document_type') === DocumentType::CREDIT_NOTE->value ? 'credited' : 'invoiced';
+            $amount = (string) $row->getRawOriginal('amount');
+            $isCredit = $row->getRawOriginal('document_type') === DocumentType::CREDIT_NOTE->value;
+            $key = $isCredit ? 'credited' : 'invoiced';
             $days[$date][$key] = bcadd($days[$date][$key], (string) $row->getRawOriginal('amount'), 2);
+            if ($isCredit) {
+                $creditedTotal = bcadd($creditedTotal, $amount, 2);
+            } else {
+                $invoicedTotal = bcadd($invoicedTotal, $amount, 2);
+            }
         }
 
         $today = CarbonImmutable::now($timezone)->startOfDay();
@@ -106,7 +115,27 @@ final class FiscalDashboard
             }
         }
 
-        return ['period' => $period, 'days' => array_values($days), 'lastSevenDays' => array_values($week)];
+        $grossActivity = bcadd($invoicedTotal, $creditedTotal, 2);
+        $invoiceShare = bccomp($grossActivity, '0', 2) === 0
+            ? '0.00'
+            : bcdiv(bcmul($invoicedTotal, '100', 4), $grossActivity, 2);
+        $creditShare = bccomp($grossActivity, '0', 2) === 0
+            ? '0.00'
+            : bcdiv(bcmul($creditedTotal, '100', 4), $grossActivity, 2);
+
+        return [
+            'period' => $period,
+            'days' => array_values($days),
+            'lastSevenDays' => array_values($week),
+            'salesTotals' => [
+                'invoiced' => $invoicedTotal,
+                'credited' => $creditedTotal,
+                'net' => bcsub($invoicedTotal, $creditedTotal, 2),
+                // Ratios are calculated in the API; Vue only uses these for drawing the donut.
+                'invoicedShare' => $invoiceShare,
+                'creditedShare' => $creditShare,
+            ],
+        ];
     }
 
     /**

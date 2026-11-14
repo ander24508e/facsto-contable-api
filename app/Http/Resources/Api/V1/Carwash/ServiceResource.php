@@ -38,6 +38,8 @@ final class ServiceResource extends JsonResource
             'taxes' => $item ? $item->taxes->map(fn ($tax): array => ['publicId' => $tax->public_id, 'name' => $tax->name, 'rate' => $tax->definition?->fixed_percentage])->values() : [],
             'hasImage' => $item?->image_path !== null,
             'durationMinutes' => $this->duration_minutes,
+            'commissionType' => $this->commission_type,
+            'commissionValue' => $this->commission_value === null ? null : (string) $this->commission_value,
             'areaType' => $this->areaType ? ['publicId' => $this->areaType->public_id, 'name' => $this->areaType->name] : null,
             'isActive' => (bool) $item?->is_active,
             'pricesCount' => $this->whenCounted('prices'),

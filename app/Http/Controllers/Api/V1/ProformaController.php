@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Domains\Catalog\Enums\ItemType;
 use App\Domains\Companies\Context\CompanyContext;
+use App\Domains\Inventory\Services\StockReservations;
 use App\Domains\Proformas\Actions\ConvertProformaToSaleAction;
 use App\Domains\Proformas\Actions\DeleteProformaAction;
+use App\Domains\Proformas\Actions\ProformaFollowUpAction;
 use App\Domains\Proformas\Actions\UpdateProformaAction;
 use App\Domains\Proformas\Models\Proforma;
 use App\Domains\Proformas\Models\ProformaLine;
@@ -21,23 +24,61 @@ use Illuminate\Http\Response;
 /** Proformas: offers with their own numbering; the same selling permissions as Ventas. */
 final class ProformaController extends Controller
 {
-    private const RELATIONS = ['customer', 'creator', 'warehouse', 'lines.item'];
+    private const RELATIONS = ['customer', 'creator', 'warehouse', 'lines.item.stocks', 'advancePaymentMethod'];
 
     public function index(Request $request, CompanyContext $context): JsonResponse
     {
         $this->authorize('proformas.view');
-        $filters = $request->validate(['search' => ['nullable', 'string', 'max:120'], 'per_page' => ['sometimes', 'integer', 'min:1', 'max:100']]);
+        $filters = $request->validate(['search' => ['nullable', 'string', 'max:120'], 'status' => ['nullable', 'in:PENDING,ACCEPTED,REJECTED,CONVERTED,EXPIRED'], 'per_page' => ['sometimes', 'integer', 'min:1', 'max:100']]);
         $query = Proforma::query()->where('company_id', $context->company()->id)->with(['customer', 'creator', 'convertedSale'])->withCount('lines')->latest()->latest('id');
         if ($search = trim((string) ($filters['search'] ?? ''))) {
             $pattern = '%'.mb_strtolower($search).'%';
             $query->where(fn ($builder) => $builder->whereRaw('LOWER(customer_name) LIKE ?', [$pattern])->orWhereRaw('LOWER(customer_identification) LIKE ?', [$pattern]));
         }
+        match ($filters['status'] ?? null) {
+            null => null,
+            'EXPIRED' => $query->whereIn('status', Proforma::OPEN)->whereDate('expiration_date', '<', today()),
+            'PENDING', 'ACCEPTED' => $query->where('status', $filters['status'])->whereDate('expiration_date', '>=', today()),
+            default => $query->where('status', $filters['status']),
+        };
         $page = $query->paginate($filters['per_page'] ?? 15);
+        $base = Proforma::query()->where('company_id', $context->company()->id);
+        $closed = (clone $base)->whereIn('status', [Proforma::CONVERTED, Proforma::REJECTED])->count();
 
         return response()->json([
             'data' => $page->getCollection()->map($this->present(...)),
-            'meta' => ['current_page' => $page->currentPage(), 'last_page' => $page->lastPage(), 'per_page' => $page->perPage(), 'total' => $page->total()],
+            'meta' => [
+                'current_page' => $page->currentPage(), 'last_page' => $page->lastPage(), 'per_page' => $page->perPage(), 'total' => $page->total(),
+                // How many closed offers became a sale.
+                'conversion' => ['converted' => (clone $base)->where('status', Proforma::CONVERTED)->count(), 'closed' => $closed],
+            ],
         ]);
+    }
+
+    public function accept(Request $request, Proforma $proforma, CompanyContext $context, ProformaFollowUpAction $followUp): JsonResponse
+    {
+        $this->authorize('proformas.create');
+        $this->ensureOwn($proforma, $context);
+
+        return response()->json(['data' => $this->present($followUp->accept($proforma, $request->user())->load(self::RELATIONS), true)]);
+    }
+
+    public function reject(Request $request, Proforma $proforma, CompanyContext $context, ProformaFollowUpAction $followUp): JsonResponse
+    {
+        $this->authorize('proformas.create');
+        $this->ensureOwn($proforma, $context);
+        $reason = $request->validate(['reason' => ['required', 'string', 'min:2', 'max:120']])['reason'];
+
+        return response()->json(['data' => $this->present($followUp->reject($proforma, $reason, $request->user())->load(self::RELATIONS), true)]);
+    }
+
+    public function renew(Request $request, Proforma $proforma, CompanyContext $context, ProformaFollowUpAction $followUp): JsonResponse
+    {
+        $this->authorize('proformas.create');
+        $this->ensureOwn($proforma, $context);
+        $days = (int) $request->validate(['days' => ['required', 'integer', 'in:7,15']])['days'];
+
+        return response()->json(['data' => $this->present($followUp->renew($proforma, $days, $request->user())->load(self::RELATIONS), true)]);
     }
 
     public function store(Request $request, ProformaWriter $writer): JsonResponse
@@ -88,11 +129,38 @@ final class ProformaController extends Controller
             'issueDate' => ['required', 'date_format:Y-m-d'],
             'expirationDate' => ['required', 'date_format:Y-m-d', 'after_or_equal:issueDate'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            // Advance or credit: its products are taken from stock instead of only reserved.
+            'advanceAmount' => ['sometimes', 'nullable', 'string', 'regex:/^\d{1,14}(\.\d{1,2})?$/'],
+            'advancePaymentMethodPublicId' => ['sometimes', 'nullable', 'uuid'],
+            'onCredit' => ['sometimes', 'boolean'],
             'lines' => ['required', 'array', 'min:1', 'max:100'],
             'lines.*.itemPublicId' => ['required', 'uuid'],
             'lines.*.quantity' => ['required', 'string', 'regex:/^\d{1,9}(\.\d{1,6})?$/'],
             'lines.*.discountAmount' => ['nullable', 'string', 'regex:/^\d{1,14}(\.\d{1,2})?$/'],
         ]);
+    }
+
+    /**
+     * Semáforo of each product line: FREE (green, enough free stock), RESERVED (yellow, other proformas hold the
+     * units it needs) or OUT (gray, not enough stock). Services have none.
+     *
+     * @return array<int, array{state: string, stock: string, reserved: string, available: string}>
+     */
+    private function availability(Proforma $proforma): array
+    {
+        $products = $proforma->lines->filter(fn (ProformaLine $line) => $line->item?->type === ItemType::PRODUCT);
+        $reserved = app(StockReservations::class)->forItems($proforma->company_id, $products->pluck('item_id')->unique()->values()->all(), $proforma->id);
+        $result = [];
+        foreach ($products->groupBy('item_id') as $itemId => $lines) {
+            $wanted = (string) $lines->sum('quantity');
+            $stock = bcadd((string) $lines->first()->item->stocks->sum('quantity'), '0', 6);
+            $held = $reserved[$itemId] ?? '0';
+            $available = bcsub($stock, $held, 6);
+            $state = $proforma->stock_committed || bccomp($available, $wanted, 6) >= 0 ? 'FREE' : (bccomp($stock, $wanted, 6) >= 0 ? 'RESERVED' : 'OUT');
+            $result[$itemId] = ['state' => $state, 'stock' => $stock, 'reserved' => $held, 'available' => $available];
+        }
+
+        return $result;
     }
 
     private function ensureOwn(Proforma $proforma, CompanyContext $context): void
@@ -106,6 +174,7 @@ final class ProformaController extends Controller
     private function present(Proforma $proforma, bool $withLines = false): array
     {
         $taxSummary = [];
+        $availability = $withLines ? $this->availability($proforma) : [];
         if ($withLines) {
             foreach ($proforma->lines as $line) {
                 foreach ($line->taxes ?? [] as $tax) {
@@ -140,7 +209,14 @@ final class ProformaController extends Controller
             'warehousePublicId' => $proforma->warehouse?->public_id,
             'issueDate' => $proforma->issue_date?->toDateString(),
             'expirationDate' => $proforma->expiration_date?->toDateString(),
-            'status' => $proforma->converted_sale_id !== null ? 'CONVERSION_PENDING' : ($proforma->expiration_date?->lt(today()) ? 'EXPIRED' : 'ACTIVE'),
+            // PENDING, ACCEPTED, EXPIRED (open past its date), REJECTED, CONVERTED or CONVERSION_PENDING.
+            'status' => $proforma->displayStatus(),
+            'rejectionReason' => $proforma->rejection_reason,
+            'advanceAmount' => (string) $proforma->advance_amount,
+            'advancePaymentMethod' => $proforma->advancePaymentMethod ? ['publicId' => $proforma->advancePaymentMethod->public_id, 'name' => $proforma->advancePaymentMethod->name] : null,
+            'onCredit' => $proforma->on_credit,
+            // Taken from stock (advance or credit) or only reserved (yellow).
+            'stockCommitted' => $proforma->stock_committed,
             'convertedSalePublicId' => $proforma->convertedSale?->public_id,
             'notes' => $proforma->notes,
             'subtotal' => (string) $proforma->subtotal,
@@ -157,6 +233,7 @@ final class ProformaController extends Controller
                 'quantity' => (string) $line->quantity, 'unitPrice' => (string) $line->unit_price, 'discountAmount' => (string) $line->discount_amount,
                 'subtotal' => (string) $line->subtotal, 'taxableBase' => (string) $line->taxable_base, 'taxTotal' => (string) $line->tax_total, 'total' => (string) $line->total,
                 'taxes' => $line->taxes,
+                'availability' => $availability[$line->item_id] ?? null,
             ])->all()] : []),
         ];
     }

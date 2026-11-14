@@ -6,6 +6,8 @@ use App\Domains\Carwash\Models\CarwashCategory;
 use App\Domains\Carwash\Models\CarwashSetting;
 use App\Domains\Carwash\Services\AgendaService;
 use App\Domains\Carwash\Services\CarwashDashboard;
+use App\Domains\Carwash\Services\CarwashReports;
+use App\Domains\Carwash\Services\CarwashSettingsForm;
 use App\Domains\Carwash\Services\Rates;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Shared\Audit\AuditRecorder;
@@ -15,7 +17,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
-/** The car wash's day, the agenda by slots and work areas, and the opening hours. */
+/**
+ * The car wash's day, the agenda by slots and work areas, and Configuración: its settings (one tab per submodule),
+ * the first-time assistant («Pendiente por configurar»), the supplies and the washers' commissions.
+ */
 final class OperationsController extends CarwashController
 {
     public function dashboard(Request $request, CompanyContext $context, CarwashDashboard $dashboard): JsonResponse
@@ -30,31 +35,65 @@ final class OperationsController extends CarwashController
         return response()->json(['data' => ['date' => $date->toDateString(), ...$agenda->day($context->company(), $date)]]);
     }
 
-    public function settings(CompanyContext $context): JsonResponse
+    public function settings(CompanyContext $context, CarwashSettingsForm $form): JsonResponse
     {
-        return response()->json(['data' => $this->presentSettings(CarwashSetting::for($context->company()))]);
+        return response()->json(['data' => $form->present(CarwashSetting::for($context->company()))]);
     }
 
-    public function updateSettings(Request $request, CompanyContext $context, AuditRecorder $audit): JsonResponse
+    /** PUT /carwash/settings — each tab sends only its own fields. */
+    public function updateSettings(Request $request, CompanyContext $context, AuditRecorder $audit, CarwashSettingsForm $form): JsonResponse
     {
-        $data = $request->validate([
-            'openingTime' => ['required', 'date_format:H:i'],
-            'closingTime' => ['required', 'date_format:H:i'],
-            'slotMinutes' => ['required', 'integer', 'in:15,20,30,45,60,90,120'],
-        ]);
-        if ($data['closingTime'] <= $data['openingTime']) {
-            throw ValidationException::withMessages(['closingTime' => 'La hora de cierre debe ser posterior a la de apertura.']);
-        }
+        $data = $request->validate($form->rules());
         $settings = CarwashSetting::for($context->company());
-        $before = $this->presentSettings($settings);
-        $settings->fill([
-            'opening_time' => $data['openingTime'],
-            'closing_time' => $data['closingTime'],
-            'slot_minutes' => $data['slotMinutes'],
-        ])->save();
-        $audit->record($request->user(), $context->company(), 'carwash.settings.updated', $context->company(), $before, $this->presentSettings($settings));
+        $before = $form->present($settings);
+        $form->apply($settings, $data);
+        $settings->touch();
+        $settings->save();
+        $after = $form->present($settings->refresh());
+        $audit->record($request->user(), $context->company(), 'carwash.settings.updated', $context->company(),
+            array_intersect_key($before, $after), array_filter($after, fn ($value, $key) => ($before[$key] ?? null) !== $value, ARRAY_FILTER_USE_BOTH));
 
-        return response()->json(['data' => $this->presentSettings($settings)]);
+        return response()->json(['data' => $after]);
+    }
+
+    /** GET /carwash/settings/pending — the first-time assistant and «Pendiente por configurar». */
+    public function pending(CompanyContext $context, CarwashReports $reports, CarwashSettingsForm $form): JsonResponse
+    {
+        $settings = CarwashSetting::for($context->company());
+
+        return response()->json(['data' => [
+            'setupCompletedAt' => $form->present($settings)['setupCompletedAt'],
+            'items' => $reports->pending($context->company()),
+        ]]);
+    }
+
+    /** POST /carwash/settings/setup-complete — the assistant is not shown again. */
+    public function completeSetup(Request $request, CompanyContext $context, AuditRecorder $audit, CarwashSettingsForm $form): JsonResponse
+    {
+        $settings = CarwashSetting::for($context->company());
+        if ($settings->setup_completed_at === null) {
+            $settings->forceFill(['setup_completed_at' => now()])->save();
+            $audit->record($request->user(), $context->company(), 'carwash.settings.setup_completed', $context->company(), null, ['setupCompletedAt' => $settings->setup_completed_at->toIso8601String()]);
+        }
+
+        return response()->json(['data' => $form->present($settings)]);
+    }
+
+    /** GET /carwash/supplies — Configuración › Insumos. */
+    public function supplies(CompanyContext $context, CarwashReports $reports): JsonResponse
+    {
+        return response()->json(['data' => $reports->supplies($context->company())]);
+    }
+
+    /** GET /carwash/commissions?from=&to= — Configuración › Trabajadores «Comisiones» (the current month by default). */
+    public function commissions(Request $request, CompanyContext $context, CarwashReports $reports): JsonResponse
+    {
+        $data = $request->validate(['from' => ['nullable', 'date_format:Y-m-d'], 'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from']]);
+        $today = CarbonImmutable::now(config('app.timezone'));
+        $from = isset($data['from']) ? CarbonImmutable::parse($data['from'], config('app.timezone')) : $today->startOfMonth();
+        $to = isset($data['to']) ? CarbonImmutable::parse($data['to'], config('app.timezone')) : $today;
+
+        return response()->json(['data' => $reports->commissions($context->company(), $from, $to)]);
     }
 
     /**
@@ -112,15 +151,5 @@ final class OperationsController extends CarwashController
         $data = $request->validate(['date' => ['nullable', 'date_format:Y-m-d']]);
 
         return isset($data['date']) ? CarbonImmutable::parse($data['date'], config('app.timezone')) : CarbonImmutable::now(config('app.timezone'));
-    }
-
-    /** @return array{openingTime: string, closingTime: string, slotMinutes: int} */
-    private function presentSettings(CarwashSetting $settings): array
-    {
-        return [
-            'openingTime' => substr((string) $settings->opening_time, 0, 5),
-            'closingTime' => substr((string) $settings->closing_time, 0, 5),
-            'slotMinutes' => (int) $settings->slot_minutes,
-        ];
     }
 }

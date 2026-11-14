@@ -41,7 +41,8 @@ final class IssueSaleInvoiceWithProformaAction
                     'invoiceNumber' => $document->full_number,
                     'invoicePublicId' => $document->public_id,
                 ]);
-                $proforma->delete();
+                // Kept as CONVERTED (Proformas counts how many become sales); it no longer reserves stock.
+                $proforma->forceFill(['status' => Proforma::CONVERTED, 'converted_at' => now()])->save();
             });
         }
 

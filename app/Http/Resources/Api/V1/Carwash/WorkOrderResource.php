@@ -4,7 +4,9 @@ namespace App\Http\Resources\Api\V1\Carwash;
 
 use App\Domains\Carwash\Enums\BillingStatus;
 use App\Domains\Carwash\Enums\WorkOrderStatus;
+use App\Domains\Carwash\Models\CarwashSetting;
 use App\Domains\Carwash\Services\ItemPrice;
+use App\Domains\Carwash\Services\WorkflowSteps;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -20,6 +22,7 @@ final class WorkOrderResource extends JsonResource
         $sale = $billing === BillingStatus::UNBILLED ? null : $this->sale;
         $document = $sale?->electronicDocument;
         $prices = app(ItemPrice::class);
+        $settings = CarwashSetting::forCompany($this->company_id);
 
         return [
             'publicId' => $this->public_id,
@@ -27,7 +30,12 @@ final class WorkOrderResource extends JsonResource
             'number' => $this->number,
             'source' => $this->source->value,
             'status' => $this->status->value,
-            'allowedTransitions' => array_map(fn (WorkOrderStatus $status) => $status->value, $this->status->next()),
+            // The next steps with Configuración › Servicios (without «Llegó» or «Listo» they are skipped).
+            'allowedTransitions' => array_map(fn (WorkOrderStatus $status) => $status->value, app(WorkflowSteps::class)->next($this->status, $settings)),
+            'receptionStatus' => app(WorkflowSteps::class)->reception($settings)->value,
+            'checklist' => $this->checklist,
+            'dirty' => (bool) $this->dirty,
+            'loyaltyFree' => (bool) $this->loyalty_free,
             'isEditable' => $this->status->isEditable() && $billing === BillingStatus::UNBILLED,
             'vehicle' => $this->vehicle ? [
                 'publicId' => $this->vehicle->public_id,
@@ -45,6 +53,7 @@ final class WorkOrderResource extends JsonResource
             'washer' => $this->washer ? ['publicId' => $this->washer->public_id, 'name' => $this->washer->name] : null,
             'lines' => $this->whenLoaded('lines', fn () => $this->lines->map(fn ($line) => [
                 'description' => $line->description,
+                'kind' => $line->kind,
                 'servicePublicId' => $line->service?->public_id,
                 'itemCode' => $line->item?->internal_code,
                 'quantity' => (string) $line->quantity,
@@ -75,6 +84,8 @@ final class WorkOrderResource extends JsonResource
                 'salePublicId' => $sale?->public_id,
                 'saleNumber' => $sale?->displayNumber(),
                 'total' => $sale ? (string) $sale->total : null,
+                // Charged in the checkout window without invoice: its payment is already in the drawer («por facturar»).
+                'paid' => $billing === BillingStatus::DRAFT && $sale->paymentMethods->isNotEmpty() && bccomp((string) $sale->paymentMethods->sum('amount'), (string) $sale->total, 2) === 0,
                 'invoicePublicId' => $document?->public_id,
                 'invoiceNumber' => $document?->full_number,
                 'documentStatus' => $document?->status->value,

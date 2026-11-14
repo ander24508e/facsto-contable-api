@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Carwash;
 
 use App\Domains\Carwash\Actions\SaveProductUsageAction;
 use App\Domains\Carwash\Actions\SaveServicePriceAction;
+use App\Domains\Carwash\Models\CarwashSetting;
 use App\Domains\Carwash\Models\Service;
 use App\Domains\Carwash\Models\ServicePrice;
 use App\Domains\Carwash\Services\AreaTypeCatalog;
@@ -39,9 +40,13 @@ final class ServiceController extends CarwashController
         if (! $forOrders) {
             $rates->sync($this->companyId());
         }
-        $query = $forOrders
-            ? Service::query()->where('company_id', $this->companyId())->whereHas('prices', fn ($prices) => $prices->where('is_active', true))
-            : $rates->visible($this->companyId());
+        // For an order: every service with an active price per vehicle or, with «Precio único», every service of Tarifas.
+        $single = CarwashSetting::forCompany($this->companyId())->pricing_mode === CarwashSetting::PRICING_SINGLE;
+        $query = match (true) {
+            $forOrders && $single => $rates->visible($this->companyId())->whereHas('item', fn ($item) => $item->where('type', 'SERVICE')),
+            $forOrders => Service::query()->where('company_id', $this->companyId())->whereHas('prices', fn ($prices) => $prices->where('is_active', true)),
+            default => $rates->visible($this->companyId()),
+        };
 
         $services = $query
             ->when(! $includeInactive, fn ($builder) => $builder->whereHas('item', fn ($item) => $item->where('is_active', true)))
@@ -73,9 +78,12 @@ final class ServiceController extends CarwashController
         $data = $request->validate([
             'durationMinutes' => ['sometimes', 'integer', 'min:5', 'max:1440'],
             'areaTypePublicId' => ['sometimes', 'nullable', 'uuid'],
+            // Its own commission (Configuración › Trabajadores); null: the general one.
+            'commissionType' => ['sometimes', 'nullable', 'in:PERCENT,FIXED', 'required_with:commissionValue'],
+            'commissionValue' => ['sometimes', 'nullable', 'string', 'regex:/^\d{1,8}(\.\d{1,2})?$/', 'required_with:commissionType'],
         ]);
         $entry = $this->owned(Service::class, $service);
-        $present = fn (): array => ['durationMinutes' => $entry->duration_minutes, 'areaType' => $entry->areaType()->value('name')];
+        $present = fn (): array => ['durationMinutes' => $entry->duration_minutes, 'areaType' => $entry->areaType()->value('name'), 'commissionType' => $entry->commission_type, 'commissionValue' => $entry->commission_value];
         $before = $present();
         $changes = [];
         if (array_key_exists('durationMinutes', $data)) {
@@ -84,6 +92,10 @@ final class ServiceController extends CarwashController
         if (array_key_exists('areaTypePublicId', $data)) {
             $changes['area_type_id'] = $data['areaTypePublicId'] === null ? null
                 : $catalog->resolve($this->companyId(), [$data['areaTypePublicId']], 'areaTypePublicId', array_filter([$entry->area_type_id]))->first()->id;
+        }
+        if (array_key_exists('commissionType', $data)) {
+            $changes['commission_type'] = $data['commissionType'];
+            $changes['commission_value'] = $data['commissionType'] === null ? null : ($data['commissionValue'] ?? null);
         }
         $entry->forceFill($changes)->save();
         $audit->record($request->user(), $context->company(), 'carwash.service.updated', $entry, $before, $present());
