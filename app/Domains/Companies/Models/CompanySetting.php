@@ -24,7 +24,8 @@ class CompanySetting extends Model
         'sales_interface' => 'LIST',
         'proformas_interface' => 'LIST',
         'investments_interface' => 'LIST',
-        'module_interfaces' => [],
+        // Raw (stored) value: the array cast decodes it.
+        'module_interfaces' => '[]',
     ];
 
     public function defaultTax(): BelongsTo

@@ -77,7 +77,8 @@ final class UpdateWorkOrderAction
                 $services = $data['servicePublicIds'] ?? $order->lines()->where('kind', 'SERVICE')->with('service')->get()->pluck('service.public_id')->filter()->values()->all();
                 if (array_key_exists('servicePublicIds', $data) || $order->status->isEditable() && BillingStatus::of($order->sale) === BillingStatus::UNBILLED) {
                     $lines = [...$this->lines->resolve($order->vehicle, $services), ...$this->lines->surcharges($company->id, (bool) $order->dirty, $order->scheduled_at)];
-                    $order->lines()->delete();
+                    // The articles added when scheduling stay.
+                    $order->lines()->where('kind', '!=', 'PRODUCT')->delete();
                     $order->lines()->createMany($lines);
                 }
             }

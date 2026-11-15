@@ -4,8 +4,10 @@ namespace App\Domains\Carwash\Actions;
 
 use App\Domains\Carwash\Enums\BillingStatus;
 use App\Domains\Carwash\Enums\WorkOrderStatus;
+use App\Domains\Carwash\Models\CarwashNotification;
 use App\Domains\Carwash\Models\CarwashSetting;
 use App\Domains\Carwash\Models\WorkOrder;
+use App\Domains\Carwash\Services\NotificationOutbox;
 use App\Domains\Carwash\Services\ServicePriceItems;
 use App\Domains\Carwash\Services\WorkflowSteps;
 use App\Domains\Companies\Context\CompanyContext;
@@ -35,6 +37,7 @@ final class TransitionWorkOrderAction
         private readonly ItemContent $content,
         private readonly WorkflowSteps $steps,
         private readonly ChargeWorkOrderAction $charge,
+        private readonly NotificationOutbox $outbox,
     ) {}
 
     /** @param list<array{label: string, checked?: bool, note?: ?string}>|null $checklist */
@@ -82,6 +85,11 @@ final class TransitionWorkOrderAction
 
             return $order;
         });
+
+        // Configuración › Clientes «Avisar por WhatsApp al terminar el lavado»: the aviso waits in the bandeja.
+        if ($settings->notify_ready && $target === $this->steps->finished($settings)) {
+            $this->outbox->queue($order, CarwashNotification::READY);
+        }
 
         // «Cobro automático»: the sale draft waits in Ventas when the wash ends. If it cannot be prepared (an item
         // without a valid tax, for example) the order keeps its new state and «Cobrar» stays at hand.

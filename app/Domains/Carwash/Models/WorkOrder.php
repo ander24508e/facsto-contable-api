@@ -16,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /** Work order OT-000001. Its charge is the FACSTO sale in sale_id; the billing state is read from it. */
 #[Fillable([
     'company_id', 'number', 'code_prefix', 'source', 'vehicle_id', 'customer_id', 'washer_id', 'status', 'scheduled_at', 'work_area_id', 'scheduled_end_at',
-    'arrived_at', 'started_at', 'ready_at', 'delivered_at', 'cancelled_at', 'cancel_reason', 'notes', 'checklist', 'dirty', 'loyalty_free', 'sale_id', 'created_by',
+    'arrived_at', 'started_at', 'ready_at', 'delivered_at', 'cancelled_at', 'cancel_reason', 'notes', 'checklist', 'dirty', 'loyalty_free', 'evidence_hold', 'sale_id', 'created_by',
 ])]
 class WorkOrder extends Model
 {
@@ -59,6 +59,12 @@ class WorkOrder extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    /** Bandeja de avisos («vehículo listo», recordatorio de cita). */
+    public function notifications(): HasMany
+    {
+        return $this->hasMany(CarwashNotification::class);
+    }
+
     public function lines(): HasMany
     {
         return $this->hasMany(WorkOrderLine::class);
@@ -79,6 +85,7 @@ class WorkOrder extends Model
             'started_at' => 'datetime',
             'ready_at' => 'datetime',
             'delivered_at' => 'datetime',
+            'evidence_hold' => 'boolean',
             'cancelled_at' => 'datetime',
         ];
     }

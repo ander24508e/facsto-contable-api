@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Api\V1\Carwash\AreaTypeController;
 use App\Http\Controllers\Api\V1\Carwash\ComboController;
+use App\Http\Controllers\Api\V1\Carwash\EvidenceController;
+use App\Http\Controllers\Api\V1\Carwash\NotificationController;
 use App\Http\Controllers\Api\V1\Carwash\OperationsController;
 use App\Http\Controllers\Api\V1\Carwash\ServiceController;
 use App\Http\Controllers\Api\V1\Carwash\VehicleCatalogController;
@@ -21,6 +23,18 @@ Route::middleware('can:carwash.orders')->group(function (): void {
     Route::get('/work-orders', [WorkOrderController::class, 'index']);
     Route::get('/work-orders/{workOrder}', [WorkOrderController::class, 'show'])->whereUuid('workOrder');
 });
+// «Mi trabajo»: the washer moves the wash steps of their own orders (WorkOrderController::transition limits them).
+Route::post('/work-orders/{workOrder}/transitions', [WorkOrderController::class, 'transition'])->whereUuid('workOrder')->middleware('can:carwash.step');
+
+// Evidencias de la recepción: quien inspecciona o quien ve evidencias las lista; sólo «Hacer la inspección» sube
+// fotos, videos y la firma; el acta en PDF es de «Ver evidencias»; «En reclamo» es de «Administrar».
+Route::middleware('can:carwash.evidences')->group(function (): void {
+    Route::get('/work-orders/{workOrder}/evidences', [EvidenceController::class, 'index'])->whereUuid('workOrder');
+    Route::get('/evidences/{evidence}/file', [EvidenceController::class, 'file'])->whereUuid('evidence');
+});
+Route::post('/work-orders/{workOrder}/evidences', [EvidenceController::class, 'store'])->whereUuid('workOrder')->middleware(['can:carwash.inspect', 'throttle:60,1']);
+Route::get('/work-orders/{workOrder}/reception-report', [EvidenceController::class, 'report'])->whereUuid('workOrder')->middleware('can:carwash.evidence');
+Route::patch('/work-orders/{workOrder}/claim', [EvidenceController::class, 'claim'])->whereUuid('workOrder')->middleware('can:carwash.manage');
 
 // «Ver comisiones»: el reporte de Configuración › Trabajadores.
 Route::get('/commissions', [OperationsController::class, 'commissions'])->middleware('can:carwash.commissions');
@@ -31,6 +45,7 @@ Route::middleware('can:carwash.view')->group(function (): void {
     Route::get('/settings', [OperationsController::class, 'settings']);
     Route::get('/settings/pending', [OperationsController::class, 'pending']);
     Route::get('/supplies', [OperationsController::class, 'supplies']);
+    Route::get('/reports', [OperationsController::class, 'reports']);
     Route::get('/combos', [ComboController::class, 'index']);
     Route::get('/vehicle-types', [VehicleCatalogController::class, 'types']);
     Route::get('/vehicle-brands', [VehicleCatalogController::class, 'brands']);
@@ -55,10 +70,13 @@ Route::middleware('can:carwash.operate')->group(function (): void {
     Route::patch('/vehicles/{vehicle}', [VehicleController::class, 'update'])->whereUuid('vehicle');
     Route::post('/work-orders', [WorkOrderController::class, 'store']);
     Route::patch('/work-orders/{workOrder}', [WorkOrderController::class, 'update'])->whereUuid('workOrder');
-    Route::post('/work-orders/{workOrder}/transitions', [WorkOrderController::class, 'transition'])->whereUuid('workOrder');
     Route::post('/work-orders/{workOrder}/charge', [WorkOrderController::class, 'charge'])->whereUuid('workOrder')->middleware('throttle:30,1');
     Route::post('/work-orders/{workOrder}/quote', [WorkOrderController::class, 'quote'])->whereUuid('workOrder');
     Route::post('/work-orders/{workOrder}/checkout', [WorkOrderController::class, 'checkout'])->whereUuid('workOrder')->middleware('throttle:30,1');
+    // Bandeja de avisos y «Avisar por WhatsApp».
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::patch('/notifications/{notification}', [NotificationController::class, 'update'])->whereUuid('notification');
+    Route::post('/work-orders/{workOrder}/whatsapp', [NotificationController::class, 'whatsapp'])->whereUuid('workOrder');
 });
 
 Route::middleware('can:carwash.manage')->group(function (): void {

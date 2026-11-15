@@ -14,6 +14,9 @@ class WorkOrderLine extends Model
 
     public const SURCHARGE = 'SURCHARGE';
 
+    /** An Inventario article (product or service) added when scheduling, at its price, without duration. */
+    public const PRODUCT = 'PRODUCT';
+
     protected $table = 'carwash_work_order_lines';
 
     public function service(): BelongsTo

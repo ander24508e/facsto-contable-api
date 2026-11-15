@@ -14,6 +14,7 @@ use App\Domains\Sri\Xml\XsdValidator;
 use App\Models\User;
 use Illuminate\Support\Facades\Storage;
 use Tests\Feature\Sales\InvoiceFeatureTestCase;
+use Tests\Support\PhpXadesBesTestSigner;
 
 /** F05.3: NUMBERED → XML_BUILT → SIGNED with the real Java signer and an independent PHP verification. */
 final class SignElectronicDocumentTest extends InvoiceFeatureTestCase
@@ -53,7 +54,7 @@ final class SignElectronicDocumentTest extends InvoiceFeatureTestCase
         {
             public function sign(string $unsignedXml, CertificateMaterial $material): string
             {
-                $signed = (new JavaXadesBesSigner)->sign($unsignedXml, $material);
+                $signed = (is_file((string) config('sri.signer.jar')) ? new JavaXadesBesSigner : new PhpXadesBesTestSigner)->sign($unsignedXml, $material);
 
                 return (string) preg_replace('#<razonSocial>[^<]*</razonSocial>#', '<razonSocial>EMISOR ALTERADO</razonSocial>', $signed, 1);
             }
@@ -92,6 +93,9 @@ final class SignElectronicDocumentTest extends InvoiceFeatureTestCase
 
     public function test_the_java_signer_rejects_a_wrong_password_without_exposing_it(): void
     {
+        if (! is_file((string) config('sri.signer.jar'))) {
+            $this->markTestSkipped('tools/xades-signer no está instalado en esta máquina.');
+        }
         $path = tempnam(sys_get_temp_dir(), 'facsto-test-p12-');
         file_put_contents($path, $this->pkcs12Contents('1790016919001'));
         $der = $this->certificateDer('1790016919001');

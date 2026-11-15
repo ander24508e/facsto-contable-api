@@ -28,14 +28,16 @@ final class WorkOrderPricing
 
     /**
      * @param  list<array{itemPublicId: string, quantity: string}>  $extras  products or services added when charging
+     * @param  list<string>  $apart  items of the order's articles charged in the separate sale («Aparte»)
      * @return array{lines: list<array{itemPublicId: string, quantity: string, discountAmount: string}>, items: Collection<string, Item>, loyaltyFree: bool, combos: list<string>}
      */
-    public function lines(WorkOrder $order, array $extras = []): array
+    public function lines(WorkOrder $order, array $extras = [], array $apart = []): array
     {
         $order->loadMissing(['lines.item.taxes.definition', 'lines.item.priceTiers', 'lines.service']);
         $settings = CarwashSetting::forCompany($order->company_id);
-        $items = $order->lines->pluck('item')->keyBy('public_id');
-        $lines = $order->lines->values()->map(fn (WorkOrderLine $line) => ['itemPublicId' => $line->item->public_id, 'quantity' => (string) $line->quantity, 'discountAmount' => '0.00'])->all();
+        $orderLines = $order->lines->reject(fn (WorkOrderLine $line) => $line->kind === WorkOrderLine::PRODUCT && in_array($line->item->public_id, $apart, true))->values();
+        $items = $orderLines->pluck('item')->keyBy('public_id');
+        $lines = $orderLines->map(fn (WorkOrderLine $line) => ['itemPublicId' => $line->item->public_id, 'quantity' => (string) $line->quantity, 'discountAmount' => '0.00'])->all();
         if ($extras !== []) {
             $added = Item::query()->where('company_id', $order->company_id)->where('is_active', true)
                 ->whereIn('public_id', array_column($extras, 'itemPublicId'))->with(['taxes.definition', 'priceTiers'])->get()->keyBy('public_id');
@@ -52,7 +54,7 @@ final class WorkOrderPricing
         // Combos
         $applied = [];
         $taken = [];
-        $serviceIds = $order->lines->values()->map(fn (WorkOrderLine $line) => $line->kind === WorkOrderLine::SERVICE ? $line->service_id : null)->all();
+        $serviceIds = $orderLines->map(fn (WorkOrderLine $line) => $line->kind === WorkOrderLine::SERVICE ? $line->service_id : null)->all();
         $combos = Combo::query()->with('services')->where('company_id', $order->company_id)->where('is_active', true)->orderByDesc('discount_percent')->get();
         foreach ($combos as $combo) {
             $needed = $combo->services->pluck('id')->all();
@@ -80,7 +82,7 @@ final class WorkOrderPricing
             $before = WorkOrder::query()->where('company_id', $order->company_id)->where('customer_id', $order->customer_id)
                 ->whereKeyNot($order->id)->where('status', WorkOrderStatus::DELIVERED)->count();
             if (($before + 1) % $settings->loyalty_every === 0) {
-                $best = collect($gross)->filter(fn ($amount, $index) => ($order->lines->values()[$index]->kind ?? null) === WorkOrderLine::SERVICE)->sortDesc()->keys()->first();
+                $best = collect($gross)->filter(fn ($amount, $index) => ($orderLines[$index]->kind ?? null) === WorkOrderLine::SERVICE)->sortDesc()->keys()->first();
                 if ($best !== null) {
                     $lines[$best]['discountAmount'] = $gross[$best];
                     $loyaltyFree = true;
@@ -101,12 +103,56 @@ final class WorkOrderPricing
      * total, from the same calculator Ventas uses.
      *
      * @param  list<array{itemPublicId: string, quantity: string}>  $extras
+     * @param  list<string>  $apart
      * @return array<string, mixed>
      */
-    public function quote(WorkOrder $order, array $extras = []): array
+    public function quote(WorkOrder $order, array $extras = [], array $apart = []): array
     {
-        $priced = $this->lines($order, $extras);
-        $result = $this->calculator->calculate($priced['lines'], $priced['items']);
+        $priced = $this->lines($order, $extras, $apart);
+
+        return [...$this->present($priced['lines'], $priced['items']), 'loyaltyFree' => $priced['loyaltyFree'], 'combos' => $priced['combos']];
+    }
+
+    /**
+     * «Cuenta aparte» of the checkout window: products charged as another sale (another customer, payment and
+     * invoice), at their price, without the order's discounts.
+     *
+     * @param  list<array{itemPublicId: string, quantity: string}>  $products
+     * @return array{lines: list<array{itemPublicId: string, quantity: string, discountAmount: string}>, items: Collection<string, Item>}
+     */
+    public function separate(int $companyId, array $products): array
+    {
+        $items = Item::query()->where('company_id', $companyId)->where('is_active', true)
+            ->whereIn('public_id', array_column($products, 'itemPublicId'))->with(['taxes.definition', 'priceTiers'])->get()->keyBy('public_id');
+        $lines = [];
+        foreach ($products as $product) {
+            if (! $items->has($product['itemPublicId'])) {
+                throw new ApiException(ApiErrorCode::ITEM_NOT_FOUND, 'Uno de los artículos de la cuenta aparte no está activo en la empresa.', 422);
+            }
+            $lines[] = ['itemPublicId' => $product['itemPublicId'], 'quantity' => (string) $product['quantity'], 'discountAmount' => '0.00'];
+        }
+
+        return ['lines' => $lines, 'items' => $items];
+    }
+
+    /**
+     * @param  list<array{itemPublicId: string, quantity: string}>  $products
+     * @return array<string, mixed>
+     */
+    public function quoteSeparate(int $companyId, array $products): array
+    {
+        $priced = $this->separate($companyId, $products);
+
+        return $this->present($priced['lines'], $priced['items']);
+    }
+
+    /**
+     * @param  list<array{itemPublicId: string, quantity: string, discountAmount: string}>  $lines
+     * @return array<string, mixed>
+     */
+    private function present(array $lines, Collection $items): array
+    {
+        $result = $this->calculator->calculate($lines, $items);
 
         return [
             'lines' => array_map(fn (array $detail, array $line): array => [
@@ -118,13 +164,11 @@ final class WorkOrderPricing
                 'unitPrice' => $detail['unit_price'],
                 'discount' => $detail['discount_amount'],
                 'total' => $detail['total'],
-            ], $result['details'], $priced['lines']),
+            ], $result['details'], $lines),
             'subtotal' => $result['subtotal'],
             'discount' => $result['discountTotal'],
             'tax' => $result['taxTotal'],
             'total' => $result['total'],
-            'loyaltyFree' => $priced['loyaltyFree'],
-            'combos' => $priced['combos'],
         ];
     }
 

@@ -103,12 +103,13 @@ return new class extends Migration
             $table->foreign(['company_id', 'vehicle_type_id'])->references(['company_id', 'id'])->on('carwash_vehicle_types')->restrictOnDelete();
         });
 
-        // Vehículo del cliente de FACSTO; la placa es única por empresa.
+        // El vehículo (identificado por su placa, única por empresa). El cliente va en cada orden; `customer_id` solo
+        // recuerda el último que lo trajo, para sugerirlo en Nueva agenda.
         Schema::create('carwash_vehicles', function (Blueprint $table): void {
             $table->id();
             $table->uuid('public_id')->unique();
             $table->foreignId('company_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('customer_id');
+            $table->foreignId('customer_id')->nullable();
             $table->string('plate', 10);
             $table->foreignId('vehicle_type_id');
             $table->foreignId('vehicle_brand_id')->nullable();
@@ -199,6 +200,8 @@ return new class extends Migration
             // Suciedad extrema (recargo) y lavado gratis por fidelización.
             $table->boolean('dirty')->default(false);
             $table->boolean('loyalty_free')->default(false);
+            // «En reclamo»: sus evidencias de recepción no vencen.
+            $table->boolean('evidence_hold')->default(false);
             $table->foreignId('sale_id')->nullable()->unique();
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
@@ -218,7 +221,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('company_id')->constrained()->cascadeOnDelete();
             $table->foreignId('work_order_id');
-            // SERVICE: un servicio de Tarifas (con su precio por vehículo, o sin él con precio único); SURCHARGE: un recargo.
+            // SERVICE: un servicio de Tarifas (con su precio por vehículo, o sin él con precio único); SURCHARGE: un recargo;
+            // PRODUCT: un artículo de Inventario (producto o servicio) agregado al agendar, a su precio.
             $table->string('kind', 10)->default('SERVICE');
             $table->foreignId('service_id')->nullable();
             $table->foreignId('service_price_id')->nullable();
@@ -235,10 +239,10 @@ return new class extends Migration
         });
 
         if (DB::getDriverName() === 'pgsql') {
-            DB::statement('ALTER TABLE carwash_settings ADD CONSTRAINT carwash_settings_hours_check CHECK (closing_time > opening_time AND slot_minutes BETWEEN 5 AND 240)');
+            DB::statement('ALTER TABLE carwash_settings ADD CONSTRAINT carwash_settings_hours_check CHECK (closing_time <> opening_time AND slot_minutes BETWEEN 5 AND 240)');
             DB::statement("ALTER TABLE carwash_settings ADD CONSTRAINT carwash_settings_modes_check CHECK (billing_mode IN ('MANUAL','AUTO') AND pricing_mode IN ('BY_VEHICLE','SINGLE') AND commission_type IN ('PERCENT','FIXED') AND assignment_mode IN ('MANUAL','ROTATION') AND consume_supplies_on IN ('READY','DELIVERED'))");
             DB::statement("ALTER TABLE carwash_services ADD CONSTRAINT carwash_services_commission_check CHECK (commission_type IS NULL OR commission_type IN ('PERCENT','FIXED'))");
-            DB::statement("ALTER TABLE carwash_work_order_lines ADD CONSTRAINT carwash_work_order_lines_kind_check CHECK (kind IN ('SERVICE','SURCHARGE') AND (kind = 'SURCHARGE' OR service_id IS NOT NULL))");
+            DB::statement("ALTER TABLE carwash_work_order_lines ADD CONSTRAINT carwash_work_order_lines_kind_check CHECK (kind IN ('SERVICE','SURCHARGE','PRODUCT') AND (kind <> 'SERVICE' OR service_id IS NOT NULL))");
             DB::statement("ALTER TABLE carwash_vehicles ADD CONSTRAINT carwash_vehicles_plate_check CHECK (plate ~ '^[A-Z0-9]{5,10}$')");
             DB::statement('ALTER TABLE carwash_vehicles ADD CONSTRAINT carwash_vehicles_year_check CHECK (year IS NULL OR year BETWEEN 1950 AND 2100)');
             DB::statement('ALTER TABLE carwash_services ADD CONSTRAINT carwash_services_duration_check CHECK (duration_minutes BETWEEN 5 AND 1440)');

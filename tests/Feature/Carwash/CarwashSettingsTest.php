@@ -42,7 +42,7 @@ final class CarwashSettingsTest extends CarwashTestCase
 
         $this->settings($owner, ['orderPrefix' => 'lv', 'orderStartNumber' => 100])->assertOk()
             ->assertJsonPath('data.orderPrefix', 'LV')->assertJsonPath('data.orderStartNumber', 100)->assertJsonPath('data.openingTime', '08:00');
-        $this->settings($owner, ['closingTime' => '07:00'])->assertUnprocessable();
+        $this->settings($owner, ['closingTime' => '08:00'])->assertUnprocessable();
         $product = Item::query()->create(['company_id' => $company->id, 'internal_code' => 'CERA', 'type' => 'PRODUCT', 'name' => 'Cera', 'unit' => 'UND', 'sale_price' => '3', 'is_active' => true]);
         $this->settings($owner, ['dirtySurchargeItemPublicId' => $product->public_id])->assertUnprocessable();
         $this->settings($owner, ['peakTo' => '12:00'])->assertUnprocessable();
@@ -77,6 +77,24 @@ final class CarwashSettingsTest extends CarwashTestCase
             ->assertJsonPath('data.closed', true)->assertJsonPath('data.slots.0.available', 0);
         // A walk-in is not a reservation: no advance needed.
         $this->actingAs($owner)->postJson(self::API.'/work-orders', $this->orderBody($this->carwashSetup($company, 'PBF1234'), ['workAreaPublicId' => $one->public_id]))->assertCreated();
+    }
+
+    public function test_hours_may_pass_midnight(): void
+    {
+        [$company, $owner] = $this->carwashCompany();
+        $setup = $this->carwashSetup($company);
+        $wash = $this->areaTypes($company)[0];
+        $night = $this->workArea($company, 'Box noche', [$wash], 1, '22:00', '02:00');
+        // Opens at 23:00 and closes at 01:00 the next day.
+        $this->settings($owner, ['openingTime' => '23:00', 'closingTime' => '01:00', 'slotMinutes' => 60])->assertOk()->assertJsonPath('data.closingTime', '01:00');
+        $reserve = fn (CarbonImmutable $at, string $plate) => $this->actingAs($owner)->postJson(self::API.'/work-orders', $this->orderBody($plate === 'PBA1234' ? $setup : $this->carwashSetup($company, $plate), ['scheduledAt' => $at->toIso8601String(), 'workAreaPublicId' => $night->public_id]));
+
+        $this->actingAs($owner)->getJson(self::API.'/agenda?date='.$this->monday->toDateString())->assertOk()
+            ->assertJsonCount(2, 'data.slots')->assertJsonPath('data.slots.1.start', $this->monday->addDay()->setTime(0, 0)->toIso8601String())
+            ->assertJsonPath('data.slots.1.available', 1);
+        $reserve($this->monday->addDay()->setTime(0, 10), 'PBA1234')->assertCreated();
+        $reserve($this->monday->setTime(22, 0), 'PBB1234')->assertUnprocessable()->assertJsonPath('error.code', 'CARWASH_AGENDA_OUTSIDE_HOURS');
+        $reserve($this->monday->addDay()->setTime(0, 40), 'PBC1234')->assertUnprocessable()->assertJsonPath('error.code', 'CARWASH_AGENDA_OUTSIDE_HOURS');
     }
 
     public function test_one_vehicle_per_area_and_the_free_area_is_assigned(): void

@@ -34,12 +34,21 @@ final class WorkOrderController extends CarwashController
             'open' => ['sometimes', 'boolean'],
             'search' => ['nullable', 'string', 'max:100'],
             'washerPublicId' => ['nullable', 'uuid'],
+            'billing' => ['nullable', 'in:UNBILLED,TO_INVOICE,INVOICED'],
+            // «Mi trabajo»: only the orders assigned to the user.
+            'mine' => ['sometimes', 'boolean'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
         $base = $this->filtered($filters);
         $page = (clone $base)->with(self::RELATIONS)
             ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->when($request->boolean('open'), fn ($query) => $query->whereNotIn('status', [WorkOrderStatus::DELIVERED, WorkOrderStatus::CANCELLED]))
+            // Filtros › Facturación: without a sale, charged as a draft in Ventas («Por facturar») or with its invoice.
+            ->when($filters['billing'] ?? null, fn ($query, string $billing) => match ($billing) {
+                'UNBILLED' => $query->where(fn ($none) => $none->whereNull('sale_id')->orWhereHas('sale', fn ($sale) => $sale->where('status', SaleStatus::CANCELLED))),
+                'TO_INVOICE' => $query->whereHas('sale', fn ($sale) => $sale->where('status', SaleStatus::DRAFT)),
+                default => $query->whereHas('sale', fn ($sale) => $sale->whereIn('status', [SaleStatus::DOCUMENT_PREPARED, SaleStatus::IN_CORRECTION])),
+            })
             ->orderByDesc('id')
             ->paginate($filters['per_page'] ?? 15);
 
@@ -69,7 +78,7 @@ final class WorkOrderController extends CarwashController
 
         return WorkOrder::query()
             ->where('company_id', $this->companyId())
-            ->when($this->ownWorkOnly(), fn ($query) => $query->where('washer_id', auth()->id()))
+            ->when($this->ownWorkOnly() || ! empty($filters['mine']), fn ($query) => $query->where('washer_id', auth()->id()))
             ->when($filters['washerPublicId'] ?? null, fn ($query, $washer) => $query->whereHas('washer', fn ($owner) => $owner->where('public_id', $washer)))
             ->when($filters['date'] ?? null, function ($query, string $date): void {
                 $day = CarbonImmutable::parse($date, config('app.timezone'));
@@ -108,9 +117,17 @@ final class WorkOrderController extends CarwashController
     public function store(Request $request, CreateWorkOrderAction $create): JsonResponse
     {
         $data = $request->validate([
-            'vehiclePublicId' => ['required', 'uuid'],
+            // The vehicle by its id, or by its plate (found or registered with its specification or type).
+            'vehiclePublicId' => ['required_without:plate', 'nullable', 'uuid'],
+            'plate' => ['required_without:vehiclePublicId', 'nullable', 'string', 'max:20'],
+            'vehicleSpecPublicId' => ['sometimes', 'nullable', 'uuid'],
+            'vehicleTypePublicId' => ['sometimes', 'nullable', 'uuid'],
+            // Whoever brings it this time; without it, the last customer of the vehicle.
+            'customerPublicId' => ['sometimes', 'nullable', 'uuid'],
             'servicePublicIds' => ['required', 'array', 'min:1', 'max:10'],
             'servicePublicIds.*' => ['uuid', 'distinct'],
+            // Articles of Inventario (products or services) added to the order, at their price.
+            ...$this->lineRules('items'),
             'washerPublicId' => ['nullable', 'uuid'],
             'scheduledAt' => ['nullable', 'date'],
             'workAreaPublicId' => ['nullable', 'uuid'],
@@ -147,45 +164,81 @@ final class WorkOrderController extends CarwashController
             'checklist.*.checked' => ['sometimes', 'boolean'],
             'checklist.*.note' => ['sometimes', 'nullable', 'string', 'max:200'],
         ]);
+        $order = $this->owned(WorkOrder::class, $workOrder);
+        $status = WorkOrderStatus::from($data['status']);
+        // Without «Registrar y atender», only the wash steps of one's own orders (receive, wash, ready); delivering and
+        // cancelling stay with the counter.
+        if (! Gate::allows('carwash.operate')) {
+            abort_if($order->washer_id !== auth()->id(), 404);
+            abort_unless(in_array($status, [WorkOrderStatus::ARRIVED, WorkOrderStatus::IN_PROGRESS, WorkOrderStatus::READY], true), 403, 'Sólo el mostrador entrega o cancela la orden.');
+        }
 
-        return $this->present($transition->execute($this->owned(WorkOrder::class, $workOrder), WorkOrderStatus::from($data['status']), $data['reason'] ?? null, $request->user(), $data['checklist'] ?? null));
+        return $this->present($transition->execute($order, $status, $data['reason'] ?? null, $request->user(), $data['checklist'] ?? null));
     }
 
     /** The checkout window's totals: the order's lines with the Lavadora's discounts plus the products added. */
     public function quote(Request $request, string $workOrder, WorkOrderPricing $pricing): JsonResponse
     {
-        $data = $request->validate([
-            'extraLines' => ['sometimes', 'array', 'max:30'],
-            'extraLines.*.itemPublicId' => ['required', 'uuid'],
-            'extraLines.*.quantity' => ['required', 'string', 'regex:/^\d{1,9}(\.\d{1,2})?$/', 'not_regex:/^0+(\.0+)?$/'],
-        ]);
+        $data = $request->validate([...$this->lineRules('extraLines'), ...$this->lineRules('separateLines')]);
+        $order = $this->owned(WorkOrder::class, $workOrder);
 
-        return response()->json(['data' => $pricing->quote($this->owned(WorkOrder::class, $workOrder), $data['extraLines'] ?? [])]);
+        return response()->json(['data' => [
+            ...$pricing->quote($order, $data['extraLines'] ?? [], array_column($data['separateLines'] ?? [], 'itemPublicId')),
+            'separate' => empty($data['separateLines']) ? null : $pricing->quoteSeparate($order->company_id, $data['separateLines']),
+        ]]);
     }
 
     /**
      * The checkout window: charges the order in the open cash register (consumidor final or another customer, products
      * added, payment), issues the invoice when «Factura» is on (else the sale stays as a draft in Ventas) and delivers it
-     * when «Entregar» is chosen.
+     * when «Entregar» is chosen. Payments may be mixed (several methods) or on credit (with its installments, as in
+     * Ventas); `separate` charges some products as another sale («Cuenta aparte»).
      */
     public function checkout(Request $request, string $workOrder, CheckoutWorkOrderAction $checkout): WorkOrderResource
     {
         $data = $request->validate([
             'customerPublicId' => ['required', 'uuid'],
             'cashSessionPublicId' => ['required', 'uuid'],
-            'extraLines' => ['sometimes', 'array', 'max:30'],
-            'extraLines.*.itemPublicId' => ['required', 'uuid'],
-            'extraLines.*.quantity' => ['required', 'string', 'regex:/^\d{1,9}(\.\d{1,2})?$/', 'not_regex:/^0+(\.0+)?$/'],
-            'paymentMethods' => ['required', 'array', 'min:1', 'max:10'],
-            'paymentMethods.*.fiscalPaymentMethodPublicId' => ['required', 'uuid'],
-            'paymentMethods.*.amount' => ['required', 'string', 'regex:/^\d{1,16}(\.\d{1,2})?$/'],
-            'paymentMethods.*.reference' => ['nullable', 'string', 'max:120'],
+            ...$this->lineRules('extraLines'),
+            ...$this->paymentRules('paymentMethods'),
             'notes' => ['nullable', 'string', 'max:1000'],
             'invoice' => ['required', 'boolean'],
             'deliver' => ['required', 'boolean'],
+            'separate' => ['sometimes', 'nullable', 'array'],
+            'separate.customerPublicId' => ['required_with:separate', 'uuid'],
+            'separate.invoice' => ['required_with:separate', 'boolean'],
+            ...$this->lineRules('separate.lines', 'required_with:separate'),
+            ...$this->paymentRules('separate.paymentMethods', 'required_with:separate'),
         ]);
 
         return $this->present($checkout->execute($this->owned(WorkOrder::class, $workOrder), $data, $request->user()));
+    }
+
+    /** @return array<string, list<string>> products added when charging (two decimals, more than zero) */
+    private function lineRules(string $field, string $presence = 'sometimes'): array
+    {
+        return [
+            $field => [$presence, 'array', $presence === 'sometimes' ? 'min:0' : 'min:1', 'max:30'],
+            "$field.*.itemPublicId" => ['required', 'uuid'],
+            "$field.*.quantity" => ['required', 'string', 'regex:/^\d{1,9}(\.\d{1,2})?$/', 'not_regex:/^0+(\.0+)?$/'],
+        ];
+    }
+
+    /** @return array<string, list<mixed>> one or several payments; CREDITO brings its down payment and installments as in Ventas */
+    private function paymentRules(string $field, string $presence = 'required'): array
+    {
+        return [
+            $field => [$presence, 'array', 'min:1', 'max:10'],
+            "$field.*.fiscalPaymentMethodPublicId" => ['required', 'uuid'],
+            "$field.*.amount" => ['required', 'string', 'regex:/^\d{1,16}(\.\d{1,2})?$/'],
+            "$field.*.reference" => ['nullable', 'string', 'max:120'],
+            "$field.*.installments" => ['sometimes', 'nullable', 'array', 'max:120'],
+            "$field.*.installments.*.dueDate" => ['required', 'date_format:Y-m-d'],
+            "$field.*.installments.*.amount" => ['required', 'string', 'regex:/^\d{1,16}(\.\d{1,2})?$/'],
+            "$field.*.downPayment" => ['sometimes', 'nullable', 'string', 'regex:/^\d{1,16}(\.\d{1,2})?$/'],
+            "$field.*.installmentFrequency" => ['sometimes', 'nullable', 'in:DAILY,BIWEEKLY,MONTHLY,SEMIANNUAL,ANNUAL'],
+            "$field.*.creditNotes" => ['sometimes', 'nullable', 'string', 'max:500'],
+        ];
     }
 
     /** «Cobrar»: creates (or refreshes) the sale draft in Ventas. */

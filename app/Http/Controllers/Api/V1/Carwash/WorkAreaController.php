@@ -96,8 +96,9 @@ final class WorkAreaController extends CarwashController
         ]);
         $opens = $data['opensAt'] ?? substr((string) $area?->opens_at, 0, 5);
         $closes = $data['closesAt'] ?? substr((string) $area?->closes_at, 0, 5);
-        if ($closes <= $opens) {
-            throw ValidationException::withMessages(['closesAt' => 'La hora de cierre debe ser posterior a la de apertura.']);
+        // A closing at or before the opening is on the next day (23:00–01:00).
+        if ($closes === $opens) {
+            throw ValidationException::withMessages(['closesAt' => 'La hora de cierre no puede ser igual a la de apertura.']);
         }
 
         $attributes = [];

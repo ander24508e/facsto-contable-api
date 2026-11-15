@@ -66,6 +66,77 @@ final class CarwashReports
         ];
     }
 
+    /**
+     * Órdenes › «Reportes» for a date range (by delivery date unless said otherwise): sales by service (base without IVA
+     * from the sale), occupancy of each area (booked minutes over its open minutes), average minutes of each step,
+     * customers who did not come, combos and free washes. The commissions come from commissions().
+     *
+     * @return array<string, mixed>
+     */
+    public function report(Company $company, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        [$start, $end] = [$from->startOfDay(), $to->endOfDay()];
+        $delivered = WorkOrder::query()->with(['lines.service.item', 'sale.details'])
+            ->where('company_id', $company->id)->where('status', WorkOrderStatus::DELIVERED)->whereBetween('delivered_at', [$start, $end])->get();
+
+        // Ventas por servicio.
+        $services = [];
+        foreach ($delivered as $order) {
+            foreach ($order->lines as $line) {
+                $name = $line->kind === WorkOrderLine::SERVICE ? ($line->service?->item?->name ?? $line->description) : $line->description;
+                $services[$name] ??= ['name' => $name, 'surcharge' => $line->kind === WorkOrderLine::SURCHARGE, 'quantity' => '0', 'orders' => 0, 'base' => '0.00'];
+                $services[$name]['quantity'] = bcadd($services[$name]['quantity'], (string) $line->quantity, 2);
+                $services[$name]['orders']++;
+                if ($order->sale) {
+                    $services[$name]['base'] = bcadd($services[$name]['base'], (string) $order->sale->details->where('item_id', $line->item_id)->sum('taxable_base'), 2);
+                }
+            }
+        }
+
+        // Ocupación por área: booked minutes over the minutes it was open (hours × capacity × days).
+        $days = (int) $start->diffInDays($end->startOfDay()) + 1;
+        $booked = WorkOrder::query()->where('company_id', $company->id)->where('status', '!=', WorkOrderStatus::CANCELLED)
+            ->whereNotNull('work_area_id')->whereBetween('scheduled_at', [$start, $end])->get(['work_area_id', 'scheduled_at', 'scheduled_end_at'])->groupBy('work_area_id');
+        $areas = WorkArea::query()->where('company_id', $company->id)->orderBy('name')->get()->map(function (WorkArea $area) use ($booked, $days): array {
+            $open = (int) (substr((string) $area->opens_at, 0, 2)) * 60 + (int) substr((string) $area->opens_at, 3, 2);
+            $close = (int) (substr((string) $area->closes_at, 0, 2)) * 60 + (int) substr((string) $area->closes_at, 3, 2);
+            $daily = (($close - $open) % 1440 + 1440) % 1440 ?: 1440;
+            $available = $daily * max(1, (int) $area->capacity) * $days;
+            $orders = $booked->get($area->id, collect());
+            $minutes = (int) $orders->sum(fn (WorkOrder $order) => $order->scheduled_at->diffInMinutes($order->scheduled_end_at));
+
+            return ['name' => $area->name, 'orders' => $orders->count(), 'bookedMinutes' => $minutes, 'openMinutes' => $available, 'percent' => round(min(100, $minutes * 100 / max(1, $available)), 1)];
+        })->values()->all();
+
+        // Tiempos promedio de cada paso, en minutos.
+        $average = function (string $from, string $to) use ($delivered): ?float {
+            $spans = $delivered->filter(fn (WorkOrder $order) => $order->{$from} && $order->{$to})->map(fn (WorkOrder $order) => $order->{$from}->diffInMinutes($order->{$to}));
+
+            return $spans->isEmpty() ? null : round((float) $spans->avg(), 1);
+        };
+
+        $cancelled = WorkOrder::query()->where('company_id', $company->id)->where('status', WorkOrderStatus::CANCELLED)->whereBetween('cancelled_at', [$start, $end]);
+
+        return [
+            'from' => $from->toDateString(),
+            'to' => $to->toDateString(),
+            'orders' => $delivered->count(),
+            'base' => $delivered->reduce(fn (string $sum, WorkOrder $order) => bcadd($sum, $order->sale ? (string) $order->sale->subtotal : '0', 2), '0.00'),
+            'services' => collect($services)->sortByDesc(fn (array $row) => (float) $row['base'])->values()->all(),
+            'areas' => $areas,
+            'steps' => [
+                'waiting' => $average('arrived_at', 'started_at'),
+                'washing' => $average('started_at', 'ready_at'),
+                'pickup' => $average('ready_at', 'delivered_at'),
+                'total' => $average('created_at', 'delivered_at'),
+            ],
+            'noShows' => (clone $cancelled)->where('cancel_reason', 'like', 'No llegó%')->count(),
+            'cancelled' => (clone $cancelled)->count(),
+            'loyaltyFree' => $delivered->where('loyalty_free', true)->count(),
+            'combos' => $delivered->filter(fn (WorkOrder $order) => str_contains((string) $order->sale?->notes, 'Combo '))->count(),
+        ];
+    }
+
     /** @return list<array<string, mixed>> */
     public function supplies(Company $company): array
     {

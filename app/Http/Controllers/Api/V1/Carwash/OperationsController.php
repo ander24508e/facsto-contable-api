@@ -15,6 +15,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -83,6 +84,20 @@ final class OperationsController extends CarwashController
     public function supplies(CompanyContext $context, CarwashReports $reports): JsonResponse
     {
         return response()->json(['data' => $reports->supplies($context->company())]);
+    }
+
+    /** GET /carwash/reports?from=&to= — Órdenes › «Reportes» (the current month by default); commissions only with their permission. */
+    public function reports(Request $request, CarwashReports $reports): JsonResponse
+    {
+        $data = $request->validate(['from' => ['nullable', 'date_format:Y-m-d'], 'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from']]);
+        $today = CarbonImmutable::now(config('app.timezone'));
+        $from = isset($data['from']) ? CarbonImmutable::parse($data['from'], config('app.timezone')) : $today->startOfMonth();
+        $to = isset($data['to']) ? CarbonImmutable::parse($data['to'], config('app.timezone')) : $today;
+
+        return response()->json(['data' => [
+            ...$reports->report($this->company(), $from, $to),
+            'commissions' => Gate::allows('carwash.commissions') ? $reports->commissions($this->company(), $from, $to) : null,
+        ]]);
     }
 
     /** GET /carwash/commissions?from=&to= — Configuración › Trabajadores «Comisiones» (the current month by default). */

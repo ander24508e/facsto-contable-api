@@ -36,6 +36,7 @@ final class WorkOrderResource extends JsonResource
             'checklist' => $this->checklist,
             'dirty' => (bool) $this->dirty,
             'loyaltyFree' => (bool) $this->loyalty_free,
+            'inClaim' => (bool) $this->evidence_hold,
             'isEditable' => $this->status->isEditable() && $billing === BillingStatus::UNBILLED,
             'vehicle' => $this->vehicle ? [
                 'publicId' => $this->vehicle->public_id,
@@ -55,6 +56,7 @@ final class WorkOrderResource extends JsonResource
                 'description' => $line->description,
                 'kind' => $line->kind,
                 'servicePublicId' => $line->service?->public_id,
+                'itemPublicId' => $line->item?->public_id,
                 'itemCode' => $line->item?->internal_code,
                 'quantity' => (string) $line->quantity,
                 'price' => $line->item ? $prices->final($line->item) : null,

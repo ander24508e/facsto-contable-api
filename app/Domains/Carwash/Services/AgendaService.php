@@ -21,6 +21,8 @@ use Illuminate\Support\Collection;
  * `scheduled_at` until `scheduled_end_at` (the duration of the order's services plus the cleanup minutes); cancelled
  * orders free it. Configuración › Agenda adds closed weekdays and dates, how long before a reservation is taken (minimum
  * and maximum) and how many vehicles may start in the same slot; › Áreas, one vehicle per area at a time.
+ * Hours may pass midnight: a closing at or before the opening is on the next day (23:59–00:59 is that one hour), and a
+ * reservation after midnight belongs to the business day that opened the evening before.
  * Time zone: the application's (America/Guayaquil).
  */
 final class AgendaService
@@ -32,8 +34,7 @@ final class AgendaService
     {
         $settings = CarwashSetting::for($company);
         $day = CarbonImmutable::parse($date->format('Y-m-d'), config('app.timezone'));
-        $open = $day->setTimeFromTimeString((string) $settings->opening_time);
-        $close = $day->setTimeFromTimeString((string) $settings->closing_time);
+        [$open, $close] = $this->window($day, (string) $settings->opening_time, (string) $settings->closing_time);
         $areas = WorkArea::query()->with('types')->where('company_id', $company->id)->where('is_active', true)->orderBy('name')->get();
         $orders = WorkOrder::query()
             ->where('company_id', $company->id)
@@ -48,9 +49,8 @@ final class AgendaService
         $slots = [];
         for ($start = $open; $start->lt($close); $start = $start->addMinutes($settings->slot_minutes)) {
             $end = $start->addMinutes($settings->slot_minutes);
-            $cells = $areas->map(function (WorkArea $area) use ($day, $start, $end, $orders, $closedDay, $settings): array {
-                [$areaOpen, $areaClose] = $this->hours($area, $day);
-                $isOpen = ! $closedDay && $start->gte($areaOpen) && $end->lte($areaClose);
+            $cells = $areas->map(function (WorkArea $area) use ($start, $end, $orders, $closedDay, $settings): array {
+                $isOpen = ! $closedDay && $this->areaWindow($area, $start, $end) !== null;
                 $booked = $this->peak($orders->get($area->id, collect()), $start, $end);
                 $capacity = $this->capacity($area, $settings);
 
@@ -115,15 +115,15 @@ final class AgendaService
         $start = CarbonImmutable::instance($at)->setTimezone(config('app.timezone'))->startOfMinute();
         // The area stays busy for the services plus the cleanup before the next vehicle.
         $end = $start->addMinutes(max(1, $minutes) + $settings->cleanup_minutes);
-        $day = $start->startOfDay();
+        $general = $this->businessWindow($settings, $start);
         if ($reservation) {
-            $this->assertReservable($settings, $start, $company, $ignore);
+            $this->assertReservable($settings, $start, $general, $company, $ignore);
         }
-        [$areaOpen, $areaClose] = $this->hours($area, $day);
-        $open = $day->setTimeFromTimeString((string) $settings->opening_time)->max($areaOpen);
-        $close = $day->setTimeFromTimeString((string) $settings->closing_time)->min($areaClose);
-        if ($start->lt($open) || $end->gt($close)) {
-            $message = "La reserva ({$start->format('H:i')}–{$end->format('H:i')}) queda fuera del horario de «{$area->name}» ({$open->format('H:i')}–{$close->format('H:i')}).";
+        $areaHours = $this->areaWindow($area, $start, $end);
+        if ($general === null || $areaHours === null || $end->gt($general[1])) {
+            $hours = fn (string $from, string $to): string => substr($from, 0, 5).'–'.substr($to, 0, 5);
+            $message = "La reserva ({$start->format('H:i')}–{$end->format('H:i')}) queda fuera del horario: la Lavadora atiende "
+                .$hours((string) $settings->opening_time, (string) $settings->closing_time)." y «{$area->name}» ".$hours((string) $area->opens_at, (string) $area->closes_at).'.';
             throw new ApiException(ApiErrorCode::CARWASH_AGENDA_OUTSIDE_HOURS, $message, 422, ['errors' => ['scheduledAt' => [$message]]]);
         }
 
@@ -212,10 +212,12 @@ final class AgendaService
     }
 
     /** Closed weekdays and dates, the advance window and the vehicles that may start in one slot. */
-    private function assertReservable(CarwashSetting $settings, CarbonImmutable $start, Company $company, ?WorkOrder $ignore): void
+    /** @param  array{0: CarbonImmutable, 1: CarbonImmutable}|null  $general  the business day's hours that hold $start */
+    private function assertReservable(CarwashSetting $settings, CarbonImmutable $start, ?array $general, Company $company, ?WorkOrder $ignore): void
     {
-        if ($this->isClosed($settings, $start)) {
-            $message = 'La Lavadora no atiende el '.$start->locale('es')->isoFormat('dddd D [de] MMMM').'.';
+        $day = ($general[0] ?? $start)->startOfDay();
+        if ($this->isClosed($settings, $day)) {
+            $message = 'La Lavadora no atiende el '.$day->locale('es')->isoFormat('dddd D [de] MMMM').'.';
             throw new ApiException(ApiErrorCode::CARWASH_AGENDA_CLOSED, $message, 422, ['errors' => ['scheduledAt' => [$message]]]);
         }
         $now = CarbonImmutable::now(config('app.timezone'));
@@ -228,8 +230,7 @@ final class AgendaService
             throw new ApiException(ApiErrorCode::CARWASH_AGENDA_ADVANCE, $message, 422, ['errors' => ['scheduledAt' => [$message]]]);
         }
         if ($settings->vehicles_per_slot !== null) {
-            $day = $start->startOfDay();
-            $open = $day->setTimeFromTimeString((string) $settings->opening_time);
+            $open = $general[0] ?? $day->setTimeFromTimeString((string) $settings->opening_time);
             $slot = $open->addMinutes((int) (floor($open->diffInMinutes($start, false) / $settings->slot_minutes) * $settings->slot_minutes));
             $starting = WorkOrder::query()->where('company_id', $company->id)->where('status', '!=', WorkOrderStatus::CANCELLED)
                 ->where('scheduled_at', '>=', $slot)->where('scheduled_at', '<', $slot->addMinutes($settings->slot_minutes))
@@ -252,10 +253,39 @@ final class AgendaService
         return $settings->one_vehicle_per_area ? min(1, (int) $area->capacity) : (int) $area->capacity;
     }
 
-    /** @return array{0: CarbonImmutable, 1: CarbonImmutable} the area's hours on that day */
-    private function hours(WorkArea $area, CarbonImmutable $day): array
+    /** @return array{0: CarbonImmutable, 1: CarbonImmutable} hours from $from to $to opening on $day; a closing at or before the opening is on the next day */
+    private function window(CarbonImmutable $day, string $from, string $to): array
     {
-        return [$day->setTimeFromTimeString((string) $area->opens_at), $day->setTimeFromTimeString((string) $area->closes_at)];
+        $open = $day->setTimeFromTimeString($from);
+        $close = $day->setTimeFromTimeString($to);
+
+        return [$open, $close->lte($open) ? $close->addDay() : $close];
+    }
+
+    /** @return array{0: CarbonImmutable, 1: CarbonImmutable}|null the general hours that hold $start: today's, or yesterday's when they pass midnight */
+    private function businessWindow(CarwashSetting $settings, CarbonImmutable $start): ?array
+    {
+        foreach ([-1, 0] as $offset) {
+            [$open, $close] = $this->window($start->startOfDay()->addDays($offset), (string) $settings->opening_time, (string) $settings->closing_time);
+            if ($start->gte($open) && $start->lt($close)) {
+                return [$open, $close];
+            }
+        }
+
+        return null;
+    }
+
+    /** @return array{0: CarbonImmutable, 1: CarbonImmutable}|null the area's hours that cover the whole stay */
+    private function areaWindow(WorkArea $area, CarbonImmutable $start, CarbonImmutable $end): ?array
+    {
+        foreach ([-1, 0] as $offset) {
+            [$open, $close] = $this->window($start->startOfDay()->addDays($offset), (string) $area->opens_at, (string) $area->closes_at);
+            if ($start->gte($open) && $end->lte($close)) {
+                return [$open, $close];
+            }
+        }
+
+        return null;
     }
 
     /**

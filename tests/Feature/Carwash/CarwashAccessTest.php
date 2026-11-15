@@ -26,7 +26,7 @@ final class CarwashAccessTest extends CarwashTestCase
             ->assertJsonPath('data.modules.0.module', 'carwash')
             ->assertJsonPath('data.modules.0.status', 'ENABLED')
             ->assertJsonPath('data.modules.0.features', ['carwash'])
-            ->assertJsonPath('data.modules.0.can', ['view', 'operate', 'manage', 'own_work', 'assignable', 'commissions']);
+            ->assertJsonPath('data.modules.0.can', ['view', 'operate', 'manage', 'own_work', 'assignable', 'commissions', 'inspect', 'evidence']);
         $this->actingAs($viewer)->getJson('/api/v1/company')->assertOk()->assertJsonPath('data.modules.0.can', ['view']);
     }
 
@@ -38,7 +38,7 @@ final class CarwashAccessTest extends CarwashTestCase
         $this->actingAs($owner)->getJson(self::API.'/vehicles')->assertOk()->assertJsonCount(1, 'data');
         $this->actingAs($owner)->postJson(self::API.'/work-orders', $this->orderBody($setup))
             ->assertForbidden()->assertJsonPath('error.code', 'MODULE_READ_ONLY');
-        $this->actingAs($owner)->getJson('/api/v1/company')->assertJsonPath('data.modules.0.can', ['view', 'own_work']);
+        $this->actingAs($owner)->getJson('/api/v1/company')->assertJsonPath('data.modules.0.can', ['view', 'own_work', 'evidence']);
     }
 
     public function test_viewer_reads_biller_operates_only_owner_and_admin_configure(): void
@@ -75,6 +75,14 @@ final class CarwashAccessTest extends CarwashTestCase
         $this->actingAs($setup['washer'])->getJson(self::API.'/work-orders/'.$theirs)->assertNotFound();
         $this->actingAs($setup['washer'])->getJson(self::API.'/agenda')->assertForbidden();
         $this->actingAs($setup['washer'])->postJson(self::API.'/work-orders', $this->orderBody($setup))->assertForbidden();
+
+        // «Mi trabajo»: the washer moves the wash steps of their own orders, never delivers nor touches another's.
+        $step = fn (string $order, string $status) => $this->actingAs($setup['washer'])->postJson(self::API."/work-orders/$order/transitions", ['status' => $status]);
+        $step($theirs, 'ARRIVED')->assertNotFound();
+        $step($mine, 'ARRIVED')->assertOk();
+        $step($mine, 'IN_PROGRESS')->assertOk()->assertJsonPath('data.status', 'IN_PROGRESS');
+        $step($mine, 'CANCELLED')->assertForbidden();
+        $this->actingAs($owner)->getJson(self::API.'/work-orders?mine=1')->assertOk()->assertJsonCount(0, 'data');
     }
 
     public function test_records_of_another_company_answer_not_found(): void

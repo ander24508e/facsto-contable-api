@@ -30,8 +30,10 @@ return [
                 'own_work' => 'Ver su propio trabajo (sus órdenes asignadas)',
                 'assignable' => 'Puede ser asignado como trabajador',
                 'commissions' => 'Ver comisiones de los trabajadores',
+                'inspect' => 'Hacer la inspección (fotos, videos y firma de la recepción)',
+                'evidence' => 'Ver evidencias de la recepción',
             ],
-            'read_actions' => ['view', 'own_work'],
+            'read_actions' => ['view', 'own_work', 'evidence'],
         ],
     ],
 

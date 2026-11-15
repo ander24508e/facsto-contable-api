@@ -45,6 +45,22 @@ final class CashSessionController extends Controller
         return response()->json(['data' => $query->limit(100)->get()->map($this->present(...))]);
     }
 
+    /**
+     * Charged sales still without invoice («por facturar»): drafts whose payment already entered this session (their
+     * cash movement) or that a module charged (Lavadora). Cerrar caja warns about them.
+     *
+     * @return array{count: int, total: string}
+     */
+    private function toInvoice(CashSession $session): array
+    {
+        $drafts = Sale::query()->where('company_id', $session->company_id)->where('cash_session_id', $session->id)->where('status', SaleStatus::DRAFT)
+            ->where(fn ($charged) => $charged->whereNotNull('source_module')
+                ->orWhereExists(fn ($movement) => $movement->selectRaw('1')->from('cash_movements')->whereColumn('cash_movements.sale_id', 'sales.id')
+                    ->where('cash_movements.source', CashMovement::SALE)->whereNull('cash_movements.electronic_document_id')));
+
+        return ['count' => (clone $drafts)->count(), 'total' => bcadd((string) (clone $drafts)->sum('total'), '0', 2)];
+    }
+
     /** The report of one session: its data, the balance, its invoiced sales by payment and every movement in order. */
     public function show(CashSession $session, CompanyContext $context): JsonResponse
     {
@@ -56,6 +72,7 @@ final class CashSessionController extends Controller
             ...$this->present($session),
             'balance' => $session->balance(),
             'sales' => $this->sales($session),
+            'toInvoice' => $this->toInvoice($session),
             'movements' => $session->movements->map(fn (CashMovement $movement): array => [
                 'publicId' => $movement->public_id,
                 'type' => $movement->type,

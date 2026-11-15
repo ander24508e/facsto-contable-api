@@ -19,7 +19,8 @@ use Carbon\CarbonInterface;
  *   type); a service without an active price for it cannot be ordered.
  * - «Precio único»: the service's own Inventario item and duration, the same for every vehicle.
  * Surcharges (› Tarifas) are Inventario services added as their own lines: «Suciedad extrema» when the order says so and
- * «Hora pico» when the order's time falls inside it.
+ * «Hora pico» when the order's time falls inside it. Articles of Inventario (products or services) added when scheduling
+ * are PRODUCT lines at their price, without duration.
  */
 final class WorkOrderLineResolver
 {
@@ -78,6 +79,28 @@ final class WorkOrderLineResolver
         }
 
         return array_values(array_filter($lines));
+    }
+
+    /**
+     * The articles added to the order (any active Inventario item), one line each.
+     *
+     * @param  list<array{itemPublicId: string, quantity: string}>  $articles
+     * @return list<array<string, mixed>>
+     */
+    public function articles(int $companyId, array $articles): array
+    {
+        $items = Item::query()->where('company_id', $companyId)->where('is_active', true)
+            ->whereIn('public_id', array_column($articles, 'itemPublicId'))->get()->keyBy('public_id');
+        $lines = [];
+        foreach (array_values($articles) as $index => $article) {
+            $item = $items->get($article['itemPublicId']);
+            if (! $item) {
+                throw new ApiException(ApiErrorCode::ITEM_NOT_FOUND, 'Uno de los artículos no está activo en la empresa.', 422, ['errors' => ["items.$index.itemPublicId" => ['El artículo no está activo.']]]);
+            }
+            $lines[] = [...$this->line($companyId, null, null, $item->id, $item->name, 0), 'kind' => WorkOrderLine::PRODUCT, 'quantity' => (string) $article['quantity']];
+        }
+
+        return $lines;
     }
 
     /** @return array<string, mixed>|null */

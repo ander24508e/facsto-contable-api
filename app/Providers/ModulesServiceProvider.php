@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Domains\Carwash\Console\PurgeEvidencesCommand;
+use App\Domains\Carwash\Console\QueueRemindersCommand;
 use App\Domains\Carwash\Console\ReleaseNoShowsCommand;
 use App\Domains\Carwash\Services\CatalogGuard;
 use App\Domains\Modules\Commands\ModuleEntitlementCommand;
@@ -52,11 +54,21 @@ final class ModulesServiceProvider extends ServiceProvider
         CatalogGuard::register();
         // Lavadora: «carwash.orders» opens Órdenes to «Ver» or to «Ver su propio trabajo».
         Gate::define('carwash.orders', fn (User $user): bool => Gate::forUser($user)->any(['carwash.view', 'carwash.own_work']));
+        // «Mi trabajo»: who operates moves any order; who sees their own work moves the wash steps of their orders.
+        Gate::define('carwash.step', fn (User $user): bool => Gate::forUser($user)->any(['carwash.operate', 'carwash.own_work']));
+        // Evidencias de la recepción: listarlas y abrir sus archivos, para quien inspecciona o quien las ve.
+        Gate::define('carwash.evidences', fn (User $user): bool => Gate::forUser($user)->any(['carwash.inspect', 'carwash.evidence']));
 
         if ($this->app->runningInConsole()) {
-            $this->commands([ModuleEntitlementCommand::class, PushEntitlementsCommand::class, ReleaseNoShowsCommand::class]);
+            $this->commands([ModuleEntitlementCommand::class, PushEntitlementsCommand::class, ReleaseNoShowsCommand::class, PurgeEvidencesCommand::class, QueueRemindersCommand::class]);
             // Lavadora › Configuración › Agenda «Tolerancia de llegada»: frees the reservations whose customer did not come.
-            $this->app->booted(fn () => Schedule::command('carwash:release-no-shows')->everyFiveMinutes()->withoutOverlapping()->onOneServer());
+            $this->app->booted(function (): void {
+                Schedule::command('carwash:release-no-shows')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
+                // Evidencias de recepción vencidas (90 días, salvo «En reclamo»).
+                Schedule::command('carwash:purge-evidences')->dailyAt('03:30')->withoutOverlapping()->onOneServer();
+                // Configuración › Clientes «Recordatorio de cita».
+                Schedule::command('carwash:queue-reminders')->everyFifteenMinutes()->withoutOverlapping()->onOneServer();
+            });
         }
     }
 }

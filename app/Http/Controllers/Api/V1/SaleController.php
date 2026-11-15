@@ -7,6 +7,7 @@ use App\Domains\Sales\Actions\CancelSaleDraftAction;
 use App\Domains\Sales\Actions\CreateSaleDraftAction;
 use App\Domains\Sales\Actions\UpdateSaleDraftAction;
 use App\Domains\Sales\DTOs\SaleDraftData;
+use App\Domains\Sales\Enums\SaleStatus;
 use App\Domains\Sales\Models\Sale;
 use App\Domains\Sales\Services\SaleInvoiceReadinessService;
 use App\Domains\Sales\Services\SaleStageFilter;
@@ -15,6 +16,7 @@ use App\Http\Requests\Sales\CreateSaleDraftRequest;
 use App\Http\Requests\Sales\SaleIndexRequest;
 use App\Http\Requests\Sales\UpdateSaleDraftRequest;
 use App\Http\Resources\Api\V1\SaleResource;
+use Illuminate\Contracts\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -26,6 +28,7 @@ final class SaleController extends Controller
         $this->authorize('viewAny', Sale::class);
         $filters = $request->validated();
         $query = $context->company()->sales()->with(['customer', 'creator', 'electronicDocument'])->latest();
+        $this->withoutModuleDrafts($query);
 
         if ($search = trim((string) ($filters['search'] ?? ''))) {
             $pattern = '%'.mb_strtolower($search).'%';
@@ -50,11 +53,21 @@ final class SaleController extends Controller
         $stageCounts = [];
         foreach (['draft', 'prepared', 'problems'] as $countedStage) {
             $counted = $context->company()->sales();
+            $this->withoutModuleDrafts($counted);
             SaleStageFilter::apply($counted, $countedStage);
             $stageCounts[$countedStage] = $counted->count();
         }
 
         return SaleResource::collection($query->paginate($filters['per_page'] ?? 15))->additional(['meta' => ['stageCounts' => $stageCounts]]);
+    }
+
+    /**
+     * A draft charged from a module (a Lavadora order paid without invoice) is handled there until it is invoiced: it
+     * does not appear as a draft in Ventas. Once issued it is listed like any other sale.
+     */
+    private function withoutModuleDrafts(Builder $query): void
+    {
+        $query->where(fn ($sales) => $sales->whereNull('source_module')->orWhere('status', '!=', SaleStatus::DRAFT->value));
     }
 
     public function store(CreateSaleDraftRequest $request, CreateSaleDraftAction $create): JsonResponse

@@ -8,7 +8,10 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-/** A vehicle of a FACSTO customer (the customers table itself, never a copy). */
+/**
+ * A vehicle, identified by its plate. Each work order carries its own customer (anyone may bring it); `customer` is only
+ * the last one who did, suggested at the counter.
+ */
 #[Fillable(['company_id', 'customer_id', 'plate', 'vehicle_type_id', 'vehicle_brand_id', 'vehicle_model_id', 'color', 'year', 'notes', 'is_active'])]
 class Vehicle extends Model
 {

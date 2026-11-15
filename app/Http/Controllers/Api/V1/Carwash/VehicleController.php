@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Carwash;
 
 use App\Domains\Carwash\Actions\SaveVehicleAction;
 use App\Domains\Carwash\Enums\WorkOrderStatus;
+use App\Domains\Carwash\Models\CarwashSetting;
 use App\Domains\Carwash\Models\Vehicle;
 use App\Domains\Carwash\Models\VehicleBrand;
 use App\Domains\Carwash\Models\WorkOrder;
@@ -43,11 +44,12 @@ final class VehicleController extends CarwashController
             ->when($filters['brandPublicId'] ?? null, fn ($query, $brand) => $query->whereHas('brand', fn ($owner) => $owner->where('public_id', $brand)))
             ->when($filters['typePublicId'] ?? null, fn ($query, $type) => $query->whereHas('type', fn ($owner) => $owner->where('public_id', $type)))
             ->when($filters['customerPublicId'] ?? null, fn ($query, $customer) => $query->whereHas('customer', fn ($owner) => $owner->where('public_id', $customer)))
+            // One box finds by plate, brand, model or type (Vehículos is about the vehicle; the customer goes per order).
             ->when($search !== '', fn ($query) => $query->where(fn ($match) => $match
                 ->where('plate', 'like', '%'.$plate.'%')
-                ->orWhereHas('customer', fn ($customer) => $customer
-                    ->whereRaw('lower(legal_name) like ?', ['%'.mb_strtolower($search).'%'])
-                    ->orWhere('identification', 'like', $search.'%'))))
+                ->orWhereHas('brand', fn ($brand) => $brand->whereRaw('lower(name) like ?', ['%'.mb_strtolower($search).'%']))
+                ->orWhereHas('model', fn ($model) => $model->whereRaw('lower(name) like ?', ['%'.mb_strtolower($search).'%']))
+                ->orWhereHas('type', fn ($type) => $type->whereRaw('lower(name) like ?', ['%'.mb_strtolower($search).'%']))))
             ->orderBy('plate')
             ->paginate($filters['per_page'] ?? 15))
             ->additional(['meta' => ['summary' => $this->summary()]]);
@@ -81,7 +83,40 @@ final class VehicleController extends CarwashController
         return response()->json(['data' => [
             'vehicle' => new VehicleResource($vehicle),
             'openWorkOrder' => $open ? new WorkOrderResource($open) : null,
+            'history' => $this->history($vehicle),
         ]]);
+    }
+
+    /**
+     * «Historial» of Nueva agenda when the plate is found: its delivered visits (the last five with their services and
+     * total) and the customer's loyalty counter (Configuración › Clientes «Fidelización»).
+     *
+     * @return array<string, mixed>
+     */
+    private function history(Vehicle $vehicle): array
+    {
+        $delivered = WorkOrder::query()->where('company_id', $vehicle->company_id)->where('vehicle_id', $vehicle->id)->where('status', WorkOrderStatus::DELIVERED);
+        $settings = CarwashSetting::forCompany($vehicle->company_id);
+        $loyalty = null;
+        if ($settings->loyalty_every) {
+            // The counter of the vehicle (whoever brought it), since the customer changes from order to order.
+            $count = (clone $delivered)->count();
+            $remaining = $settings->loyalty_every - ($count % $settings->loyalty_every);
+            $loyalty = ['every' => (int) $settings->loyalty_every, 'delivered' => $count, 'remaining' => $remaining, 'nextIsFree' => $remaining === 1];
+        }
+
+        return [
+            'visits' => (clone $delivered)->count(),
+            'last' => (clone $delivered)->with(['lines', 'sale', 'customer'])->latest('delivered_at')->limit(5)->get()->map(fn (WorkOrder $order): array => [
+                'publicId' => $order->public_id,
+                'code' => $order->code(),
+                'deliveredAt' => $order->delivered_at?->toIso8601String(),
+                'services' => $order->lines->pluck('description')->values()->all(),
+                'customer' => $order->customer?->legal_name,
+                'total' => $order->sale ? (string) $order->sale->total : null,
+            ])->all(),
+            'loyalty' => $loyalty,
+        ];
     }
 
     public function show(string $vehicle): VehicleResource
@@ -106,7 +141,7 @@ final class VehicleController extends CarwashController
 
         return $request->validate([
             'plate' => [$required, 'string', 'max:20'],
-            'customerPublicId' => [$required, 'uuid'],
+            'customerPublicId' => ['sometimes', 'nullable', 'uuid'],
             // The specification gives brand, model and type; the reception may register a vehicle with only its type.
             'vehicleSpecPublicId' => ['sometimes', 'nullable', 'uuid'],
             'vehicleTypePublicId' => [$creating ? 'required_without:vehicleSpecPublicId' : 'sometimes', 'nullable', 'uuid'],

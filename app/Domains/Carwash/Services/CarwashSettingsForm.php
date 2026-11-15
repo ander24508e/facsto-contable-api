@@ -112,8 +112,9 @@ final class CarwashSettingsForm
 
         $opening = substr((string) $settings->opening_time, 0, 5);
         $closing = substr((string) $settings->closing_time, 0, 5);
-        if ($closing <= $opening) {
-            throw ValidationException::withMessages(['closingTime' => 'La hora de cierre debe ser posterior a la de apertura.']);
+        // A closing at or before the opening is on the next day (23:00–01:00).
+        if ($closing === $opening) {
+            throw ValidationException::withMessages(['closingTime' => 'La hora de cierre no puede ser igual a la de apertura.']);
         }
         if (($settings->peak_from === null) !== ($settings->peak_to === null)
             || ($settings->peak_from !== null && substr((string) $settings->peak_to, 0, 5) <= substr((string) $settings->peak_from, 0, 5))) {

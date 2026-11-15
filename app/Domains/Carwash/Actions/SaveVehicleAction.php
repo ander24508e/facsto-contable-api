@@ -14,7 +14,7 @@ use App\Shared\Http\ApiErrorCode;
 use App\Shared\Http\ApiException;
 use Illuminate\Support\Facades\DB;
 
-/** Registers or edits a vehicle of a FACSTO customer. The plate is unique per company. */
+/** Registers or edits a vehicle. The plate is unique per company; the customer (the last one who brought it) is optional. */
 final class SaveVehicleAction
 {
     public function __construct(
@@ -41,7 +41,8 @@ final class SaveVehicleAction
             }
         }
         if (array_key_exists('customerPublicId', $data)) {
-            $attributes['customer_id'] = $company->customers()->where('public_id', $data['customerPublicId'])->where('is_active', true)->firstOrFail()->id;
+            $attributes['customer_id'] = $data['customerPublicId'] === null ? null
+                : $company->customers()->where('public_id', $data['customerPublicId'])->where('is_active', true)->firstOrFail()->id;
         }
         if (filled($data['vehicleTypePublicId'] ?? null)) {
             $attributes['vehicle_type_id'] = VehicleType::query()->where('company_id', $company->id)

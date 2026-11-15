@@ -2,13 +2,24 @@
 
 namespace Tests;
 
+use App\Domains\Sri\Signing\Contracts\XmlSigner;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use RuntimeException;
 use Tests\Support\CreatesCompanyRoles;
+use Tests\Support\PhpXadesBesTestSigner;
 
 abstract class TestCase extends BaseTestCase
 {
     use CreatesCompanyRoles;
+
+    /** Without tools/xades-signer installed (a developer's machine) the suite signs with PHP; the container uses the jar. */
+    protected function setUp(): void
+    {
+        parent::setUp();
+        if (! is_file((string) config('sri.signer.jar'))) {
+            $this->app->bind(XmlSigner::class, PhpXadesBesTestSigner::class);
+        }
+    }
 
     /**
      * Stops the suite before RefreshDatabase can wipe a real database when the

@@ -2,7 +2,10 @@
 
 namespace Tests\Feature\Carwash;
 
+use App\Domains\Carwash\Models\Vehicle;
 use App\Domains\Cash\Models\CashSession;
+use App\Domains\Customers\Enums\IdentificationType;
+use App\Domains\Customers\Models\Customer;
 use App\Domains\Sales\Models\Sale;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Carbon;
@@ -161,7 +164,7 @@ final class CarwashWorkOrderTest extends CarwashTestCase
         $this->actingAs($owner)->postJson(self::API.'/work-orders', $this->orderBody($setup))->assertCreated();
 
         $this->actingAs($owner)->getJson(self::API.'/dashboard')->assertOk()->assertJsonPath('data.total', 1)->assertJsonPath('data.byStatus.PENDING', 1);
-        $this->actingAs($owner)->putJson(self::API.'/settings', ['openingTime' => '07:00', 'closingTime' => '06:00', 'slotMinutes' => 30])->assertUnprocessable();
+        $this->actingAs($owner)->putJson(self::API.'/settings', ['openingTime' => '07:00', 'closingTime' => '07:00', 'slotMinutes' => 30])->assertUnprocessable();
         $this->actingAs($owner)->putJson(self::API.'/settings', ['openingTime' => '07:00', 'closingTime' => '19:00', 'slotMinutes' => 30])
             ->assertOk()->assertJsonPath('data.closingTime', '19:00');
     }
@@ -180,7 +183,7 @@ final class CarwashWorkOrderTest extends CarwashTestCase
 
         $body = ['name' => 'Box 1', 'areaTypePublicIds' => [$dry, $wash], 'capacity' => 2, 'opensAt' => '08:00', 'closesAt' => '18:00'];
         $this->actingAs($owner)->postJson(self::API.'/work-areas', [...$body, 'areaTypePublicIds' => [$wash, $dry, $lube]])->assertUnprocessable()->assertJsonValidationErrors(['areaTypePublicIds'], 'error.details.errors');
-        $this->actingAs($owner)->postJson(self::API.'/work-areas', [...$body, 'closesAt' => '07:00'])->assertUnprocessable()->assertJsonValidationErrors(['closesAt'], 'error.details.errors');
+        $this->actingAs($owner)->postJson(self::API.'/work-areas', [...$body, 'closesAt' => '08:00'])->assertUnprocessable()->assertJsonValidationErrors(['closesAt'], 'error.details.errors');
         // A new area comes back active, so the list shows it without reloading.
         $area = $this->actingAs($owner)->postJson(self::API.'/work-areas', $body)->assertCreated()
             ->assertJsonPath('data.isActive', true)
@@ -213,5 +216,28 @@ final class CarwashWorkOrderTest extends CarwashTestCase
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.vehicle.plate', 'PBA1234')
             ->assertJsonPath('meta.summary.total', 1);
+    }
+
+    public function test_the_same_plate_is_the_same_vehicle_and_each_order_keeps_its_customer(): void
+    {
+        [$company, $owner] = $this->carwashCompany();
+        $setup = $this->carwashSetup($company);
+        $other = Customer::query()->create(['company_id' => $company->id, 'identification_type' => IdentificationType::CEDULA, 'identification' => '1713175071', 'legal_name' => 'Juan Torres', 'is_active' => true]);
+        $body = ['servicePublicIds' => [$setup['service']->public_id], 'vehicleSpecPublicId' => $setup['spec']->public_id];
+
+        // By its plate (written in any way) and with another customer: no duplicate, the order is his.
+        $this->actingAs($owner)->postJson(self::API.'/work-orders', [...$body, 'plate' => 'pba-1234', 'customerPublicId' => $other->public_id])->assertCreated()
+            ->assertJsonPath('data.vehicle.plate', 'PBA1234')->assertJsonPath('data.customer.name', 'Juan Torres');
+        $this->assertSame(1, Vehicle::query()->where('company_id', $company->id)->count());
+        $this->assertSame($other->id, $setup['vehicle']->refresh()->customer_id);
+
+        // A new plate is registered with the order, without being tied to a customer in Vehículos.
+        $this->actingAs($owner)->postJson(self::API.'/work-orders', [...$body, 'plate' => 'PBX4444', 'customerPublicId' => $setup['customer']->public_id])->assertCreated()
+            ->assertJsonPath('data.vehicle.plate', 'PBX4444')->assertJsonPath('data.customer.name', 'María Pérez');
+        $this->assertSame(2, Vehicle::query()->where('company_id', $company->id)->count());
+        $this->actingAs($owner)->postJson(self::API.'/vehicles', ['plate' => 'PBC1234', 'vehicleSpecPublicId' => $setup['spec']->public_id])->assertCreated()
+            ->assertJsonPath('data.customer.publicId', null);
+        // Registering an existing plate by hand in Vehículos is still a duplicate.
+        $this->actingAs($owner)->postJson(self::API.'/vehicles', ['plate' => 'PBA1234', 'vehicleSpecPublicId' => $setup['spec']->public_id])->assertStatus(409);
     }
 }
