@@ -21,6 +21,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Customers\StoreCustomerRequest;
 use App\Http\Requests\Customers\UpdateCustomerRequest;
 use App\Http\Resources\Api\V1\CustomerResource;
+use App\Shared\Realtime\VersionGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -69,6 +70,7 @@ final class CustomerController extends Controller
     public function update(UpdateCustomerRequest $request, Customer $customer, UpdateCustomerAction $update): CustomerResource
     {
         $this->authorize('update', $customer);
+        app(VersionGuard::class)->assertCurrent($customer, $request->input('version'));
 
         return new CustomerResource($update->execute($customer, $this->attributes($request->validated()), $request->user()));
     }

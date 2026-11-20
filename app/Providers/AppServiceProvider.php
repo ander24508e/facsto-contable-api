@@ -26,6 +26,7 @@ use App\Domains\Sri\Signing\JavaXadesBesSigner;
 use App\Domains\Taxes\Models\CompanyTax;
 use App\Domains\Taxes\Policies\CompanyTaxPolicy;
 use App\Models\User;
+use App\Shared\Realtime\Realtime;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
@@ -39,6 +40,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->scoped(CompanyContext::class);
         $this->app->scoped(PermissionCatalog::class);
         $this->app->scoped(CompanyAccess::class);
+        // Regla 31: one per request or job (its once-per-request notices and remembered public ids).
+        $this->app->scoped(Realtime::class);
         $this->app->bind(XmlSigner::class, JavaXadesBesSigner::class);
         $this->app->bind(SriProvider::class, EcuadorSriProvider::class);
     }

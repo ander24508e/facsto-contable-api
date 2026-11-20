@@ -4,6 +4,7 @@ namespace App\Domains\Catalog\Models;
 
 use App\Domains\Companies\Models\Company;
 use App\Domains\Taxes\Models\CompanyTax;
+use App\Shared\Realtime\AnnouncesChanges;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -14,6 +15,13 @@ use Illuminate\Support\Str;
 #[Fillable(['company_id', 'name', 'description', 'is_active'])]
 class Category extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'categories';
+    }
+
     protected static function booted(): void
     {
         static::creating(fn (self $category) => $category->public_id ??= (string) Str::uuid7());

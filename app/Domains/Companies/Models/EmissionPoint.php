@@ -2,6 +2,7 @@
 
 namespace App\Domains\Companies\Models;
 
+use App\Shared\Realtime\AnnouncesChanges;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,6 +11,13 @@ use Illuminate\Support\Str;
 #[Fillable(['company_id', 'establishment_id', 'code', 'name', 'is_active', 'is_default'])]
 class EmissionPoint extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'establishments';
+    }
+
     protected static function booted(): void
     {
         static::creating(fn (self $point) => $point->public_id ??= (string) Str::uuid7());

@@ -15,6 +15,7 @@ use App\Http\Requests\Catalog\StoreCategoryRequest;
 use App\Http\Requests\Catalog\UpdateCategoryRequest;
 use App\Http\Resources\Api\V1\CategoryResource;
 use App\Shared\Audit\AuditRecorder;
+use App\Shared\Realtime\VersionGuard;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
@@ -54,6 +55,7 @@ final class CategoryController extends Controller
     public function update(UpdateCategoryRequest $request, Category $category, UpdateCategoryAction $update): CategoryResource
     {
         $this->authorize('update', $category);
+        app(VersionGuard::class)->assertCurrent($category, $request->input('version'));
 
         return new CategoryResource($update->execute($category, $request->validated(), $request->user()));
     }

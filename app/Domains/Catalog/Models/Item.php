@@ -7,6 +7,7 @@ use App\Domains\Companies\Models\Company;
 use App\Domains\Inventory\Models\ItemPriceTier;
 use App\Domains\Inventory\Models\ItemStock;
 use App\Domains\Taxes\Models\CompanyTax;
+use App\Shared\Realtime\AnnouncesChanges;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -18,6 +19,13 @@ use Illuminate\Support\Str;
 #[Fillable(['company_id', 'category_id', 'type', 'internal_code', 'auxiliary_code', 'name', 'description', 'unit', 'sale_price', 'price_includes_tax', 'cost_price', 'additional_detail', 'content_quantity', 'content_unit', 'managed_by', 'is_active'])]
 class Item extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'items';
+    }
+
     /** Units at or below which a product shows in the dashboard «stock bajo» alert. */
     /** Default «stock bajo» threshold; each company sets its own in Sistema (CompanySettings). */
     public const LOW_STOCK = 5;

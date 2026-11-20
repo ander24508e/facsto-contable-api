@@ -12,6 +12,8 @@ use App\Domains\Customers\Models\Customer;
 use App\Domains\Sales\Models\Sale;
 use App\Domains\Taxes\Models\CompanyTax;
 use App\Models\User;
+use App\Shared\Realtime\AnnouncesChanges;
+use App\Shared\Realtime\Realtime;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -22,6 +24,19 @@ use Illuminate\Support\Str;
 #[Fillable(['slug', 'ruc', 'legal_name', 'commercial_name', 'main_address', 'email', 'phone', 'logo_path', 'status'])]
 class Company extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'company';
+    }
+
+    /** Regla 31: the company itself (its data, status, readiness) on its own channel. */
+    protected function announceChange(string $action): void
+    {
+        app(Realtime::class)->changed($this, 'company', $this->public_id, $action, $this->updated_at);
+    }
+
     protected static function booted(): void
     {
         static::creating(function (self $company): void {

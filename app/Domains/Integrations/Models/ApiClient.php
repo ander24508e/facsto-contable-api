@@ -4,6 +4,7 @@ namespace App\Domains\Integrations\Models;
 
 use App\Domains\Companies\Models\Company;
 use App\Models\User;
+use App\Shared\Realtime\AnnouncesChanges;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Model;
@@ -16,6 +17,13 @@ use Illuminate\Support\Str;
 #[Hidden(['token_hash', 'webhook_secret'])]
 class ApiClient extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'api-clients';
+    }
+
     public const TOKEN_PREFIX = 'fct_';
 
     protected static function booted(): void

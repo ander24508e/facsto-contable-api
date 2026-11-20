@@ -3,6 +3,8 @@
 namespace App\Domains\Cash\Models;
 
 use App\Models\User;
+use App\Shared\Realtime\AnnouncesChanges;
+use App\Shared\Realtime\Realtime;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -15,6 +17,24 @@ use Illuminate\Support\Str;
 #[Fillable(['company_id', 'cash_session_id', 'type', 'source', 'amount', 'concept', 'sale_id', 'electronic_document_id', 'created_by'])]
 class CashMovement extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'cash-sessions';
+    }
+
+    /** It announces its cash session. */
+    public function livePublicId(): ?string
+    {
+        return app(Realtime::class)->publicIdOf(CashSession::class, $this->cash_session_id);
+    }
+
+    public function liveAction(string $action): string
+    {
+        return 'updated';
+    }
+
     public const IN = 'IN';
 
     public const OUT = 'OUT';

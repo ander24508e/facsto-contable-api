@@ -9,6 +9,8 @@ use App\Domains\FiscalDocuments\Enums\DocumentType;
 use App\Domains\Purchases\Models\Purchase;
 use App\Domains\Sales\Models\Sale;
 use App\Domains\Sri\Models\SriSubmission;
+use App\Shared\Realtime\AnnouncesChanges;
+use App\Shared\Realtime\Realtime;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -20,6 +22,30 @@ use Illuminate\Support\Str;
 #[Fillable(['company_id', 'sale_id', 'modified_document_id', 'reason', 'returns_goods', 'purchase_id', 'fiscal_period', 'related_party', 'support_code', 'support_document_code', 'support_document_number', 'support_document_date', 'support_authorization_number', 'customer_id', 'establishment_id', 'emission_point_id', 'document_type', 'establishment_code', 'emission_point_code', 'sequential', 'full_number', 'numeric_code', 'access_key', 'previous_access_keys', 'issue_date', 'status', 'issuer_ruc', 'issuer_legal_name', 'issuer_commercial_name', 'issuer_main_address', 'establishment_address', 'accounting_required', 'special_taxpayer_number', 'withholding_agent_number', 'artisan_qualification_number', 'rimpe_type', 'sri_environment', 'emission_type', 'xml_version', 'provider_ruc', 'provider_name', 'customer_identification_type', 'customer_identification', 'customer_name', 'customer_address', 'customer_email', 'total_without_taxes', 'subtotal_without_tax', 'subtotal_zero', 'subtotal_taxed', 'discount_total', 'tax_total', 'tip_amount', 'total', 'currency', 'created_by', 'numbered_at', 'xml_built_at', 'signed_at', 'authorization_number', 'authorized_at', 'last_sri_status_at', 'last_error_code'])]
 class ElectronicDocument extends Model
 {
+    use AnnouncesChanges;
+
+    /** Regla 31: invoices, notes and withholdings (Comprobantes, Retenciones). */
+    public function liveResource(): string
+    {
+        return 'documents';
+    }
+
+    /**
+     * Its state changes in the background (SRI authorization, delivery): it announces itself and the sale or purchase
+     * it belongs to, so Ventas and Compras show the new state without F5.
+     */
+    protected function announceChange(string $action): void
+    {
+        $realtime = app(Realtime::class);
+        $realtime->forCompanyId((int) $this->company_id, 'documents', $this->public_id, $action, $this->updated_at);
+        if ($this->sale_id) {
+            $realtime->forCompanyId((int) $this->company_id, 'sales', $realtime->publicIdOf(Sale::class, $this->sale_id), 'updated', $this->updated_at);
+        }
+        if ($this->purchase_id) {
+            $realtime->forCompanyId((int) $this->company_id, 'purchases', $realtime->publicIdOf(Purchase::class, $this->purchase_id), 'updated', $this->updated_at);
+        }
+    }
+
     protected static function booted(): void
     {
         static::creating(fn (self $document) => $document->public_id ??= (string) Str::uuid7());

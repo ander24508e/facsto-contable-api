@@ -2,6 +2,7 @@
 
 namespace App\Domains\Inventory\Models;
 
+use App\Shared\Realtime\AnnouncesChanges;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
@@ -10,6 +11,13 @@ use Illuminate\Support\Str;
 #[Fillable(['company_id', 'name', 'is_active'])]
 class Unit extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'units';
+    }
+
     public const DEFAULTS = ['UND', 'KG', 'LT', 'M', 'CAJA', 'PAQUETE'];
 
     protected static function booted(): void

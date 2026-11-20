@@ -10,7 +10,7 @@ final class ItemResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        return ['publicId' => $this->public_id, 'type' => $this->type->value, 'internalCode' => $this->internal_code,
+        return ['publicId' => $this->public_id, 'updatedAt' => $this->updated_at?->toIso8601String(), 'type' => $this->type->value, 'internalCode' => $this->internal_code,
             'auxiliaryCode' => $this->auxiliary_code, 'name' => $this->name, 'description' => $this->description,
             'unit' => $this->unit, 'salePrice' => $this->sale_price, 'priceIncludesTax' => (bool) $this->price_includes_tax, 'isActive' => $this->is_active,
             'hasImage' => $this->image_path !== null,

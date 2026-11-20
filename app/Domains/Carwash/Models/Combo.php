@@ -3,6 +3,7 @@
 namespace App\Domains\Carwash\Models;
 
 use App\Domains\Carwash\Models\Concerns\HasPublicId;
+use App\Shared\Realtime\AnnouncesChanges;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -11,6 +12,19 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 #[Fillable(['company_id', 'name', 'discount_percent', 'is_active'])]
 class Combo extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'carwash-rates';
+    }
+
+    /** The Lavadora's own channel: only with the module on and one of its permissions. */
+    public function liveModule(): ?string
+    {
+        return 'carwash';
+    }
+
     use HasPublicId;
 
     protected $table = 'carwash_combos';

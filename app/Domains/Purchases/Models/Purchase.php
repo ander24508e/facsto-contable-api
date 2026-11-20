@@ -7,6 +7,7 @@ use App\Domains\Credit\Models\CreditPayment;
 use App\Domains\FiscalDocuments\Models\ElectronicDocument;
 use App\Domains\Inventory\Models\Warehouse;
 use App\Models\User;
+use App\Shared\Realtime\AnnouncesChanges;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -18,6 +19,13 @@ use Illuminate\Support\Str;
 #[Fillable(['company_id', 'number', 'supplier_id', 'warehouse_id', 'created_by', 'issue_date', 'supplier_document_number', 'supplier_authorization_number', 'fiscal_payment_method_id', 'payment_method_code', 'payment_method_name', 'is_credit', 'down_payment', 'installment_frequency', 'credit_notes', 'subtotal', 'tax_total', 'total', 'notes'])]
 class Purchase extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'purchases';
+    }
+
     protected static function booted(): void
     {
         static::creating(fn (self $purchase) => $purchase->public_id ??= (string) Str::uuid7());

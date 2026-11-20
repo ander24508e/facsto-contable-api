@@ -7,6 +7,7 @@ use App\Domains\Customers\Models\Customer;
 use App\Domains\Inventory\Models\Warehouse;
 use App\Domains\Sales\Models\Sale;
 use App\Models\User;
+use App\Shared\Realtime\AnnouncesChanges;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -21,6 +22,13 @@ use Illuminate\Support\Str;
 #[Fillable(['company_id', 'number', 'customer_id', 'warehouse_id', 'converted_sale_id', 'created_by', 'customer_identification_type', 'customer_identification', 'customer_name', 'customer_address', 'customer_email', 'customer_phone', 'issue_date', 'expiration_date', 'notes', 'subtotal', 'discount_total', 'tax_total', 'total', 'status', 'rejection_reason', 'converted_at', 'advance_amount', 'advance_payment_method_id', 'on_credit', 'stock_committed'])]
 class Proforma extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'proformas';
+    }
+
     public const PENDING = 'PENDING';
 
     public const ACCEPTED = 'ACCEPTED';

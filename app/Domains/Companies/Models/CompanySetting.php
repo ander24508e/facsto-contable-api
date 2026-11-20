@@ -3,6 +3,7 @@
 namespace App\Domains\Companies\Models;
 
 use App\Domains\Taxes\Models\CompanyTax;
+use App\Shared\Realtime\AnnouncesChanges;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,6 +12,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['company_id', 'low_stock_threshold', 'allow_negative_stock', 'default_payment_method', 'default_customer', 'default_company_tax_id', 'default_unit', 'idle_timeout_minutes', 'sales_interface', 'proformas_interface', 'investments_interface', 'module_interfaces'])]
 class CompanySetting extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'settings';
+    }
+
     public const DEFAULT_CUSTOMERS = ['EMPTY', 'FINAL_CONSUMER'];
 
     /** Minutes the idle timeout can take; 0 never closes the session. */

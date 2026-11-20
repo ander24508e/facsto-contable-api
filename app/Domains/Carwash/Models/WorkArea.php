@@ -3,6 +3,7 @@
 namespace App\Domains\Carwash\Models;
 
 use App\Domains\Carwash\Models\Concerns\HasPublicId;
+use App\Shared\Realtime\AnnouncesChanges;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -15,6 +16,19 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable(['company_id', 'name', 'capacity', 'opens_at', 'closes_at', 'is_active'])]
 class WorkArea extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'carwash-areas';
+    }
+
+    /** The Lavadora's own channel: only with the module on and one of its permissions. */
+    public function liveModule(): ?string
+    {
+        return 'carwash';
+    }
+
     use HasPublicId;
 
     protected $table = 'carwash_work_areas';

@@ -3,6 +3,8 @@
 namespace App\Domains\Sales\Models;
 
 use App\Domains\Catalog\Models\Item;
+use App\Shared\Realtime\AnnouncesChanges;
+use App\Shared\Realtime\Realtime;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,6 +14,24 @@ use Illuminate\Support\Str;
 #[Fillable(['company_id', 'sale_id', 'item_id', 'item_code', 'auxiliary_code', 'item_name', 'unit', 'quantity', 'unit_price', 'discount_amount', 'subtotal', 'taxable_base', 'tax_total', 'total'])]
 class SaleDetail extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'sales';
+    }
+
+    /** It announces its sale. */
+    public function livePublicId(): ?string
+    {
+        return app(Realtime::class)->publicIdOf(Sale::class, $this->sale_id);
+    }
+
+    public function liveAction(string $action): string
+    {
+        return 'updated';
+    }
+
     protected static function booted(): void
     {
         static::creating(fn (self $detail) => $detail->public_id ??= (string) Str::uuid7());

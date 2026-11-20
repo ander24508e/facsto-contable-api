@@ -2,6 +2,8 @@
 
 namespace App\Domains\Companies\Models;
 
+use App\Shared\Realtime\AnnouncesChanges;
+use App\Shared\Realtime\Realtime;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -17,6 +19,13 @@ use Illuminate\Support\Str;
 #[Fillable(['company_id', 'name', 'notes', 'is_fixed', 'is_active'])]
 class Role extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'roles';
+    }
+
     public const ADMINISTRATOR = 'Administrador';
 
     protected $table = 'company_roles';
@@ -59,6 +68,11 @@ class Role extends Model
             'role_id' => $this->id,
             'permission' => $key,
         ], array_values(array_unique($keys))));
+        // Regla 31: everyone with this role reloads their permissions in their open tabs.
+        $realtime = app(Realtime::class);
+        CompanyMembership::query()->with('user')->whereHas('roles', fn ($roles) => $roles->whereKey($this->id))->get()
+            ->each(fn (CompanyMembership $membership) => $membership->user ? $realtime->user($membership->user, 'access') : null);
+        $this->announceChange('updated');
     }
 
     protected function casts(): array

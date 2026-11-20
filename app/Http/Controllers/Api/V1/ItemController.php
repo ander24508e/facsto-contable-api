@@ -21,6 +21,7 @@ use App\Http\Requests\Catalog\StoreItemRequest;
 use App\Http\Requests\Catalog\SyncItemTaxesRequest;
 use App\Http\Requests\Catalog\UpdateItemRequest;
 use App\Http\Resources\Api\V1\ItemResource;
+use App\Shared\Realtime\VersionGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -175,6 +176,7 @@ final class ItemController extends Controller
     public function update(UpdateItemRequest $request, Item $item, UpdateItemAction $update): ItemResource
     {
         $this->authorize('update', $item);
+        app(VersionGuard::class)->assertCurrent($item, $request->input('version'));
 
         return new ItemResource($update->execute($item, $this->attributes($request->validated()), $request->user()));
     }

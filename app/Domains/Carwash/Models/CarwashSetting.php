@@ -4,6 +4,7 @@ namespace App\Domains\Carwash\Models;
 
 use App\Domains\Catalog\Models\Item;
 use App\Domains\Companies\Models\Company;
+use App\Shared\Realtime\AnnouncesChanges;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -13,6 +14,19 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class CarwashSetting extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'carwash-settings';
+    }
+
+    /** The Lavadora's own channel: only with the module on and one of its permissions. */
+    public function liveModule(): ?string
+    {
+        return 'carwash';
+    }
+
     public const BILLING_MANUAL = 'MANUAL';
 
     public const BILLING_AUTO = 'AUTO';

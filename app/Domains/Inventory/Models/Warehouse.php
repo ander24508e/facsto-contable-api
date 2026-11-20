@@ -3,6 +3,7 @@
 namespace App\Domains\Inventory\Models;
 
 use App\Domains\Companies\Models\Establishment;
+use App\Shared\Realtime\AnnouncesChanges;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,6 +14,13 @@ use Illuminate\Support\Str;
 #[Fillable(['company_id', 'establishment_id', 'name', 'is_active'])]
 class Warehouse extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'warehouses';
+    }
+
     protected static function booted(): void
     {
         static::creating(fn (self $warehouse) => $warehouse->public_id ??= (string) Str::uuid7());

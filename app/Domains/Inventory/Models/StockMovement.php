@@ -7,6 +7,8 @@ use App\Domains\FiscalDocuments\Models\ElectronicDocument;
 use App\Domains\Proformas\Models\Proforma;
 use App\Domains\Purchases\Models\Purchase;
 use App\Models\User;
+use App\Shared\Realtime\AnnouncesChanges;
+use App\Shared\Realtime\Realtime;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -21,6 +23,24 @@ use Illuminate\Support\Str;
 #[Fillable(['company_id', 'item_id', 'warehouse_id', 'type', 'quantity', 'balance', 'electronic_document_id', 'purchase_id', 'stock_adjustment_id', 'proforma_id', 'reason', 'source_module', 'source_reference', 'user_id', 'note'])]
 class StockMovement extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'stock';
+    }
+
+    /** It announces its item. */
+    public function livePublicId(): ?string
+    {
+        return app(Realtime::class)->publicIdOf(Item::class, $this->item_id);
+    }
+
+    public function liveAction(string $action): string
+    {
+        return 'updated';
+    }
+
     public const INITIAL = 'INITIAL';
 
     public const ADJUSTMENT = 'ADJUSTMENT';

@@ -10,6 +10,7 @@ use App\Http\Controllers\Controller;
 use App\Shared\Audit\AuditRecorder;
 use App\Shared\Http\ApiErrorCode;
 use App\Shared\Http\ApiException;
+use App\Shared\Realtime\VersionGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -62,6 +63,7 @@ final class SupplierController extends Controller
     {
         $this->authorize('suppliers.create');
         $model = $this->find($context, $supplier);
+        app(VersionGuard::class)->assertCurrent($model, $request->input('version'));
         $before = $model->only(['legal_name', 'email', 'phone', 'address']);
         $model->forceFill($this->validated($request, $validator, false))->save();
         $audit->record($request->user(), $context->company(), 'supplier.updated', $model, $before, $model->only(['legal_name', 'email', 'phone', 'address']));
@@ -130,6 +132,7 @@ final class SupplierController extends Controller
             'email' => $supplier->email, 'phone' => $supplier->phone, 'address' => $supplier->address,
             'isActive' => (bool) $supplier->is_active, 'purchasesCount' => $supplier->purchases_count,
             'createdAt' => $supplier->created_at?->toIso8601String(),
+            'updatedAt' => $supplier->updated_at?->toIso8601String(),
         ];
     }
 }

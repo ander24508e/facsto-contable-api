@@ -24,6 +24,9 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+    // Regla 31: /api/v1/broadcasting/auth authorizes the private channels with the session and the company resolved
+    // on the server (routes/channels.php).
+    ->withBroadcasting(__DIR__.'/../routes/channels.php', ['prefix' => 'api/v1', 'middleware' => ['api', 'auth:sanctum', 'company.context']])
     ->withCommands([SchedulePendingSriDocumentsCommand::class])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->statefulApi();

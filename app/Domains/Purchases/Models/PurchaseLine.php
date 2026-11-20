@@ -3,6 +3,8 @@
 namespace App\Domains\Purchases\Models;
 
 use App\Domains\Catalog\Models\Item;
+use App\Shared\Realtime\AnnouncesChanges;
+use App\Shared\Realtime\Realtime;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,6 +12,24 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['company_id', 'purchase_id', 'item_id', 'item_code', 'item_name', 'quantity', 'unit_cost', 'tax_percentage', 'tax_percentage_code', 'subtotal', 'tax_total', 'total'])]
 class PurchaseLine extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'purchases';
+    }
+
+    /** It announces its purchase. */
+    public function livePublicId(): ?string
+    {
+        return app(Realtime::class)->publicIdOf(Purchase::class, $this->purchase_id);
+    }
+
+    public function liveAction(string $action): string
+    {
+        return 'updated';
+    }
+
     public function item(): BelongsTo
     {
         return $this->belongsTo(Item::class);

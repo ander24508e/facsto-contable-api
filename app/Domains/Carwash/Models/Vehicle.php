@@ -4,6 +4,7 @@ namespace App\Domains\Carwash\Models;
 
 use App\Domains\Carwash\Models\Concerns\HasPublicId;
 use App\Domains\Customers\Models\Customer;
+use App\Shared\Realtime\AnnouncesChanges;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -15,6 +16,19 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['company_id', 'customer_id', 'plate', 'vehicle_type_id', 'vehicle_brand_id', 'vehicle_model_id', 'color', 'year', 'notes', 'is_active'])]
 class Vehicle extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'carwash-vehicles';
+    }
+
+    /** The Lavadora's own channel: only with the module on and one of its permissions. */
+    public function liveModule(): ?string
+    {
+        return 'carwash';
+    }
+
     use HasPublicId;
 
     protected $table = 'carwash_vehicles';

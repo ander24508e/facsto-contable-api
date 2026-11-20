@@ -10,6 +10,7 @@ use App\Domains\FiscalDocuments\Models\ElectronicDocument;
 use App\Domains\Integrations\Models\ApiClient;
 use App\Domains\Sales\Enums\SaleStatus;
 use App\Models\User;
+use App\Shared\Realtime\AnnouncesChanges;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -20,6 +21,13 @@ use Illuminate\Support\Str;
 #[Fillable(['company_id', 'customer_id', 'created_by', 'cash_session_id', 'number', 'status', 'issue_date', 'customer_identification_type', 'customer_identification', 'customer_name', 'customer_address', 'customer_email', 'notes', 'subtotal', 'discount_total', 'tax_total', 'tip_amount', 'total', 'currency', 'api_client_id', 'source_module', 'source_reference', 'idempotency_key'])]
 class Sale extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'sales';
+    }
+
     protected static function booted(): void
     {
         static::creating(fn (self $sale) => $sale->public_id ??= (string) Str::uuid7());

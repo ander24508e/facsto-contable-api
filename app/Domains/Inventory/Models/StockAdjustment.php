@@ -3,6 +3,7 @@
 namespace App\Domains\Inventory\Models;
 
 use App\Models\User;
+use App\Shared\Realtime\AnnouncesChanges;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,6 +13,13 @@ use Illuminate\Support\Str;
 #[Fillable(['company_id', 'number', 'note', 'lines_count', 'user_id'])]
 class StockAdjustment extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'stock-adjustments';
+    }
+
     public const UPDATED_AT = null;
 
     protected static function booted(): void

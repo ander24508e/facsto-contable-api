@@ -2,6 +2,7 @@
 
 namespace App\Domains\Companies\Models;
 
+use App\Shared\Realtime\AnnouncesChanges;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,6 +12,13 @@ use Illuminate\Support\Str;
 #[Fillable(['company_id', 'code', 'name', 'address', 'is_active', 'is_main'])]
 class Establishment extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'establishments';
+    }
+
     protected static function booted(): void
     {
         static::creating(fn (self $establishment) => $establishment->public_id ??= (string) Str::uuid7());

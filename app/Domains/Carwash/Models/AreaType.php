@@ -3,6 +3,7 @@
 namespace App\Domains\Carwash\Models;
 
 use App\Domains\Carwash\Models\Concerns\HasPublicId;
+use App\Shared\Realtime\AnnouncesChanges;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -15,6 +16,19 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 #[Fillable(['company_id', 'code', 'name', 'is_active'])]
 class AreaType extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'carwash-areas';
+    }
+
+    /** The Lavadora's own channel: only with the module on and one of its permissions. */
+    public function liveModule(): ?string
+    {
+        return 'carwash';
+    }
+
     use HasPublicId;
 
     /** The fixed types, in the order they are shown. */

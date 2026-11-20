@@ -2,6 +2,7 @@
 
 namespace App\Domains\Purchases\Models;
 
+use App\Shared\Realtime\AnnouncesChanges;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -11,6 +12,13 @@ use Illuminate\Support\Str;
 #[Fillable(['company_id', 'identification', 'legal_name', 'email', 'phone', 'address', 'is_active'])]
 class Supplier extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'suppliers';
+    }
+
     protected static function booted(): void
     {
         static::creating(fn (self $supplier) => $supplier->public_id ??= (string) Str::uuid7());

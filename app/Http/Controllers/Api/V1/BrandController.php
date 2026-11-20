@@ -13,6 +13,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Catalog\StoreBrandRequest;
 use App\Http\Requests\Catalog\UpdateBrandRequest;
 use App\Http\Resources\Api\V1\BrandResource;
+use App\Shared\Realtime\VersionGuard;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
@@ -52,6 +53,7 @@ final class BrandController extends Controller
     public function update(UpdateBrandRequest $request, Brand $brand, UpdateBrandAction $update): BrandResource
     {
         $this->authorize('update', $brand);
+        app(VersionGuard::class)->assertCurrent($brand, $request->input('version'));
 
         return new BrandResource($update->execute($brand, $request->validated(), $request->user()));
     }

@@ -8,6 +8,7 @@ use App\Domains\Carwash\Models\Concerns\HasPublicId;
 use App\Domains\Customers\Models\Customer;
 use App\Domains\Sales\Models\Sale;
 use App\Models\User;
+use App\Shared\Realtime\AnnouncesChanges;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -23,6 +24,19 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 ])]
 class WorkOrder extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'carwash-orders';
+    }
+
+    /** The Lavadora's own channel: only with the module on and one of its permissions. */
+    public function liveModule(): ?string
+    {
+        return 'carwash';
+    }
+
     use HasPublicId;
 
     protected $table = 'carwash_work_orders';

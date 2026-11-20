@@ -4,6 +4,7 @@ namespace App\Domains\Customers\Models;
 
 use App\Domains\Companies\Models\Company;
 use App\Domains\Customers\Enums\IdentificationType;
+use App\Shared\Realtime\AnnouncesChanges;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,6 +13,13 @@ use Illuminate\Support\Str;
 #[Fillable(['company_id', 'identification_type', 'identification', 'legal_name', 'commercial_name', 'email', 'additional_emails', 'phone', 'address', 'is_active'])]
 class Customer extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'customers';
+    }
+
     protected static function booted(): void
     {
         static::creating(fn (self $customer) => $customer->public_id ??= (string) Str::uuid7());

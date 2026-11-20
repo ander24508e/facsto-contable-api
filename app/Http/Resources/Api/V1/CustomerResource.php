@@ -11,6 +11,7 @@ final class CustomerResource extends JsonResource
     {
         return [
             'publicId' => $this->public_id,
+            'updatedAt' => $this->updated_at?->toIso8601String(),
             'identificationType' => $this->identification_type->value,
             'identification' => $this->identification,
             'legalName' => $this->legal_name,

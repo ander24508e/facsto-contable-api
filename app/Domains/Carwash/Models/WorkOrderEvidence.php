@@ -4,6 +4,8 @@ namespace App\Domains\Carwash\Models;
 
 use App\Domains\Carwash\Models\Concerns\HasPublicId;
 use App\Models\User;
+use App\Shared\Realtime\AnnouncesChanges;
+use App\Shared\Realtime\Realtime;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,6 +14,30 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['company_id', 'work_order_id', 'kind', 'path', 'mime', 'size_bytes', 'sha256', 'note', 'taken_at', 'expires_at', 'uploaded_by'])]
 class WorkOrderEvidence extends Model
 {
+    use AnnouncesChanges;
+
+    public function liveResource(): string
+    {
+        return 'carwash-orders';
+    }
+
+    /** It announces its order. */
+    public function livePublicId(): ?string
+    {
+        return app(Realtime::class)->publicIdOf(WorkOrder::class, $this->work_order_id);
+    }
+
+    public function liveAction(string $action): string
+    {
+        return 'updated';
+    }
+
+    /** The Lavadora's own channel: only with the module on and one of its permissions. */
+    public function liveModule(): ?string
+    {
+        return 'carwash';
+    }
+
     use HasPublicId;
 
     public const PHOTO = 'PHOTO';

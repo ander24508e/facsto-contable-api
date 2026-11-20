@@ -42,9 +42,13 @@ final class ResolveCompanyContext
         return $next($request);
     }
 
+    /** Regla 31: a request the screen makes by itself (a live update, a reconnection) is not the person's activity. */
+    public const BACKGROUND_HEADER = 'X-Facsto-Background';
+
     /**
      * Sistema → «cierre por inactividad»: a browser session unused for longer than the company allows is
-     * closed here too, so the rule does not depend only on the screen. Token clients have no session.
+     * closed here too, so the rule does not depend only on the screen. Token clients have no session. A background
+     * request is checked too but does not count as activity, so live updates never keep an idle session open.
      */
     private function guardIdleSession(Request $request, Company $company): void
     {
@@ -60,6 +64,8 @@ final class ResolveCompanyContext
             $session->regenerateToken();
             throw new ApiException(ApiErrorCode::SESSION_IDLE_TIMEOUT, 'Tu sesión se cerró por inactividad.', 401);
         }
-        $session->put('facsto.last_activity_at', now()->getTimestamp());
+        if ($request->header(self::BACKGROUND_HEADER) !== '1' || ! is_int($last)) {
+            $session->put('facsto.last_activity_at', now()->getTimestamp());
+        }
     }
 }
