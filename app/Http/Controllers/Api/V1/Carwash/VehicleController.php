@@ -112,7 +112,7 @@ final class VehicleController extends CarwashController
                 'code' => $order->code(),
                 'deliveredAt' => $order->delivered_at?->toIso8601String(),
                 'services' => $order->lines->pluck('description')->values()->all(),
-                'customer' => $order->customer?->legal_name,
+                'customer' => $order->contactName() ?: null,
                 'total' => $order->sale ? (string) $order->sale->total : null,
             ])->all(),
             'loyalty' => $loyalty,

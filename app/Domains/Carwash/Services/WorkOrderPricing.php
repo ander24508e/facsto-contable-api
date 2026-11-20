@@ -18,8 +18,10 @@ use Illuminate\Support\Collection;
  * so the invoice shows them):
  * - › Tarifas «Combos»: when the order has every service of an active combo, those lines get its percentage (each line
  *   in one combo, the biggest discounts first).
- * - › Clientes «Fidelización»: every N-th delivered order of the customer has its most expensive service free.
+ * - › Clientes «Fidelización»: every N-th delivered visit of the vehicle has its most expensive service free.
  * - › Tarifas «Redondeo»: the total goes down to the step (0.05, 0.10…), taken from the line with the biggest base.
+ * «Cuenta separada»: lines of the order (services or products) marked «Aparte» are charged as another sale, at their
+ * price, without the order's discounts (`separate`); at least one line stays in the order.
  * The amounts come from the same calculator Ventas uses.
  */
 final class WorkOrderPricing
@@ -28,14 +30,17 @@ final class WorkOrderPricing
 
     /**
      * @param  list<array{itemPublicId: string, quantity: string}>  $extras  products or services added when charging
-     * @param  list<string>  $apart  items of the order's articles charged in the separate sale («Aparte»)
+     * @param  list<string>  $apart  items of the order's lines charged in the separate sale («Aparte»)
      * @return array{lines: list<array{itemPublicId: string, quantity: string, discountAmount: string}>, items: Collection<string, Item>, loyaltyFree: bool, combos: list<string>}
      */
     public function lines(WorkOrder $order, array $extras = [], array $apart = []): array
     {
         $order->loadMissing(['lines.item.taxes.definition', 'lines.item.priceTiers', 'lines.service']);
         $settings = CarwashSetting::forCompany($order->company_id);
-        $orderLines = $order->lines->reject(fn (WorkOrderLine $line) => $line->kind === WorkOrderLine::PRODUCT && in_array($line->item->public_id, $apart, true))->values();
+        $orderLines = $order->lines->reject(fn (WorkOrderLine $line) => in_array($line->item->public_id, $apart, true))->values();
+        if ($orderLines->isEmpty() && $extras === []) {
+            throw new ApiException(ApiErrorCode::VALIDATION_FAILED, 'Deja al menos una línea en la cuenta de la orden.', 422, ['errors' => ['separate' => ['No todo va aparte.']]]);
+        }
         $items = $orderLines->pluck('item')->keyBy('public_id');
         $lines = $orderLines->map(fn (WorkOrderLine $line) => ['itemPublicId' => $line->item->public_id, 'quantity' => (string) $line->quantity, 'discountAmount' => '0.00'])->all();
         if ($extras !== []) {
@@ -76,10 +81,10 @@ final class WorkOrderPricing
             $applied[] = $combo->name;
         }
 
-        // Fidelización: this order is the N-th delivered (or about to be) of its customer.
+        // Fidelización: this visit is the N-th delivered (or about to be) of the vehicle, whoever brings it.
         $loyaltyFree = false;
         if ($settings->loyalty_every) {
-            $before = WorkOrder::query()->where('company_id', $order->company_id)->where('customer_id', $order->customer_id)
+            $before = WorkOrder::query()->where('company_id', $order->company_id)->where('vehicle_id', $order->vehicle_id)
                 ->whereKeyNot($order->id)->where('status', WorkOrderStatus::DELIVERED)->count();
             if (($before + 1) % $settings->loyalty_every === 0) {
                 $best = collect($gross)->filter(fn ($amount, $index) => ($orderLines[$index]->kind ?? null) === WorkOrderLine::SERVICE)->sortDesc()->keys()->first();
@@ -114,34 +119,32 @@ final class WorkOrderPricing
     }
 
     /**
-     * «Cuenta aparte» of the checkout window: products charged as another sale (another customer, payment and
-     * invoice), at their price, without the order's discounts.
+     * «Cuenta separada»: the lines of the order (services or products) marked «Aparte», at their price, as another sale.
      *
-     * @param  list<array{itemPublicId: string, quantity: string}>  $products
+     * @param  list<string>  $apart  items of the order's lines
      * @return array{lines: list<array{itemPublicId: string, quantity: string, discountAmount: string}>, items: Collection<string, Item>}
      */
-    public function separate(int $companyId, array $products): array
+    public function separate(WorkOrder $order, array $apart): array
     {
-        $items = Item::query()->where('company_id', $companyId)->where('is_active', true)
-            ->whereIn('public_id', array_column($products, 'itemPublicId'))->with(['taxes.definition', 'priceTiers'])->get()->keyBy('public_id');
-        $lines = [];
-        foreach ($products as $product) {
-            if (! $items->has($product['itemPublicId'])) {
-                throw new ApiException(ApiErrorCode::ITEM_NOT_FOUND, 'Uno de los artículos de la cuenta aparte no está activo en la empresa.', 422);
-            }
-            $lines[] = ['itemPublicId' => $product['itemPublicId'], 'quantity' => (string) $product['quantity'], 'discountAmount' => '0.00'];
+        $order->loadMissing(['lines.item.taxes.definition', 'lines.item.priceTiers']);
+        $chosen = $order->lines->filter(fn (WorkOrderLine $line) => in_array($line->item->public_id, $apart, true))->values();
+        if ($chosen->isEmpty() || $chosen->pluck('item.public_id')->unique()->count() !== count(array_unique($apart))) {
+            throw new ApiException(ApiErrorCode::VALIDATION_FAILED, 'Una de las líneas aparte no es de esta orden.', 422, ['errors' => ['separate.items' => ['Línea desconocida.']]]);
         }
 
-        return ['lines' => $lines, 'items' => $items];
+        return [
+            'lines' => $chosen->map(fn (WorkOrderLine $line) => ['itemPublicId' => $line->item->public_id, 'quantity' => (string) $line->quantity, 'discountAmount' => '0.00'])->all(),
+            'items' => $chosen->pluck('item')->keyBy('public_id'),
+        ];
     }
 
     /**
-     * @param  list<array{itemPublicId: string, quantity: string}>  $products
+     * @param  list<string>  $apart
      * @return array<string, mixed>
      */
-    public function quoteSeparate(int $companyId, array $products): array
+    public function quoteSeparate(WorkOrder $order, array $apart): array
     {
-        $priced = $this->separate($companyId, $products);
+        $priced = $this->separate($order, $apart);
 
         return $this->present($priced['lines'], $priced['items']);
     }

@@ -16,6 +16,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -26,7 +27,10 @@ final class OperationsController extends CarwashController
 {
     public function dashboard(Request $request, CompanyContext $context, CarwashDashboard $dashboard): JsonResponse
     {
-        return response()->json(['data' => $dashboard->day($context->company(), $this->date($request))]);
+        // «Tarifas más vendidas» of the day, the day before or the last 7 days.
+        $rates = $request->validate(['rates' => ['nullable', Rule::in(CarwashDashboard::RATE_PERIODS)]])['rates'] ?? 'today';
+
+        return response()->json(['data' => $dashboard->day($context->company(), $this->date($request), $rates)]);
     }
 
     public function agenda(Request $request, CompanyContext $context, AgendaService $agenda): JsonResponse

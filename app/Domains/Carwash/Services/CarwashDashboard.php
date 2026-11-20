@@ -5,19 +5,25 @@ namespace App\Domains\Carwash\Services;
 use App\Domains\Carwash\Enums\BillingStatus;
 use App\Domains\Carwash\Enums\WorkOrderStatus;
 use App\Domains\Carwash\Models\CarwashSetting;
+use App\Domains\Carwash\Models\WorkArea;
 use App\Domains\Carwash\Models\WorkOrder;
+use App\Domains\Carwash\Models\WorkOrderLine;
 use App\Domains\Companies\Models\Company;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 
 /**
  * The car wash's day (America/Guayaquil): orders by status, average wash time, vehicles ready but not
- * charged, orders waiting at the cash register and productivity per washer. Amounts live in Ventas.
+ * charged, orders waiting at the cash register, productivity per washer, the vehicles being washed in each work area
+ * and the best-selling rates of the period. Amounts live in Ventas.
  */
 final class CarwashDashboard
 {
+    /** The periods of «Tarifas más vendidas»: the day, the day before or the last 7 days. */
+    public const RATE_PERIODS = ['today', 'yesterday', 'week'];
+
     /** @return array<string, mixed> */
-    public function day(Company $company, CarbonImmutable $date): array
+    public function day(Company $company, CarbonImmutable $date, string $ratesPeriod = 'today'): array
     {
         $start = $date->startOfDay();
         $end = $date->endOfDay();
@@ -54,6 +60,59 @@ final class CarwashDashboard
                     'inProgress' => $orders->where('washer_id', $washer->id)->where('status', WorkOrderStatus::IN_PROGRESS)->count(),
                     'finished' => $orders->where('washer_id', $washer->id)->whereIn('status', [WorkOrderStatus::READY, WorkOrderStatus::DELIVERED])->count(),
                 ])->values(),
+            'areas' => $this->areas($company),
+            'topRates' => $this->topRates($company, $date, $ratesPeriod),
         ];
+    }
+
+    /**
+     * Each active work area with the vehicles being washed in it now (any day); those washed without an area go in
+     * «Sin área».
+     *
+     * @return list<array{publicId: ?string, name: string, capacity: int, vehicles: list<array<string, mixed>>}>
+     */
+    private function areas(Company $company): array
+    {
+        $washing = WorkOrder::query()->with(['vehicle', 'washer'])->where('company_id', $company->id)
+            ->where('status', WorkOrderStatus::IN_PROGRESS)->orderBy('started_at')->get()->groupBy(fn (WorkOrder $order) => (int) $order->work_area_id);
+        $vehicles = fn (int $areaId) => $washing->get($areaId, collect())->map(fn (WorkOrder $order) => [
+            'orderPublicId' => $order->public_id,
+            'plate' => $order->vehicle?->plate,
+            'washer' => $order->washer?->name,
+            'startedAt' => $order->started_at?->toIso8601String(),
+            'endsAt' => $order->scheduled_end_at?->toIso8601String(),
+        ])->values()->all();
+
+        $areas = WorkArea::query()->where('company_id', $company->id)->where('is_active', true)->orderBy('name')->get()
+            ->map(fn (WorkArea $area) => ['publicId' => $area->public_id, 'name' => $area->name, 'capacity' => $area->capacity, 'vehicles' => $vehicles($area->id)])->all();
+        if ($washing->has(0)) {
+            $areas[] = ['publicId' => null, 'name' => 'Sin área', 'capacity' => $washing->get(0)->count(), 'vehicles' => $vehicles(0)];
+        }
+
+        return $areas;
+    }
+
+    /**
+     * «Tarifas más vendidas»: how many times each rate (a service for a vehicle specification, or the service with a
+     * single price) went in the orders of the period, cancelled ones aside. Times, never amounts.
+     *
+     * @return list<array{name: string, times: int}>
+     */
+    private function topRates(Company $company, CarbonImmutable $date, string $period): array
+    {
+        [$start, $end] = match ($period) {
+            'yesterday' => [$date->subDay()->startOfDay(), $date->subDay()->endOfDay()],
+            'week' => [$date->subDays(6)->startOfDay(), $date->endOfDay()],
+            default => [$date->startOfDay(), $date->endOfDay()],
+        };
+        $orders = WorkOrder::query()->select('id')->where('company_id', $company->id)->where('status', '!=', WorkOrderStatus::CANCELLED)
+            ->where(fn ($query) => $query->whereBetween('scheduled_at', [$start, $end])
+                ->orWhere(fn ($walkIn) => $walkIn->whereNull('scheduled_at')->whereBetween('created_at', [$start, $end])));
+
+        return WorkOrderLine::query()->where('company_id', $company->id)->where('kind', WorkOrderLine::SERVICE)->whereIn('work_order_id', $orders)
+            ->orderBy('id')->get(['service_id', 'service_price_id', 'description'])
+            ->groupBy(fn (WorkOrderLine $line) => $line->service_price_id ? "price-{$line->service_price_id}" : "service-{$line->service_id}")
+            ->map(fn ($lines) => ['name' => $lines->last()->description, 'times' => $lines->count()])
+            ->sortBy([['times', 'desc'], ['name', 'asc']])->take(10)->values()->all();
     }
 }

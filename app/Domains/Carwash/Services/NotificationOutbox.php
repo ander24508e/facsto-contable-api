@@ -22,7 +22,7 @@ final class NotificationOutbox
 
         return CarwashNotification::query()->firstOrCreate(
             ['work_order_id' => $order->id, 'kind' => $kind],
-            ['company_id' => $order->company_id, 'channel' => 'WHATSAPP', 'recipient' => $order->customer->phone, 'message' => $this->message($order, $kind)],
+            ['company_id' => $order->company_id, 'channel' => 'WHATSAPP', 'recipient' => $order->contactPhone(), 'message' => $this->message($order, $kind)],
         );
     }
 
@@ -31,7 +31,7 @@ final class NotificationOutbox
         $order->loadMissing(['customer', 'vehicle', 'sale', 'lines']);
         $company = Company::query()->find($order->company_id);
         $business = $company?->commercial_name ?: $company?->legal_name ?: 'la Lavadora';
-        $name = mb_convert_case(mb_strtolower(trim((string) $order->customer->legal_name)), MB_CASE_TITLE);
+        $name = mb_convert_case(mb_strtolower($order->contactName()), MB_CASE_TITLE);
         $plate = $order->vehicle->plate;
 
         return match ($kind) {
@@ -59,8 +59,15 @@ final class NotificationOutbox
     private function services(WorkOrder $order): string
     {
         $names = $order->lines->where('kind', WorkOrderLine::SERVICE)->pluck('description')->unique()->values()->all();
+
+        return $names === [] ? 'de lavado' : $this->joined($names);
+    }
+
+    /** @param list<string> $names  «A», «A y B», «A, B y C» */
+    private function joined(array $names): string
+    {
         if (count($names) < 2) {
-            return $names[0] ?? 'de lavado';
+            return $names[0] ?? '';
         }
         $last = array_pop($names);
 

@@ -21,12 +21,19 @@ final class SaleResource extends JsonResource
                 'name' => $this->customer_name,
                 'address' => $this->customer_address,
                 'email' => $this->customer_email,
+                'phone' => $this->customer?->phone,
             ],
             'createdBy' => $this->creator?->name,
             // The cash register (session) the sale is charged in.
             'cashSession' => $this->whenLoaded('cashSession', fn () => $this->cashSession ? [
                 'publicId' => $this->cashSession->public_id,
                 'status' => $this->cashSession->status,
+                'cashRegisterCode' => $this->cashSession->emissionPoint?->establishment
+                    ? $this->cashSession->emissionPoint->establishment->code.'-'.$this->cashSession->emissionPoint->code
+                    : null,
+                'cashRegisterName' => $this->cashSession->emissionPoint?->name,
+                'establishmentName' => $this->cashSession->emissionPoint?->establishment?->name,
+                'warehouseName' => $this->cashSession->warehouse?->name,
             ] : null),
             'notes' => $this->notes,
             'subtotal' => $this->subtotal,

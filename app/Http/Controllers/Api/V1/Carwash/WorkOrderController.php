@@ -21,10 +21,10 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 
-/** Work orders: reception, washing, charge in Ventas and delivery. */
+/** Work orders (one vehicle each, with its services and products): reception, washing, charge and delivery. */
 final class WorkOrderController extends CarwashController
 {
-    public const RELATIONS = ['vehicle.type', 'customer', 'washer', 'workArea', 'creator', 'lines.service', 'lines.item.taxes.definition', 'sale.electronicDocument', 'sale.paymentMethods'];
+    public const RELATIONS = ['vehicle.type', 'vehicle.brand', 'vehicle.model', 'customer', 'washer', 'workArea', 'creator', 'lines.service', 'lines.item.taxes.definition', 'sale.electronicDocument', 'sale.paymentMethods'];
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -88,6 +88,7 @@ final class WorkOrderController extends CarwashController
             ->when($search !== '', fn ($query) => $query->where(fn ($match) => $match
                 ->whereHas('vehicle', fn ($vehicle) => $vehicle->where('plate', 'like', '%'.strtoupper((string) preg_replace('/[\s\-.]/', '', $search)).'%'))
                 ->orWhereHas('customer', fn ($customer) => $customer->whereRaw('lower(legal_name) like ?', ['%'.mb_strtolower($search).'%']))
+                ->orWhereRaw('lower(contact_name) like ?', ['%'.mb_strtolower($search).'%'])
                 ->when(ctype_digit($number), fn ($byNumber) => $byNumber->orWhere('number', (int) $number))));
     }
 
@@ -117,17 +118,15 @@ final class WorkOrderController extends CarwashController
     public function store(Request $request, CreateWorkOrderAction $create): JsonResponse
     {
         $data = $request->validate([
-            // The vehicle by its id, or by its plate (found or registered with its specification or type).
+            // The vehicle by its id, or by its plate (found or registered with its specification, which is required).
             'vehiclePublicId' => ['required_without:plate', 'nullable', 'uuid'],
             'plate' => ['required_without:vehiclePublicId', 'nullable', 'string', 'max:20'],
             'vehicleSpecPublicId' => ['sometimes', 'nullable', 'uuid'],
-            'vehicleTypePublicId' => ['sometimes', 'nullable', 'uuid'],
-            // Whoever brings it this time; without it, the last customer of the vehicle.
-            'customerPublicId' => ['sometimes', 'nullable', 'uuid'],
             'servicePublicIds' => ['required', 'array', 'min:1', 'max:10'],
             'servicePublicIds.*' => ['uuid', 'distinct'],
-            // Articles of Inventario (products or services) added to the order, at their price.
+            // Products of Inventario added to the order, at their price.
             ...$this->lineRules('items'),
+            ...$this->contactRules(),
             'washerPublicId' => ['nullable', 'uuid'],
             'scheduledAt' => ['nullable', 'date'],
             'workAreaPublicId' => ['nullable', 'uuid'],
@@ -141,8 +140,14 @@ final class WorkOrderController extends CarwashController
     public function update(Request $request, string $workOrder, UpdateWorkOrderAction $update): WorkOrderResource
     {
         $data = $request->validate([
+            // Another vehicle (or another specification for it), its services and products.
+            'vehiclePublicId' => ['sometimes', 'nullable', 'uuid'],
+            'plate' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'vehicleSpecPublicId' => ['sometimes', 'nullable', 'uuid'],
             'servicePublicIds' => ['sometimes', 'array', 'min:1', 'max:10'],
             'servicePublicIds.*' => ['uuid', 'distinct'],
+            ...$this->lineRules('items'),
+            ...$this->contactRules(),
             'washerPublicId' => ['sometimes', 'nullable', 'uuid'],
             'scheduledAt' => ['sometimes', 'nullable', 'date'],
             'workAreaPublicId' => ['sometimes', 'nullable', 'uuid'],
@@ -176,15 +181,21 @@ final class WorkOrderController extends CarwashController
         return $this->present($transition->execute($order, $status, $data['reason'] ?? null, $request->user(), $data['checklist'] ?? null));
     }
 
-    /** The checkout window's totals: the order's lines with the Lavadora's discounts plus the products added. */
+    /** The checkout window's totals: the order's lines with the Lavadora's discounts, and the lines charged apart. */
     public function quote(Request $request, string $workOrder, WorkOrderPricing $pricing): JsonResponse
     {
-        $data = $request->validate([...$this->lineRules('extraLines'), ...$this->lineRules('separateLines')]);
+        $data = $request->validate([
+            ...$this->lineRules('extraLines'),
+            // «Cuenta separada»: the order's lines (their items) marked «Aparte».
+            'separateItems' => ['sometimes', 'array', 'max:40'],
+            'separateItems.*' => ['uuid', 'distinct'],
+        ]);
         $order = $this->owned(WorkOrder::class, $workOrder);
+        $apart = array_values($data['separateItems'] ?? []);
 
         return response()->json(['data' => [
-            ...$pricing->quote($order, $data['extraLines'] ?? [], array_column($data['separateLines'] ?? [], 'itemPublicId')),
-            'separate' => empty($data['separateLines']) ? null : $pricing->quoteSeparate($order->company_id, $data['separateLines']),
+            ...$pricing->quote($order, $data['extraLines'] ?? [], $apart),
+            'separate' => $apart === [] ? null : $pricing->quoteSeparate($order, $apart),
         ]]);
     }
 
@@ -192,7 +203,7 @@ final class WorkOrderController extends CarwashController
      * The checkout window: charges the order in the open cash register (consumidor final or another customer, products
      * added, payment), issues the invoice when «Factura» is on (else the sale stays as a draft in Ventas) and delivers it
      * when «Entregar» is chosen. Payments may be mixed (several methods) or on credit (with its installments, as in
-     * Ventas); `separate` charges some products as another sale («Cuenta aparte»).
+     * Ventas); `separate` charges some of its lines as another sale («Cuenta separada»).
      */
     public function checkout(Request $request, string $workOrder, CheckoutWorkOrderAction $checkout): WorkOrderResource
     {
@@ -207,14 +218,26 @@ final class WorkOrderController extends CarwashController
             'separate' => ['sometimes', 'nullable', 'array'],
             'separate.customerPublicId' => ['required_with:separate', 'uuid'],
             'separate.invoice' => ['required_with:separate', 'boolean'],
-            ...$this->lineRules('separate.lines', 'required_with:separate'),
+            // «Cuenta separada»: the order's lines (their items) marked «Aparte».
+            'separate.items' => ['required_with:separate', 'array', 'min:1', 'max:40'],
+            'separate.items.*' => ['uuid', 'distinct'],
             ...$this->paymentRules('separate.paymentMethods', 'required_with:separate'),
         ]);
 
         return $this->present($checkout->execute($this->owned(WorkOrder::class, $workOrder), $data, $request->user()));
     }
 
-    /** @return array<string, list<string>> products added when charging (two decimals, more than zero) */
+    /** @return array<string, list<string>> the customer from Clientes, or only a contact name and phone */
+    private function contactRules(): array
+    {
+        return [
+            'customerPublicId' => ['sometimes', 'nullable', 'uuid'],
+            'contactName' => ['sometimes', 'nullable', 'string', 'max:180'],
+            'contactPhone' => ['sometimes', 'nullable', 'string', 'max:40'],
+        ];
+    }
+
+    /** @return array<string, list<string>> products added (two decimals, more than zero) */
     private function lineRules(string $field, string $presence = 'sometimes'): array
     {
         return [

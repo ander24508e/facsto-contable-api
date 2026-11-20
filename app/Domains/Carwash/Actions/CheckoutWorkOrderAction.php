@@ -29,8 +29,9 @@ use Illuminate\Support\Facades\DB;
  *    queda como borrador en Ventas, sin SRI, para emitirla después desde la orden.
  * 3. «Entregar»: la orden pasa a entregada (por «Listo» si aún estaba en lavado).
  * El pago debe ser igual al total; puede ser mixto (varias formas) o a crédito con sus cuotas, como en Ventas.
- * «Cuenta aparte» (`separate`, sólo en el primer cobro): algunos productos se cobran como otra venta, con su cliente, su
- * pago y su factura o borrador, sin los descuentos de la orden.
+ * «Cuenta separada» (`separate`, sólo en el primer cobro): las líneas de la orden (servicios o productos) marcadas
+ * «Aparte» se cobran como otra venta, a su precio, con su cliente, su pago y su factura o borrador; al menos una línea
+ * queda en la orden.
  */
 final class CheckoutWorkOrderAction
 {
@@ -46,7 +47,7 @@ final class CheckoutWorkOrderAction
     ) {}
 
     /**
-     * @param  array{customerPublicId: string, cashSessionPublicId: string, extraLines?: list<array{itemPublicId: string, quantity: string}>, paymentMethods: list<array<string, mixed>>, notes?: ?string, invoice: bool, deliver: bool, separate?: ?array{customerPublicId: string, lines: list<array{itemPublicId: string, quantity: string}>, paymentMethods: list<array<string, mixed>>, invoice: bool}}  $data
+     * @param  array{customerPublicId: string, cashSessionPublicId: string, extraLines?: list<array{itemPublicId: string, quantity: string}>, paymentMethods: list<array<string, mixed>>, notes?: ?string, invoice: bool, deliver: bool, separate?: ?array{customerPublicId: string, items: list<string>, paymentMethods: list<array<string, mixed>>, invoice: bool}}  $data
      */
     public function execute(WorkOrder $order, array $data, User $actor): WorkOrder
     {
@@ -64,8 +65,9 @@ final class CheckoutWorkOrderAction
                 throw new ApiException(ApiErrorCode::CARWASH_ORDER_ALREADY_BILLED, 'La orden ya tiene factura.', 409);
             }
 
-            // An article of the order marked «Aparte» goes to the separate sale, not to this one.
-            $priced = $this->pricing->lines($order, $data['extraLines'] ?? [], array_column($separate['lines'] ?? [], 'itemPublicId'));
+            // The lines marked «Aparte» go to the separate sale, not to this one.
+            $apart = array_values($separate['items'] ?? []);
+            $priced = $this->pricing->lines($order, $data['extraLines'] ?? [], $apart);
             $extras = [...array_map(fn (string $combo) => 'Combo '.$combo, $priced['combos']), ...($priced['loyaltyFree'] ? ['Lavado gratis por fidelidad'] : [])];
             $draft = SaleDraftData::fromValidated([
                 'customerPublicId' => $data['customerPublicId'],
@@ -90,7 +92,7 @@ final class CheckoutWorkOrderAction
                 $other = $this->create->execute(SaleDraftData::fromValidated([
                     'customerPublicId' => $separate['customerPublicId'],
                     'cashSessionPublicId' => $data['cashSessionPublicId'],
-                    'lines' => $this->pricing->separate($company->id, $separate['lines'])['lines'],
+                    'lines' => $this->pricing->separate($order, $apart)['lines'],
                     'paymentMethods' => $separate['paymentMethods'],
                     'notes' => 'Cuenta aparte de '.$order->code().' · Placa '.$order->vehicle->plate,
                 ]), $actor);

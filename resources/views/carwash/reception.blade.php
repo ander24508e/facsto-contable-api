@@ -30,7 +30,7 @@
     <h2>Cliente y vehículo</h2>
     <table>
         <tr>
-            <td>{{ $order->customer->legal_name }}<br><span class="muted">{{ $order->customer->identification }}</span></td>
+            <td>{{ $order->contactName() }}@if ($order->customer?->identification)<br><span class="muted">{{ $order->customer->identification }}</span>@endif @if ($order->contactPhone())<br><span class="muted">{{ $order->contactPhone() }}</span>@endif</td>
             <td style="text-align: right">Placa <strong>{{ $order->vehicle->plate }}</strong><br>
                 <span class="muted">{{ collect([$order->vehicle->brand?->name, $order->vehicle->model?->name, $order->vehicle->type?->name, $order->vehicle->color])->filter()->implode(' · ') }}</span></td>
         </tr>

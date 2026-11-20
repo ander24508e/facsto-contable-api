@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Carwash;
 
+use App\Domains\Carwash\Models\CarwashNotification;
 use App\Domains\Carwash\Models\Vehicle;
 use App\Domains\Cash\Models\CashSession;
+use App\Domains\Catalog\Models\Item;
 use App\Domains\Customers\Enums\IdentificationType;
 use App\Domains\Customers\Models\Customer;
 use App\Domains\Sales\Models\Sale;
@@ -161,9 +163,17 @@ final class CarwashWorkOrderTest extends CarwashTestCase
     {
         [$company, $owner] = $this->carwashCompany();
         $setup = $this->carwashSetup($company);
-        $this->actingAs($owner)->postJson(self::API.'/work-orders', $this->orderBody($setup))->assertCreated();
+        $order = $this->actingAs($owner)->postJson(self::API.'/work-orders', $this->orderBody($setup))->assertCreated()->json('data.publicId');
 
-        $this->actingAs($owner)->getJson(self::API.'/dashboard')->assertOk()->assertJsonPath('data.total', 1)->assertJsonPath('data.byStatus.PENDING', 1);
+        $this->actingAs($owner)->getJson(self::API.'/dashboard')->assertOk()->assertJsonPath('data.total', 1)->assertJsonPath('data.byStatus.PENDING', 1)
+            ->assertJsonPath('data.topRates.0.times', 1)->assertJsonPath('data.areas', []);
+        // «Lavando»: the vehicle in its area (without one, «Sin área»); «Tarifas»: the day before had none.
+        foreach (['ARRIVED', 'IN_PROGRESS'] as $status) {
+            $this->actingAs($owner)->postJson(self::API."/work-orders/$order/transitions", ['status' => $status])->assertOk();
+        }
+        $this->actingAs($owner)->getJson(self::API.'/dashboard?rates=yesterday')->assertOk()->assertJsonPath('data.topRates', [])
+            ->assertJsonPath('data.areas.0.name', 'Sin área')->assertJsonPath('data.areas.0.vehicles.0.plate', 'PBA1234');
+        $this->actingAs($owner)->getJson(self::API.'/dashboard?rates=month')->assertUnprocessable();
         $this->actingAs($owner)->putJson(self::API.'/settings', ['openingTime' => '07:00', 'closingTime' => '07:00', 'slotMinutes' => 30])->assertUnprocessable();
         $this->actingAs($owner)->putJson(self::API.'/settings', ['openingTime' => '07:00', 'closingTime' => '19:00', 'slotMinutes' => 30])
             ->assertOk()->assertJsonPath('data.closingTime', '19:00');
@@ -239,5 +249,81 @@ final class CarwashWorkOrderTest extends CarwashTestCase
             ->assertJsonPath('data.customer.publicId', null);
         // Registering an existing plate by hand in Vehículos is still a duplicate.
         $this->actingAs($owner)->postJson(self::API.'/vehicles', ['plate' => 'PBA1234', 'vehicleSpecPublicId' => $setup['spec']->public_id])->assertStatus(409);
+    }
+
+    public function test_an_order_with_only_the_customer_name_and_phone(): void
+    {
+        [$company, $owner] = $this->carwashCompany();
+        $setup = $this->carwashSetup($company);
+        $this->actingAs($owner)->putJson(self::API.'/settings', ['notifyReady' => true])->assertOk();
+        $body = ['plate' => 'PBX4444', 'vehicleSpecPublicId' => $setup['spec']->public_id, 'servicePublicIds' => [$setup['service']->public_id]];
+
+        // A new plate without a name: there is nobody to charge.
+        $this->actingAs($owner)->postJson(self::API.'/work-orders', $body)->assertUnprocessable()->assertJsonPath('error.details.errors.contactName.0', 'Escribe el nombre del cliente.');
+        $order = $this->actingAs($owner)->postJson(self::API.'/work-orders', [...$body, 'contactName' => 'Anderson Endara', 'contactPhone' => '0991234567'])->assertCreated()
+            ->assertJsonPath('data.customer.name', 'Anderson Endara')->assertJsonPath('data.customer.publicId', null)->assertJsonPath('data.customer.phone', '0991234567')
+            ->assertJsonPath('data.vehicle.plate', 'PBX4444')->json('data.publicId');
+        foreach (['ARRIVED', 'IN_PROGRESS', 'READY'] as $status) {
+            $this->actingAs($owner)->postJson(self::API."/work-orders/$order/transitions", ['status' => $status])->assertOk();
+        }
+
+        $notice = CarwashNotification::query()->sole();
+        $this->assertSame('Hola Anderson Endara, su orden Lavado completo PBA1234 de su vehículo PBX4444 está culminada. ¡Gracias por preferirnos!', $notice->message);
+        $this->assertSame('0991234567', $notice->recipient);
+    }
+
+    public function test_the_vehicle_specification_is_required_even_with_a_single_price(): void
+    {
+        [$company, $owner] = $this->carwashCompany();
+        $setup = $this->carwashSetup($company);
+        $this->actingAs($owner)->putJson(self::API.'/settings', ['pricingMode' => 'SINGLE'])->assertOk();
+        $body = ['servicePublicIds' => [$setup['service']->public_id], 'contactName' => 'Anderson Endara'];
+
+        // A new plate without its specification: nothing is registered (no 500 for the missing type).
+        $this->actingAs($owner)->postJson(self::API.'/work-orders', [...$body, 'plate' => 'PBX4444'])->assertUnprocessable()
+            ->assertJsonPath('error.details.errors.vehicleSpecPublicId.0', 'Elige la especificación del vehículo.');
+        $this->assertFalse(Vehicle::query()->where('plate', 'PBX4444')->exists());
+
+        // A vehicle of Vehículos with only its type needs its specification; sent with the order, it stays in its card.
+        $vehicle = $this->actingAs($owner)->postJson(self::API.'/vehicles', ['plate' => 'PBY5555', 'vehicleTypePublicId' => $setup['type']->public_id])->assertCreated()->json('data.publicId');
+        $this->actingAs($owner)->postJson(self::API.'/work-orders', [...$body, 'vehiclePublicId' => $vehicle])->assertUnprocessable()
+            ->assertJsonPath('error.details.errors.vehicleSpecPublicId.0', 'Elige la especificación del vehículo.');
+        $this->actingAs($owner)->postJson(self::API.'/work-orders', [...$body, 'vehiclePublicId' => $vehicle, 'vehicleSpecPublicId' => $setup['spec']->public_id])->assertCreated();
+        $this->assertSame($setup['spec']->id, Vehicle::query()->where('plate', 'PBY5555')->sole()->vehicle_model_id);
+    }
+
+    public function test_editing_before_and_after_the_wash(): void
+    {
+        [$company, $owner] = $this->carwashCompany();
+        $setup = $this->carwashSetup($company);
+        $this->carwashSetup($company, 'PBX4444');
+        $scent = Item::query()->create(['company_id' => $company->id, 'internal_code' => 'AMB', 'type' => 'PRODUCT', 'name' => 'Ambientador', 'unit' => 'UND', 'sale_price' => '2.00', 'is_active' => true]);
+        $scent->taxes()->attach($this->companyIva($company, '4')->id, ['company_id' => $company->id]);
+        $service = $setup['service']->public_id;
+        $order = $this->actingAs($owner)->postJson(self::API.'/work-orders', [...$this->orderBody($setup), 'contactName' => 'Anderson'])->assertCreated()->json('data.publicId');
+        $edit = fn (array $data) => $this->actingAs($owner)->patchJson(self::API."/work-orders/$order", $data);
+
+        // Before the wash ends: everything (another vehicle, the name, its products).
+        $edit(['plate' => 'PBX4444', 'vehicleSpecPublicId' => $setup['spec']->public_id, 'servicePublicIds' => [$service], 'contactName' => 'Anderson Endara', 'items' => [['itemPublicId' => $scent->public_id, 'quantity' => '1']]])
+            ->assertOk()->assertJsonPath('data.vehicle.plate', 'PBX4444')->assertJsonPath('data.customer.name', 'Anderson Endara')->assertJsonPath('data.lines.1.kind', 'PRODUCT');
+
+        foreach (['ARRIVED', 'IN_PROGRESS', 'READY'] as $status) {
+            $this->actingAs($owner)->postJson(self::API."/work-orders/$order/transitions", ['status' => $status])->assertOk();
+        }
+        // Washed: only its products; the rest sent untouched is fine.
+        $edit(['plate' => 'PBA1234'])->assertConflict();
+        $edit(['servicePublicIds' => []])->assertUnprocessable();
+        $edit(['notes' => 'Otra nota'])->assertConflict();
+        $edit(['plate' => 'PBX4444', 'servicePublicIds' => [$service], 'items' => [['itemPublicId' => $scent->public_id, 'quantity' => '3']]])->assertOk()
+            ->assertJsonPath('data.lines.1.quantity', '3.000000')->assertJsonPath('data.isEditable', true);
+
+        // Charged: nothing.
+        $this->actingAs($owner)->postJson(self::API."/work-orders/$order/checkout", [
+            'customerPublicId' => $setup['customer']->public_id,
+            'cashSessionPublicId' => CashSession::query()->where('company_id', $company->id)->value('public_id'),
+            'paymentMethods' => [['fiscalPaymentMethodPublicId' => $this->paymentMethod()->public_id, 'amount' => '18.40']],
+            'invoice' => false, 'deliver' => false,
+        ])->assertOk()->assertJsonPath('data.isEditable', false);
+        $edit(['items' => []])->assertConflict();
     }
 }

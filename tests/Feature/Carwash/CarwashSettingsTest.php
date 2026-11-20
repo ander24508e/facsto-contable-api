@@ -215,7 +215,7 @@ final class CarwashSettingsTest extends CarwashTestCase
         $this->assertSame('14.00', (string) $charge('PBC1234')->total);
     }
 
-    public function test_every_nth_delivered_order_of_the_customer_has_its_service_free(): void
+    public function test_every_nth_delivered_visit_of_the_vehicle_has_its_service_free(): void
     {
         [$company, $owner] = $this->carwashCompany();
         $setup = $this->carwashSetup($company);

@@ -111,29 +111,7 @@ final class CarwashCheckoutTest extends CarwashTestCase
         $this->assertSame('1.50', (string) CashMovement::query()->where('sale_id', $sale->id)->value('amount'));
     }
 
-    public function test_a_separate_account_is_another_sale_with_its_own_customer_and_payment(): void
-    {
-        [$company, $owner] = $this->carwashCompany();
-        $setup = $this->carwashSetup($company);
-        $order = $this->washing($owner, $setup);
-        $scent = $this->product($company);
-        $separate = ['lines' => [['itemPublicId' => $scent->public_id, 'quantity' => '1']]];
-
-        $this->actingAs($owner)->postJson(self::API."/work-orders/$order/quote", ['separateLines' => $separate['lines']])->assertOk()
-            ->assertJsonPath('data.total', '11.50')->assertJsonPath('data.separate.total', '2.30');
-        $body = fn (string $amount) => ['customerPublicId' => $setup['customer']->public_id, 'invoice' => false, ...$separate,
-            'paymentMethods' => [['fiscalPaymentMethodPublicId' => $this->paymentMethod()->public_id, 'amount' => $amount]]];
-
-        $this->checkout($owner, $company, $order, '11.50', deliver: true, separate: $body('2.00'))->assertUnprocessable();
-        $this->assertSame(0, Sale::query()->where('company_id', $company->id)->count());
-        $this->checkout($owner, $company, $order, '11.50', deliver: true, separate: $body('2.30'))->assertOk()->assertJsonPath('data.status', 'DELIVERED');
-
-        $sales = Sale::query()->where('company_id', $company->id)->orderBy('id')->get();
-        $this->assertSame([['CONSUMIDOR FINAL', '11.50'], ['María Pérez', '2.30']], $sales->map(fn (Sale $sale) => [$sale->customer_name, (string) $sale->total])->all());
-        $this->assertSame(['11.50', '2.30'], CashMovement::query()->orderBy('id')->pluck('amount')->map(fn ($amount) => (string) $amount)->all());
-    }
-
-    public function test_articles_added_when_scheduling_are_charged_with_the_order_or_apart(): void
+    public function test_articles_added_when_scheduling_are_charged_with_the_order(): void
     {
         [$company, $owner] = $this->carwashCompany();
         $setup = $this->carwashSetup($company);
@@ -144,15 +122,37 @@ final class CarwashCheckoutTest extends CarwashTestCase
         $this->actingAs($owner)->postJson(self::API."/work-orders/$order/transitions", ['status' => 'ARRIVED'])->assertOk();
         $this->actingAs($owner)->postJson(self::API."/work-orders/$order/transitions", ['status' => 'IN_PROGRESS'])->assertOk();
 
-        // With the order: services and articles in one sale.
         $this->actingAs($owner)->postJson(self::API."/work-orders/$order/quote")->assertOk()->assertJsonPath('data.lines.1.name', 'Ambientador')->assertJsonPath('data.total', '16.10');
-        // «Aparte»: the article leaves the order's sale and goes to the separate one.
-        $apart = [['itemPublicId' => $scent->public_id, 'quantity' => '2']];
-        $this->actingAs($owner)->postJson(self::API."/work-orders/$order/quote", ['separateLines' => $apart])->assertOk()
-            ->assertJsonCount(1, 'data.lines')->assertJsonPath('data.total', '11.50')->assertJsonPath('data.separate.total', '4.60');
-        $this->checkout($owner, $company, $order, '11.50', deliver: false, separate: ['customerPublicId' => $setup['customer']->public_id, 'invoice' => false, 'lines' => $apart,
-            'paymentMethods' => [['fiscalPaymentMethodPublicId' => $this->paymentMethod()->public_id, 'amount' => '4.60']]])->assertOk();
-        $this->assertSame(['11.50', '4.60'], Sale::query()->where('company_id', $company->id)->orderBy('id')->pluck('total')->map(fn ($total) => (string) $total)->all());
+        $this->checkout($owner, $company, $order, '16.10', deliver: false)->assertOk();
+        $this->assertSame(['16.10'], Sale::query()->where('company_id', $company->id)->pluck('total')->map(fn ($total) => (string) $total)->all());
+    }
+
+    public function test_lines_apart_are_another_sale_with_its_own_customer_and_payment(): void
+    {
+        [$company, $owner] = $this->carwashCompany();
+        $setup = $this->carwashSetup($company);
+        $scent = $this->product($company);
+        $order = $this->actingAs($owner)->postJson(self::API.'/work-orders', [...$this->orderBody($setup), 'items' => [['itemPublicId' => $scent->public_id, 'quantity' => '1']]])
+            ->assertCreated()->json('data.publicId');
+        $this->actingAs($owner)->postJson(self::API."/work-orders/$order/transitions", ['status' => 'ARRIVED'])->assertOk();
+        $this->actingAs($owner)->postJson(self::API."/work-orders/$order/transitions", ['status' => 'IN_PROGRESS'])->assertOk();
+
+        // A product apart; a service apart too; not every line.
+        $this->actingAs($owner)->postJson(self::API."/work-orders/$order/quote", ['separateItems' => [$scent->public_id]])->assertOk()
+            ->assertJsonCount(1, 'data.lines')->assertJsonPath('data.total', '11.50')->assertJsonPath('data.separate.total', '2.30');
+        $this->actingAs($owner)->postJson(self::API."/work-orders/$order/quote", ['separateItems' => [$setup['item']->public_id]])->assertOk()
+            ->assertJsonPath('data.total', '2.30')->assertJsonPath('data.separate.total', '11.50');
+        $this->actingAs($owner)->postJson(self::API."/work-orders/$order/quote", ['separateItems' => [$setup['item']->public_id, $scent->public_id]])->assertUnprocessable();
+        $body = fn (string $amount) => ['customerPublicId' => $setup['customer']->public_id, 'invoice' => false, 'items' => [$scent->public_id],
+            'paymentMethods' => [['fiscalPaymentMethodPublicId' => $this->paymentMethod()->public_id, 'amount' => $amount]]];
+
+        $this->checkout($owner, $company, $order, '11.50', deliver: true, separate: $body('2.00'))->assertUnprocessable();
+        $this->assertSame(0, Sale::query()->where('company_id', $company->id)->count());
+        $this->checkout($owner, $company, $order, '11.50', deliver: true, separate: $body('2.30'))->assertOk()->assertJsonPath('data.status', 'DELIVERED');
+
+        $sales = Sale::query()->where('company_id', $company->id)->orderBy('id')->get();
+        $this->assertSame([['CONSUMIDOR FINAL', '11.50'], ['María Pérez', '2.30']], $sales->map(fn (Sale $sale) => [$sale->customer_name, (string) $sale->total])->all());
+        $this->assertSame(['11.50', '2.30'], CashMovement::query()->orderBy('id')->pluck('amount')->map(fn ($amount) => (string) $amount)->all());
     }
 
     private function washing(User $owner, array $setup): string

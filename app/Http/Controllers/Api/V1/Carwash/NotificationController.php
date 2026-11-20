@@ -50,7 +50,7 @@ final class NotificationController extends CarwashController
     {
         $notice->loadMissing(['workOrder.vehicle', 'workOrder.customer']);
         // The customer's current phone (it may have been added after the aviso was queued).
-        $notice->forceFill(['recipient' => $notice->workOrder->customer->phone ?: $notice->recipient, 'status' => 'OPENED', 'sent_at' => now(), 'sent_by' => $request->user()->id])->save();
+        $notice->forceFill(['recipient' => $notice->workOrder->contactPhone() ?: $notice->recipient, 'status' => 'OPENED', 'sent_at' => now(), 'sent_by' => $request->user()->id])->save();
 
         return $this->present($notice, $outbox);
     }
@@ -66,8 +66,8 @@ final class NotificationController extends CarwashController
             'status' => $notice->status,
             'recipient' => $notice->recipient,
             'message' => $notice->message,
-            'whatsappUrl' => $outbox->whatsappUrl($order->customer->phone ?: $notice->recipient, $notice->message),
-            'workOrder' => ['publicId' => $order->public_id, 'code' => $order->code(), 'plate' => $order->vehicle->plate, 'customer' => $order->customer->legal_name],
+            'whatsappUrl' => $outbox->whatsappUrl($order->contactPhone() ?: $notice->recipient, $notice->message),
+            'workOrder' => ['publicId' => $order->public_id, 'code' => $order->code(), 'plate' => $order->vehicle->plate, 'customer' => $order->contactName()],
             'createdAt' => $notice->created_at?->toIso8601String(),
             'sentAt' => $notice->sent_at?->toIso8601String(),
         ];

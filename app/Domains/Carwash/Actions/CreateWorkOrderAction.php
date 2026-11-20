@@ -5,14 +5,13 @@ namespace App\Domains\Carwash\Actions;
 use App\Domains\Carwash\Enums\WorkOrderSource;
 use App\Domains\Carwash\Enums\WorkOrderStatus;
 use App\Domains\Carwash\Models\CarwashSetting;
-use App\Domains\Carwash\Models\Vehicle;
 use App\Domains\Carwash\Models\WorkOrder;
 use App\Domains\Carwash\Services\AgendaService;
-use App\Domains\Carwash\Services\PlateNormalizer;
 use App\Domains\Carwash\Services\WasherAssigner;
-use App\Domains\Carwash\Services\WorkOrderLineResolver;
+use App\Domains\Carwash\Services\WorkOrderVehicles;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Companies\Models\Company;
+use App\Domains\Customers\Models\Customer;
 use App\Models\User;
 use App\Shared\Audit\AuditRecorder;
 use App\Shared\Http\ApiErrorCode;
@@ -21,52 +20,47 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Opens a work order for a vehicle with its services. Numbering is per company and assigned while the company row is
- * locked: it never repeats nor skips, starts at Configuración › Órdenes «Número inicial» and keeps the prefix it was
- * born with. The vehicle comes by its id or by its plate: an existing plate is the same vehicle (never a duplicate) and a
- * new one is registered. The customer is the one of this order (anyone may bring the vehicle; it is remembered as the
- * vehicle's last customer). Configuración may pick the washer (rotation), the free work area and add
- * the surcharges (extreme dirt, peak hours).
+ * Opens a work order: one vehicle with its services and its products (another vehicle goes in another order).
+ * Numbering is per company and assigned while the company row is locked: it never repeats nor skips, starts at
+ * Configuración › Órdenes «Número inicial» and keeps the prefix it was born with. The vehicle comes by its id or by its
+ * plate (the same plate is the same vehicle; a new one is registered with its specification, which is required). The customer comes from
+ * Clientes (with cédula or RUC) or only as a contact (name and phone); the invoice identifies them when it is issued.
+ * Configuración may pick the washer (rotation), the free work area and add the surcharges (extreme dirt, peak hours).
  */
 final class CreateWorkOrderAction
 {
     public function __construct(
         private readonly CompanyContext $context,
-        private readonly WorkOrderLineResolver $lines,
         private readonly AgendaService $agenda,
         private readonly AuditRecorder $audit,
         private readonly WasherAssigner $washers,
-        private readonly SaveVehicleAction $vehicles,
-        private readonly PlateNormalizer $plates,
+        private readonly WorkOrderVehicles $vehicles,
     ) {}
 
     /**
-     * @param  array<string, mixed>  $data  vehiclePublicId or plate (+ vehicleSpecPublicId / vehicleTypePublicId), customerPublicId,
-     *                                      servicePublicIds, items (articles), washerPublicId, scheduledAt, workAreaPublicId, notes, dirty
+     * @param  array<string, mixed>  $data  vehiclePublicId or plate (+ vehicleSpecPublicId, required),
+     *                                      servicePublicIds, items, customerPublicId, contactName, contactPhone,
+     *                                      washerPublicId, scheduledAt, workAreaPublicId, notes, dirty
      */
     public function execute(array $data, User $actor): WorkOrder
     {
+        // All or nothing: a new vehicle is registered only if the order is.
+        return DB::transaction(fn (): WorkOrder => $this->open($data, $actor));
+    }
+
+    /** @param array<string, mixed> $data */
+    private function open(array $data, User $actor): WorkOrder
+    {
         $company = $this->context->company();
         $settings = CarwashSetting::for($company);
-        $vehicle = $this->vehicle($data, $actor);
-        if (! $vehicle->is_active) {
-            throw new ApiException(ApiErrorCode::CARWASH_VEHICLE_INACTIVE, 'El vehículo está inactivo.', 422);
-        }
-        $customerId = filled($data['customerPublicId'] ?? null)
-            ? $company->customers()->where('public_id', $data['customerPublicId'])->where('is_active', true)->firstOrFail()->id
-            : $vehicle->customer_id;
-        if (! $customerId) {
-            throw new ApiException(ApiErrorCode::VALIDATION_FAILED, 'Elige el cliente de la orden.', 422, ['errors' => ['customerPublicId' => ['Elige el cliente de la orden.']]]);
-        }
-        if ($vehicle->customer_id !== $customerId) {
-            $vehicle->forceFill(['customer_id' => $customerId])->save();
-        }
+        $vehicle = $this->vehicles->vehicle($company->id, $data, $actor);
+        [$customer, $contactName, $contactPhone] = $this->contact($company, $data, $vehicle->customer_id);
         $dirty = (bool) ($data['dirty'] ?? false);
         $scheduledAt = empty($data['scheduledAt']) ? null : CarbonImmutable::parse($data['scheduledAt'])->setTimezone(config('app.timezone'));
         $reserved = $scheduledAt !== null;
-        $lines = [...$this->lines->resolve($vehicle, $data['servicePublicIds']), ...$this->lines->surcharges($company->id, $dirty, $scheduledAt), ...$this->lines->articles($company->id, $data['items'] ?? [])];
+        $lines = [...$this->vehicles->serviceLines($vehicle, $data['servicePublicIds'], $dirty, $scheduledAt), ...$this->vehicles->productLines($company->id, $data['items'] ?? [])];
 
-        return DB::transaction(function () use ($company, $settings, $vehicle, $customerId, $lines, $scheduledAt, $reserved, $data, $actor, $dirty): WorkOrder {
+        return DB::transaction(function () use ($company, $settings, $vehicle, $customer, $contactName, $contactPhone, $lines, $scheduledAt, $reserved, $data, $actor, $dirty): WorkOrder {
             Company::query()->whereKey($company->id)->lockForUpdate()->first();
             $washer = $this->washers->assign($company, $data['washerPublicId'] ?? null, rotate: true);
             // A reservation takes a work area at its time. A walk-in with an area takes it from now; without one, none
@@ -92,7 +86,9 @@ final class CreateWorkOrderAction
                 'code_prefix' => $settings->order_prefix ?: 'OT',
                 'source' => $reserved ? WorkOrderSource::RESERVATION : WorkOrderSource::COUNTER,
                 'vehicle_id' => $vehicle->id,
-                'customer_id' => $customerId,
+                'customer_id' => $customer?->id,
+                'contact_name' => $contactName,
+                'contact_phone' => $contactPhone,
                 'washer_id' => $washer?->id,
                 'status' => WorkOrderStatus::PENDING,
                 'scheduled_at' => $scheduledAt,
@@ -103,6 +99,10 @@ final class CreateWorkOrderAction
                 'created_by' => $actor->id,
             ]);
             $order->lines()->createMany($lines);
+            // The vehicle remembers who brought it last (a suggestion for the next visit).
+            if ($customer && $vehicle->customer_id !== $customer->id) {
+                $vehicle->forceFill(['customer_id' => $customer->id])->save();
+            }
             $this->audit->record($actor, $company, 'carwash.work_order.created', $order, null, [
                 'number' => $number, 'plate' => $vehicle->plate, 'services' => array_column($lines, 'description'),
             ]);
@@ -111,23 +111,24 @@ final class CreateWorkOrderAction
         });
     }
 
-    /** The vehicle by its id, or by its plate: the same plate is the same vehicle (its specification may be updated). */
-    private function vehicle(array $data, User $actor): Vehicle
+    /**
+     * The customer from Clientes, or only the contact typed at the counter; without either, the vehicle's last customer.
+     *
+     * @return array{0: ?Customer, 1: ?string, 2: ?string}
+     */
+    private function contact(Company $company, array $data, ?int $lastCustomerId): array
     {
-        $companyId = $this->context->company()->id;
-        if (filled($data['vehiclePublicId'] ?? null)) {
-            return Vehicle::query()->where('company_id', $companyId)->where('public_id', $data['vehiclePublicId'])->first()
-                ?? throw new ApiException(ApiErrorCode::CARWASH_VEHICLE_NOT_FOUND, 'El vehículo no existe.', 404);
-        }
-        $spec = array_filter(['vehicleSpecPublicId' => $data['vehicleSpecPublicId'] ?? null, 'vehicleTypePublicId' => $data['vehicleTypePublicId'] ?? null]);
-        $vehicle = Vehicle::query()->where('company_id', $companyId)->where('plate', $this->plates->normalize((string) $data['plate']))->first();
-        if (! $vehicle) {
-            return $this->vehicles->execute(new Vehicle, ['plate' => $data['plate'], ...$spec, 'isActive' => true], $actor);
-        }
-        if (isset($spec['vehicleSpecPublicId']) && $spec['vehicleSpecPublicId'] !== $vehicle->model?->public_id) {
-            return $this->vehicles->execute($vehicle, ['vehicleSpecPublicId' => $spec['vehicleSpecPublicId']], $actor);
+        $name = trim((string) ($data['contactName'] ?? '')) ?: null;
+        $phone = trim((string) ($data['contactPhone'] ?? '')) ?: null;
+        $customer = match (true) {
+            filled($data['customerPublicId'] ?? null) => $company->customers()->where('public_id', $data['customerPublicId'])->where('is_active', true)->firstOrFail(),
+            $name === null && $lastCustomerId !== null => $company->customers()->whereKey($lastCustomerId)->first(),
+            default => null,
+        };
+        if (! $customer && $name === null) {
+            throw new ApiException(ApiErrorCode::VALIDATION_FAILED, 'Escribe el nombre del cliente.', 422, ['errors' => ['contactName' => ['Escribe el nombre del cliente.']]]);
         }
 
-        return $vehicle;
+        return [$customer, $name ?? $customer?->legal_name, $phone ?? $customer?->phone];
     }
 }

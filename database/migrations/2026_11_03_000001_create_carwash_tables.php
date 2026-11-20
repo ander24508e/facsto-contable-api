@@ -169,8 +169,8 @@ return new class extends Migration
             $table->foreign(['company_id', 'item_id'])->references(['company_id', 'id'])->on('items')->restrictOnDelete();
         });
 
-        // Orden de trabajo (OT-000001 por empresa). El cobro es la venta de FACSTO enlazada en sale_id:
-        // su estado y su factura se leen de Ventas, no se copian.
+        // Orden de trabajo (OT-000001 por empresa): un vehículo con sus servicios y productos. El cobro es la venta de
+        // FACSTO enlazada en sale_id: su estado y su factura se leen de Ventas, no se copian.
         Schema::create('carwash_work_orders', function (Blueprint $table): void {
             $table->id();
             $table->uuid('public_id')->unique();
@@ -180,7 +180,10 @@ return new class extends Migration
             $table->string('code_prefix', 6)->default('OT');
             $table->string('source', 20)->default('COUNTER');
             $table->foreignId('vehicle_id');
-            $table->foreignId('customer_id');
+            // El cliente de Clientes (con cédula o RUC) o, sin él, sólo el contacto: nombre y teléfono.
+            $table->foreignId('customer_id')->nullable();
+            $table->string('contact_name', 180)->nullable();
+            $table->string('contact_phone', 40)->nullable();
             // Trabajador: un usuario de la empresa cuyo rol tiene «Puede ser asignado como trabajador».
             $table->foreignId('washer_id')->nullable();
             $table->string('status', 20)->default('PENDING');
@@ -210,52 +213,28 @@ return new class extends Migration
             $table->index(['company_id', 'status']);
             $table->index(['company_id', 'scheduled_at']);
             $table->index(['company_id', 'work_area_id', 'scheduled_at']);
-            $table->foreign(['company_id', 'vehicle_id'])->references(['company_id', 'id'])->on('carwash_vehicles')->restrictOnDelete();
             $table->foreign(['company_id', 'customer_id'])->references(['company_id', 'id'])->on('customers')->restrictOnDelete();
+            $table->foreign(['company_id', 'vehicle_id'])->references(['company_id', 'id'])->on('carwash_vehicles')->restrictOnDelete();
             $table->foreign('washer_id')->references('id')->on('users')->nullOnDelete();
             $table->foreign(['company_id', 'work_area_id'])->references(['company_id', 'id'])->on('carwash_work_areas')->restrictOnDelete();
             $table->foreign(['company_id', 'sale_id'])->references(['company_id', 'id'])->on('sales')->restrictOnDelete();
-        });
-
-        Schema::create('carwash_work_order_lines', function (Blueprint $table): void {
-            $table->id();
-            $table->foreignId('company_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('work_order_id');
-            // SERVICE: un servicio de Tarifas (con su precio por vehículo, o sin él con precio único); SURCHARGE: un recargo;
-            // PRODUCT: un artículo de Inventario (producto o servicio) agregado al agendar, a su precio.
-            $table->string('kind', 10)->default('SERVICE');
-            $table->foreignId('service_id')->nullable();
-            $table->foreignId('service_price_id')->nullable();
-            $table->foreignId('item_id');
-            $table->string('description', 300);
-            $table->decimal('quantity', 12, 6)->default(1);
-            $table->unsignedSmallInteger('duration_minutes');
-            $table->timestamps();
-            $table->index('work_order_id');
-            $table->foreign(['company_id', 'work_order_id'])->references(['company_id', 'id'])->on('carwash_work_orders')->cascadeOnDelete();
-            $table->foreign(['company_id', 'service_id'])->references(['company_id', 'id'])->on('carwash_services')->restrictOnDelete();
-            $table->foreign(['company_id', 'service_price_id'])->references(['company_id', 'id'])->on('carwash_service_prices')->restrictOnDelete();
-            $table->foreign(['company_id', 'item_id'])->references(['company_id', 'id'])->on('items')->restrictOnDelete();
         });
 
         if (DB::getDriverName() === 'pgsql') {
             DB::statement('ALTER TABLE carwash_settings ADD CONSTRAINT carwash_settings_hours_check CHECK (closing_time <> opening_time AND slot_minutes BETWEEN 5 AND 240)');
             DB::statement("ALTER TABLE carwash_settings ADD CONSTRAINT carwash_settings_modes_check CHECK (billing_mode IN ('MANUAL','AUTO') AND pricing_mode IN ('BY_VEHICLE','SINGLE') AND commission_type IN ('PERCENT','FIXED') AND assignment_mode IN ('MANUAL','ROTATION') AND consume_supplies_on IN ('READY','DELIVERED'))");
             DB::statement("ALTER TABLE carwash_services ADD CONSTRAINT carwash_services_commission_check CHECK (commission_type IS NULL OR commission_type IN ('PERCENT','FIXED'))");
-            DB::statement("ALTER TABLE carwash_work_order_lines ADD CONSTRAINT carwash_work_order_lines_kind_check CHECK (kind IN ('SERVICE','SURCHARGE','PRODUCT') AND (kind <> 'SERVICE' OR service_id IS NOT NULL))");
             DB::statement("ALTER TABLE carwash_vehicles ADD CONSTRAINT carwash_vehicles_plate_check CHECK (plate ~ '^[A-Z0-9]{5,10}$')");
             DB::statement('ALTER TABLE carwash_vehicles ADD CONSTRAINT carwash_vehicles_year_check CHECK (year IS NULL OR year BETWEEN 1950 AND 2100)');
             DB::statement('ALTER TABLE carwash_services ADD CONSTRAINT carwash_services_duration_check CHECK (duration_minutes BETWEEN 5 AND 1440)');
             DB::statement('ALTER TABLE carwash_work_orders ADD CONSTRAINT carwash_work_orders_reservation_check CHECK ((work_area_id IS NULL) = (scheduled_end_at IS NULL) AND (scheduled_end_at IS NULL OR scheduled_end_at > scheduled_at))');
             DB::statement("ALTER TABLE carwash_work_orders ADD CONSTRAINT carwash_work_orders_status_check CHECK (status IN ('PENDING','ARRIVED','IN_PROGRESS','READY','DELIVERED','CANCELLED'))");
             DB::statement("ALTER TABLE carwash_work_orders ADD CONSTRAINT carwash_work_orders_source_check CHECK (source IN ('COUNTER','RESERVATION','ONLINE'))");
-            DB::statement('ALTER TABLE carwash_work_order_lines ADD CONSTRAINT carwash_work_order_lines_quantity_check CHECK (quantity > 0)');
         }
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('carwash_work_order_lines');
         Schema::dropIfExists('carwash_work_orders');
         Schema::dropIfExists('carwash_service_prices');
         Schema::dropIfExists('carwash_services');

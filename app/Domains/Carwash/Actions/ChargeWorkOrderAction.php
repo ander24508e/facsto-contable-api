@@ -7,6 +7,7 @@ use App\Domains\Carwash\Enums\WorkOrderStatus;
 use App\Domains\Carwash\Models\WorkOrder;
 use App\Domains\Carwash\Services\WorkOrderPricing;
 use App\Domains\Companies\Context\CompanyContext;
+use App\Domains\Customers\Actions\EnsureFinalConsumerAction;
 use App\Domains\Sales\Actions\CreateSaleDraftAction;
 use App\Domains\Sales\Actions\UpdateSaleDraftAction;
 use App\Domains\Sales\DTOs\SaleDraftData;
@@ -17,7 +18,8 @@ use App\Shared\Http\ApiException;
 use Illuminate\Support\Facades\DB;
 
 /**
- * «Cobrar»: the order becomes a sale draft in Ventas, with the vehicle's customer and one line per service
+ * «Cobrar»: the order becomes a sale draft in Ventas, with the order's customer (consumidor final when it only has a
+ * contact name) and one line per service and product
  * (the catalog item, so price and taxes are FACSTO's), with the combo, loyalty and rounding discounts of
  * Configuración (WorkOrderPricing). The cashier adds the payment and issues it there.
  * Charging again refreshes the same draft; a cancelled draft is replaced by a new one. Uses the Sales
@@ -31,6 +33,7 @@ final class ChargeWorkOrderAction
         private readonly UpdateSaleDraftAction $update,
         private readonly AuditRecorder $audit,
         private readonly WorkOrderPricing $pricing,
+        private readonly EnsureFinalConsumerAction $finalConsumer,
     ) {}
 
     public function execute(WorkOrder $order, User $actor): WorkOrder
@@ -50,9 +53,9 @@ final class ChargeWorkOrderAction
             $priced = $this->pricing->lines($order);
             $extras = [...array_map(fn (string $combo) => 'Combo '.$combo, $priced['combos']), ...($priced['loyaltyFree'] ? ['Lavado gratis por fidelidad'] : [])];
             $draft = SaleDraftData::fromValidated([
-                'customerPublicId' => $order->customer->public_id,
+                'customerPublicId' => ($order->customer ?? $this->finalConsumer->execute($actor))->public_id,
                 'lines' => $priced['lines'],
-                'notes' => mb_substr(trim(implode(' · ', array_filter([$order->code(), 'Placa '.$order->vehicle->plate, ...$extras, $order->notes]))), 0, 1000),
+                'notes' => mb_substr(trim(implode(' · ', array_filter([$order->code(), 'Placa '.$order->vehicle->plate, $order->customer ? null : $order->contactName(), ...$extras, $order->notes]))), 0, 1000),
             ]);
             $sale = $billing === BillingStatus::DRAFT
                 ? $this->update->execute($order->sale, $draft, $actor)
