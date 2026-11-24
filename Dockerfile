@@ -7,7 +7,8 @@ RUN mvn -B -q dependency:go-offline
 COPY tools/xades-signer/src ./src
 RUN mvn -B -q package
 
-FROM php:8.4-cli-alpine AS base
+# php-fpm trae también el binario php: desarrollo (artisan serve), Horizon, el programador y Reverb lo usan igual.
+FROM php:8.4-fpm-alpine AS base
 
 RUN apk add --no-cache \
         curl \
@@ -18,8 +19,9 @@ RUN apk add --no-cache \
         openjdk21-jre-headless \
         postgresql-dev \
         sqlite-dev \
+        su-exec \
         $PHPIZE_DEPS \
-    && docker-php-ext-install -j2 bcmath dom intl mbstring pcntl pdo_pgsql pdo_sqlite xml xmlreader xmlwriter zip \
+    && docker-php-ext-install -j2 bcmath dom intl mbstring opcache pcntl pdo_pgsql pdo_sqlite xml xmlreader xmlwriter zip \
     && pecl install redis \
     && docker-php-ext-enable redis \
     && apk del $PHPIZE_DEPS
@@ -42,3 +44,27 @@ RUN composer dump-autoload --optimize --no-interaction
 EXPOSE 8000
 
 CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000", "--no-reload"]
+
+# Producción (Dokploy, compose.prod.yaml): php-fpm en el puerto 9000 detrás del nginx de la web.
+FROM base AS production
+
+ENV APP_ENV=production
+
+COPY docker/production/php.ini /usr/local/etc/php/conf.d/zz-facsto-production.ini
+COPY docker/production/entrypoint.sh /usr/local/bin/facsto-entrypoint
+
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --no-interaction --prefer-dist --no-scripts --no-autoloader
+
+COPY . .
+RUN composer dump-autoload --optimize --classmap-authoritative --no-dev --no-interaction \
+    && rm -f bootstrap/cache/*.php \
+    && php artisan package:discover --ansi \
+    && mkdir -p storage/private storage/logs storage/framework/cache/data storage/framework/sessions storage/framework/views \
+    && chown -R www-data:www-data storage bootstrap/cache \
+    && chmod +x /usr/local/bin/facsto-entrypoint
+
+EXPOSE 9000
+
+ENTRYPOINT ["facsto-entrypoint"]
+CMD ["php-fpm"]

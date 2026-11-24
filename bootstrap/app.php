@@ -30,6 +30,9 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withCommands([SchedulePendingSriDocumentsCommand::class])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->statefulApi();
+        // Producción: Traefik (HTTPS) → nginx de la web → php-fpm. Sólo nginx llega al API por la red interna de
+        // Docker, así que se confía en sus cabeceras X-Forwarded-* para saber que la petición vino por HTTPS.
+        $middleware->trustProxies(at: '*');
         $middleware->trimStrings(except: ['password', 'password_confirmation']);
         $middleware->alias([
             'company.context' => ResolveCompanyContext::class,
