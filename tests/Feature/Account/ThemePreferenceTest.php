@@ -25,6 +25,8 @@ final class ThemePreferenceTest extends TestCase
         $user = User::factory()->create();
 
         $this->actingAs($user)->putJson('/api/v1/me/theme', ['theme' => 'blue'])->assertUnprocessable();
+        // actingAs keeps the user for the next requests of the test: sign out to check the guest.
+        $this->app['auth']->forgetGuards();
         $this->putJson('/api/v1/me/theme', ['theme' => 'dark'])->assertUnauthorized();
     }
 }

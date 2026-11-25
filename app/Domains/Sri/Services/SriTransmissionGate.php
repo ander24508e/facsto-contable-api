@@ -12,6 +12,9 @@ use App\Domains\Companies\Fiscal\Models\CompanyFiscalSettings;
  */
 final class SriTransmissionGate
 {
+    /** INSTANCE_MODE=pruebas: the testing installation never reaches the SRI, whatever its other switches say. */
+    public const TEST_INSTANCE = 'TEST_INSTANCE';
+
     public const TRANSPORT_DISABLED = 'TRANSPORT_DISABLED';
 
     public const COMPANY_SUBMISSION_DISABLED = 'COMPANY_SUBMISSION_DISABLED';
@@ -27,6 +30,7 @@ final class SriTransmissionGate
         $environment ??= $settings?->sri_environment?->value;
 
         return match (true) {
+            config('instance.mode') === 'pruebas' => self::TEST_INSTANCE,
             ! config('sri.transport_enabled') => self::TRANSPORT_DISABLED,
             ! $settings?->sri_submission_enabled => self::COMPANY_SUBMISSION_DISABLED,
             $environment !== SriEnvironment::TEST->value && ! config('sri.software_provider.registered') => self::PROVIDER_NOT_REGISTERED,

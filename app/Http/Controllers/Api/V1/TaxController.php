@@ -7,14 +7,11 @@ use App\Domains\Taxes\Actions\ActivateCompanyTaxAction;
 use App\Domains\Taxes\Actions\DeactivateCompanyTaxAction;
 use App\Domains\Taxes\Actions\ReplaceCompanyTaxOnItemsAction;
 use App\Domains\Taxes\Actions\UpdateCompanyTaxAction;
+use App\Domains\Taxes\Enums\TaxCalculationType;
+use App\Domains\Taxes\Enums\TaxType;
 use App\Domains\Taxes\Models\CompanyTax;
 use App\Domains\Taxes\Models\FiscalRule;
 use App\Domains\Taxes\Models\SriTaxDefinition;
-use App\Domains\Taxes\Enums\TaxCalculationType;
-use App\Domains\Taxes\Enums\TaxType;
-use App\Shared\Http\ApiErrorCode;
-use App\Shared\Http\ApiException;
-use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Taxes\ActivateCompanyTaxRequest;
 use App\Http\Requests\Taxes\ReplaceCompanyTaxRequest;
@@ -22,9 +19,12 @@ use App\Http\Requests\Taxes\UpdateCompanyTaxRequest;
 use App\Http\Resources\Api\V1\FiscalRuleResource;
 use App\Http\Resources\Api\V1\SriTaxDefinitionResource;
 use App\Http\Resources\Api\V1\TaxResource;
+use App\Shared\Http\ApiErrorCode;
+use App\Shared\Http\ApiException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 
 final class TaxController extends Controller
 {

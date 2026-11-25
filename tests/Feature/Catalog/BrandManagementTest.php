@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Catalog;
 
-use App\Domains\Catalog\Models\Brand;
 use App\Models\User;
 
 final class BrandManagementTest extends CatalogTestCase

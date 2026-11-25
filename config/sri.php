@@ -56,7 +56,9 @@ return [
     ],
 
     'software_provider' => [
-        'ruc' => env('SRI_SOFTWARE_PROVIDER_RUC'),
+        // RUC de Condore Software (Anexo 26): el mismo en todas las instalaciones y público (va en cada comprobante).
+        // La variable sólo existe por si algún día cambia.
+        'ruc' => env('SRI_SOFTWARE_PROVIDER_RUC') ?: '1720127180001',
         'name' => env('SRI_SOFTWARE_PROVIDER_NAME', 'Condore Software'),
         /*
          * Registro del proveedor ante el SRI. F05 puede firmar con el RUC configurado,

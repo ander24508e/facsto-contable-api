@@ -215,7 +215,8 @@ return [
     'environments' => [
         'production' => [
             'supervisor-1' => [
-                'maxProcesses' => 10,
+                // Una instalación por cliente en un VPS compartido: pocos procesos por cliente (cada uno ~60 MB).
+                'maxProcesses' => (int) env('HORIZON_MAX_PROCESSES', 3),
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],

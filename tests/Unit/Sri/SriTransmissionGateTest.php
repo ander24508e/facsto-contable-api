@@ -39,6 +39,19 @@ final class SriTransmissionGateTest extends TestCase
         $this->assertNull($this->gate()->blockingReason($this->settings(true)));
     }
 
+    public function test_the_testing_installation_never_transmits_even_with_every_switch_on(): void
+    {
+        config(['instance.mode' => 'pruebas', 'sri.transport_enabled' => true, 'sri.software_provider.registered' => true]);
+
+        $this->assertSame(SriTransmissionGate::TEST_INSTANCE, $this->gate()->blockingReason($this->settings(true, 'TEST')));
+        $this->assertSame(SriTransmissionGate::TEST_INSTANCE, $this->gate()->blockingReason($this->settings(true, 'PRODUCTION')));
+    }
+
+    public function test_condores_provider_ruc_is_the_default_of_every_installation(): void
+    {
+        $this->assertSame('1720127180001', config('sri.software_provider.ruc'));
+    }
+
     private function gate(): SriTransmissionGate
     {
         return new SriTransmissionGate;

@@ -10,9 +10,13 @@ RUN mvn -B -q package
 # php-fpm trae también el binario php: desarrollo (artisan serve), Horizon, el programador y Reverb lo usan igual.
 FROM php:8.4-fpm-alpine AS base
 
+# gd: dompdf la necesita para las imágenes PNG/JPG (fotos y firma del informe de recepción de la Lavadora).
 RUN apk add --no-cache \
         curl \
+        freetype-dev \
         icu-dev \
+        libjpeg-turbo-dev \
+        libpng-dev \
         libxml2-dev \
         libzip-dev \
         oniguruma-dev \
@@ -21,7 +25,8 @@ RUN apk add --no-cache \
         sqlite-dev \
         su-exec \
         $PHPIZE_DEPS \
-    && docker-php-ext-install -j2 bcmath dom intl mbstring opcache pcntl pdo_pgsql pdo_sqlite xml xmlreader xmlwriter zip \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j2 bcmath dom gd intl mbstring opcache pcntl pdo_pgsql pdo_sqlite xml xmlreader xmlwriter zip \
     && pecl install redis \
     && docker-php-ext-enable redis \
     && apk del $PHPIZE_DEPS

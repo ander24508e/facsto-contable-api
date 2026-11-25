@@ -115,14 +115,14 @@ final class CatalogProductivityTest extends SalesTestCase
         $this->productStock($company);
         $establishment = $company->establishments()->where('code', '001')->first();
         $this->actingAs($user)->postJson('/api/v1/warehouses', ['establishmentPublicId' => $establishment->public_id, 'name' => 'Bodega Sur'])->assertCreated();
-        $csv = "tipo,codigo,nombre,precio,iva,stock,bodega
-"
-            ."PRODUCTO,F-1,Filtro,5,15,8,bodega sur
-"
-            ."PRODUCTO,F-2,Aceite,5,15,8,
-"
-            ."PRODUCTO,F-3,Bujia,5,15,8,No existe
-";
+        $csv = 'tipo,codigo,nombre,precio,iva,stock,bodega
+'
+            .'PRODUCTO,F-1,Filtro,5,15,8,bodega sur
+'
+            .'PRODUCTO,F-2,Aceite,5,15,8,
+'
+            .'PRODUCTO,F-3,Bujia,5,15,8,No existe
+';
 
         $preview = $this->post('/api/v1/imports/preview', ['type' => 'items', 'file' => UploadedFile::fake()->createWithContent('items.csv', $csv)], ['Accept' => 'application/json'])
             ->assertOk()->assertJsonPath('data.valid', 1)->json('data');

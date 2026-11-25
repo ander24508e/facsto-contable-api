@@ -4,7 +4,6 @@ namespace App\Domains\Catalog\Actions;
 
 use App\Domains\Catalog\Enums\ItemType;
 use App\Domains\Catalog\Models\Item;
-use App\Domains\Catalog\Models\Brand;
 use App\Domains\Catalog\Models\ItemCatalogMetadata;
 use App\Domains\Catalog\Services\BarcodeGenerator;
 use App\Domains\Companies\Context\CompanyContext;
