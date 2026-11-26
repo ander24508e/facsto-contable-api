@@ -216,7 +216,8 @@ return [
         'production' => [
             'supervisor-1' => [
                 // Una instalación por cliente en un VPS compartido: pocos procesos por cliente (cada uno ~60 MB).
-                'maxProcesses' => (int) env('HORIZON_MAX_PROCESSES', 3),
+                // An empty HORIZON_MAX_PROCESSES= in Dokploy would mean 0 workers: nothing in the background would run.
+                'maxProcesses' => max(1, (int) (env('HORIZON_MAX_PROCESSES') ?: 3)),
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],

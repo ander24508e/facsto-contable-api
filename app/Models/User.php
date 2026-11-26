@@ -36,6 +36,17 @@ class User extends Authenticatable
     }
 
     /**
+     * Condore's support account of this installation (SUPPORT_ADMIN_EMAIL). It stays visible to the client but locked:
+     * nobody edits, deactivates or removes it, and its name, email and password come only from Dokploy.
+     */
+    public function isInstanceSupport(): bool
+    {
+        $email = mb_strtolower(trim((string) config('instance.support.email')));
+
+        return $email !== '' && mb_strtolower((string) $this->email) === $email;
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>

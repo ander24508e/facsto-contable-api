@@ -14,7 +14,7 @@ final class UpdateCompanyMemberRolesRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'rolePublicIds' => ['required', 'array', 'min:1', 'max:20'],
+            'rolePublicIds' => ['required', 'array', 'size:1'],
             'rolePublicIds.*' => ['required', 'uuid', 'distinct'],
         ];
     }

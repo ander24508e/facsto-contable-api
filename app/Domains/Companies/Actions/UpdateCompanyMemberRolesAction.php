@@ -25,6 +25,7 @@ final class UpdateCompanyMemberRolesAction
                 ->lockForUpdate()
                 ->firstOrFail();
 
+            $this->roles->assertCanManage($lockedCompany, $actor, $lockedMembership);
             $before = $lockedMembership->roles()->pluck('company_roles.name')->all();
             $roles = $this->roles->resolve($lockedCompany, $rolePublicIds, $lockedMembership->roles()->pluck('company_roles.id')->all());
             $this->roles->assign($lockedCompany, $actor, $lockedMembership, $roles);

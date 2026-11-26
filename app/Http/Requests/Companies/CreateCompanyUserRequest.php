@@ -19,9 +19,9 @@ final class CreateCompanyUserRequest extends FormRequest
             'name' => ['required', 'string', 'max:120'],
             'email' => ['required', 'string', 'email', 'max:254', Rule::unique('users', 'email')],
             'phone' => ['nullable', 'string', 'max:40'],
-            'rolePublicIds' => ['required', 'array', 'min:1', 'max:20'],
+            'rolePublicIds' => ['required', 'array', 'size:1'],
             'rolePublicIds.*' => ['required', 'uuid', 'distinct'],
-            'password' => ['required', 'string', Password::min(10)->letters()->numbers(), 'confirmed'],
+            'password' => ['required', 'string', Password::defaults(), 'confirmed'],
         ];
     }
 }

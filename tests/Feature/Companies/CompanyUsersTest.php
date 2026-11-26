@@ -13,13 +13,12 @@ final class CompanyUsersTest extends CompanyTestCase
         $owner = User::factory()->create();
         $company = $this->createCompany($owner, '1799999999001');
         $biller = $this->presetRole($company, 'BILLER');
-        $worker = $this->roleWith($company, ['carwash.own_work'], 'Trabajador');
 
         $response = $this->actingAs($owner)->postJson('/api/v1/company/users', [
             'name' => 'Ana Operadora',
             'email' => 'ana@example.com',
             'phone' => '0991234567',
-            'rolePublicIds' => [$biller->public_id, $worker->public_id],
+            'rolePublicIds' => [$biller->public_id],
             'password' => 'Initial12345',
             'password_confirmation' => 'Initial12345',
         ]);
@@ -28,7 +27,7 @@ final class CompanyUsersTest extends CompanyTestCase
             ->assertJsonPath('data.email', 'ana@example.com')
             ->assertJsonPath('data.isActive', true)
             ->assertJsonPath('data.isAdministrator', false)
-            ->assertJsonCount(2, 'data.roles');
+            ->assertJsonCount(1, 'data.roles');
         $user = User::query()->where('email', 'ana@example.com')->firstOrFail();
         $this->assertTrue(Hash::check('Initial12345', $user->password));
 

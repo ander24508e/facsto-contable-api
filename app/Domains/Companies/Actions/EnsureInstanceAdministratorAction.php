@@ -10,6 +10,8 @@ use App\Domains\Identity\Enums\UserStatus;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rules\Password;
 use InvalidArgumentException;
 
 /**
@@ -21,8 +23,6 @@ use InvalidArgumentException;
 final class EnsureInstanceAdministratorAction
 {
     private const SLUG_PATTERN = '/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/';
-
-    private const MIN_PASSWORD_LENGTH = 12;
 
     public function __construct(
         private readonly CreateCompanyAction $createCompany,
@@ -41,8 +41,8 @@ final class EnsureInstanceAdministratorAction
         if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
             throw new InvalidArgumentException('SUPPORT_ADMIN_EMAIL no es un correo válido.');
         }
-        if (mb_strlen($password) < self::MIN_PASSWORD_LENGTH) {
-            throw new InvalidArgumentException('SUPPORT_ADMIN_PASSWORD debe tener al menos '.self::MIN_PASSWORD_LENGTH.' caracteres.');
+        if (Validator::make(['password' => $password], ['password' => Password::defaults()])->fails()) {
+            throw new InvalidArgumentException('SUPPORT_ADMIN_PASSWORD no cumple la regla de contraseñas: mínimo 10 caracteres, con letras y números.');
         }
 
         return DB::transaction(function () use ($slug, $name, $email, $password): Company {

@@ -29,6 +29,7 @@ use App\Models\User;
 use App\Shared\Realtime\Realtime;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Validation\Rules\Password;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -51,6 +52,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // One password rule for every account (users of the client and Condore's support account).
+        Password::defaults(fn (): Password => Password::min(10)->letters()->numbers());
+
         Gate::policy(Company::class, CompanyPolicy::class);
         Gate::policy(Customer::class, CustomerPolicy::class);
         Gate::policy(Item::class, ItemPolicy::class);

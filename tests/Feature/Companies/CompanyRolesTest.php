@@ -3,6 +3,7 @@
 namespace Tests\Feature\Companies;
 
 use App\Domains\Companies\Access\PermissionCatalog;
+use App\Domains\Companies\Models\Role;
 use App\Domains\Modules\Enums\EntitlementStatus;
 use App\Domains\Modules\Models\CompanyEntitlement;
 use App\Domains\Modules\Services\ModuleRegistry;
@@ -17,10 +18,13 @@ final class CompanyRolesTest extends CompanyTestCase
 
         $this->actingAs($owner)->getJson('/api/v1/company/roles')
             ->assertOk()
-            ->assertJsonCount(1, 'data')
+            ->assertJsonCount(2, 'data')
             ->assertJsonPath('data.0.name', 'Administrador')
             ->assertJsonPath('data.0.isFixed', true)
-            ->assertJsonPath('data.0.usersCount', 1);
+            ->assertJsonPath('data.0.usersCount', 1)
+            ->assertJsonPath('data.1.name', 'Usuario')
+            ->assertJsonPath('data.1.isFixed', false)
+            ->assertJsonPath('data.1.permissions', []);
         $this->getJson('/api/v1/company')->assertOk()->assertJsonPath('data.isAdministrator', true);
     }
 
@@ -108,5 +112,37 @@ final class CompanyRolesTest extends CompanyTestCase
         $this->actingAs($viewer)->getJson('/api/v1/company/roles')->assertOk();
         $this->actingAs($viewer)->postJson('/api/v1/company/roles', ['name' => 'Nuevo'])->assertForbidden();
         $this->actingAs($this->memberAs($company, ['sales.view']))->getJson('/api/v1/company/roles')->assertForbidden();
+    }
+
+    public function test_replacing_a_role_removes_the_previous_permissions_and_refuses_multiple_roles(): void
+    {
+        $owner = User::factory()->create();
+        $company = $this->createCompany($owner, '1799999999001');
+        $member = $this->memberAs($company, ['customers.view']);
+        $role = $this->roleWith($company, ['sales.view'], 'Ventas');
+        $admin = $this->presetRole($company, 'ADMIN');
+
+        $this->actingAs($member)->getJson('/api/v1/customers')->assertOk();
+        $this->actingAs($owner)->putJson('/api/v1/company/members/'.$member->public_id.'/roles', [
+            'rolePublicIds' => [$admin->public_id, $role->public_id],
+        ])->assertUnprocessable();
+        $this->putJson('/api/v1/company/members/'.$member->public_id.'/roles', [
+            'rolePublicIds' => [$role->public_id],
+        ])->assertOk()->assertJsonCount(1, 'data.roles')->assertJsonPath('data.roles.0.publicId', $role->public_id);
+        $this->actingAs($member)->getJson('/api/v1/customers')->assertForbidden();
+        $this->getJson('/api/v1/sales')->assertOk();
+    }
+
+    public function test_usuario_keeps_its_identity_but_its_permissions_can_be_configured(): void
+    {
+        $owner = User::factory()->create();
+        $company = $this->createCompany($owner, '1799999999001');
+        $role = Role::query()->where('company_id', $company->id)->where('name', 'Usuario')->firstOrFail();
+        $url = '/api/v1/company/roles/'.$role->public_id;
+
+        $this->actingAs($owner)->patchJson($url, ['name' => 'Otro'])->assertUnprocessable();
+        $this->patchJson($url, ['isActive' => false])->assertUnprocessable();
+        $this->patchJson($url, ['permissions' => ['customers.view']])->assertOk()
+            ->assertJsonPath('data.isFixed', false)->assertJsonPath('data.permissions', ['customers.view']);
     }
 }

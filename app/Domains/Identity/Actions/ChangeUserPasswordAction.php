@@ -13,6 +13,10 @@ final class ChangeUserPasswordAction
 {
     public function execute(User $user, #[\SensitiveParameter] string $password): User
     {
+        if ($user->isInstanceSupport()) {
+            throw UpdateUserAccountAction::supportManagedByInstallation();
+        }
+
         $user->forceFill([
             'password' => Hash::make($password),
             'remember_token' => null,

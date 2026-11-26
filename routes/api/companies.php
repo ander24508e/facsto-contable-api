@@ -30,6 +30,7 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::post('/company/members', [CompanyMemberController::class, 'store']);
         Route::get('/company/members', [CompanyMemberController::class, 'index']);
         Route::post('/company/users', [CompanyMemberController::class, 'createUser']);
+        Route::patch('/company/users/{userPublicId}', [CompanyMemberController::class, 'updateUser'])->whereUuid('userPublicId');
         Route::get('/company/roles', [CompanyRoleController::class, 'index']);
         Route::get('/company/roles/modules', [CompanyRoleController::class, 'modules']);
         Route::post('/company/roles', [CompanyRoleController::class, 'store']);

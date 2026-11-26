@@ -20,7 +20,7 @@ final class ChangePasswordRequest extends FormRequest
                 'required',
                 'string',
                 'confirmed:passwordConfirmation',
-                Password::min(10)->letters()->numbers(),
+                Password::defaults(),
                 function (string $attribute, mixed $value, \Closure $fail): void {
                     if (is_string($value) && Hash::check($value, $this->user()->password)) {
                         $fail('La nueva contraseña debe ser distinta de la actual.');

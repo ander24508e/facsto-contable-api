@@ -16,7 +16,7 @@ final class AddCompanyMemberRequest extends FormRequest
     {
         return [
             'userPublicId' => ['required', 'uuid', Rule::exists('users', 'public_id')],
-            'rolePublicIds' => ['required', 'array', 'min:1', 'max:20'],
+            'rolePublicIds' => ['required', 'array', 'size:1'],
             'rolePublicIds.*' => ['required', 'uuid', 'distinct'],
         ];
     }

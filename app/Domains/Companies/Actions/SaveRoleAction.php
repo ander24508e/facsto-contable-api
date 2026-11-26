@@ -32,6 +32,12 @@ final class SaveRoleAction
             throw new ApiException(ApiErrorCode::ROLE_FIXED, 'El rol Administrador es fijo: no se edita ni se desactiva.', 422);
         }
 
+        if ($role->exists && $role->name === 'Usuario'
+            && ((isset($data['name']) && trim($data['name']) !== 'Usuario')
+                || (array_key_exists('isActive', $data) && ! $data['isActive']))) {
+            throw new ApiException(ApiErrorCode::ROLE_FIXED, 'El rol base Usuario conserva su nombre y permanece activo. Puedes configurar sus permisos.', 422);
+        }
+
         return DB::transaction(function () use ($company, $actor, $role, $data): Role {
             $creating = ! $role->exists;
             $before = $creating ? null : ['name' => $role->name, 'notes' => $role->notes, 'isActive' => $role->is_active, 'permissions' => $role->permissionKeys()];

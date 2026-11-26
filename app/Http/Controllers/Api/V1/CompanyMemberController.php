@@ -7,6 +7,7 @@ use App\Domains\Companies\Actions\CreateCompanyUserAction;
 use App\Domains\Companies\Actions\ReactivateCompanyMemberAction;
 use App\Domains\Companies\Actions\RemoveCompanyMemberAction;
 use App\Domains\Companies\Actions\UpdateCompanyMemberRolesAction;
+use App\Domains\Companies\Actions\UpdateCompanyUserAction;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Companies\Models\Company;
 use App\Domains\Companies\Models\CompanyMembership;
@@ -15,6 +16,7 @@ use App\Http\Requests\Companies\AddCompanyMemberRequest;
 use App\Http\Requests\Companies\CreateCompanyUserRequest;
 use App\Http\Requests\Companies\IndexCompanyMembersRequest;
 use App\Http\Requests\Companies\UpdateCompanyMemberRolesRequest;
+use App\Http\Requests\Companies\UpdateCompanyUserRequest;
 use App\Http\Resources\Api\V1\CompanyMembershipResource;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
@@ -93,6 +95,14 @@ final class CompanyMemberController extends Controller
         $membership = $this->membership($company, $userPublicId);
 
         return new CompanyMembershipResource($update->execute($company, $membership, $request->user(), $request->validated('rolePublicIds'))->load('user', 'roles'));
+    }
+
+    public function updateUser(UpdateCompanyUserRequest $request, CompanyContext $context, string $userPublicId, UpdateCompanyUserAction $update): CompanyMembershipResource
+    {
+        $this->authorize('users.manage');
+        $company = $context->company();
+
+        return new CompanyMembershipResource($update->execute($company, $this->membership($company, $userPublicId), $request->user(), $request->validated()));
     }
 
     private function membership(Company $company, string $userPublicId): CompanyMembership

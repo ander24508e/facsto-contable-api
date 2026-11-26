@@ -92,9 +92,9 @@ final class CompanyMembershipLifecycleTest extends CompanyTestCase
         $manager = $this->memberAs($company, ['users.view', 'users.manage']);
         $membership = app(AddCompanyMemberAction::class)->execute($company, $manager, $member, $this->roleIds($company, 'BILLER'));
 
-        $roles = [...$this->roleIds($company, 'VIEWER'), $this->roleWith($company, ['carwash.assignable'], 'Trabajador')->public_id];
+        $roles = $this->roleIds($company, 'VIEWER');
         $updated = app(UpdateCompanyMemberRolesAction::class)->execute($company, $membership, $manager, $roles);
-        $this->assertSame(['Trabajador', 'Viewer'], $updated->roles->pluck('name')->all());
+        $this->assertSame(['Viewer'], $updated->roles->pluck('name')->all());
         app(RemoveCompanyMemberAction::class)->execute($company, $updated, $manager);
         $this->assertFalse($updated->fresh()->is_active);
     }
