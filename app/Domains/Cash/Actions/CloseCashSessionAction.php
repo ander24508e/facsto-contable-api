@@ -4,6 +4,7 @@ namespace App\Domains\Cash\Actions;
 
 use App\Domains\Cash\Models\CashSession;
 use App\Domains\Cash\Services\CashDenominations;
+use App\Domains\Cash\Services\CashTenderValues;
 use App\Domains\Companies\Models\Company;
 use App\Models\User;
 use App\Shared\Audit\AuditRecorder;
@@ -19,7 +20,7 @@ final class CloseCashSessionAction
 {
     public function __construct(private readonly AuditRecorder $audit) {}
 
-    /** @param  array{mode: string, amount?: string|null, denominations?: array<string, array<string, int>>|null, notes?: string|null}  $data */
+    /** @param  array{mode: string, amount?: string|null, denominations?: array<string, array<string, int>>|null, values?: list<array{type: string, amount: string}>|null, notes?: string|null}  $data */
     public function execute(User $user, Company $company, CashSession $session, array $data): CashSession
     {
         return DB::transaction(function () use ($user, $company, $session, $data): CashSession {
@@ -29,6 +30,7 @@ final class CloseCashSessionAction
             }
 
             [$counted, $denominations] = CashDenominations::resolve($data['mode'], $data['amount'] ?? null, $data['denominations'] ?? null);
+            $values = CashTenderValues::normalize($data['values'] ?? null);
             $expected = $session->balance()['expected'];
             $notes = trim((string) ($data['notes'] ?? ''));
 
@@ -39,6 +41,7 @@ final class CloseCashSessionAction
                 'closing_mode' => $data['mode'],
                 'closing_amount' => $counted,
                 'closing_denominations' => $denominations,
+                'closing_values' => $values ?: null,
                 'expected_amount' => $expected,
                 'difference' => bcsub($counted, $expected, 2),
                 'closing_notes' => $notes !== '' ? $notes : null,
@@ -46,6 +49,7 @@ final class CloseCashSessionAction
             $this->audit->record($user, $company, 'cash_session.closed', $session, ['expected' => $expected], [
                 'counted' => $counted,
                 'difference' => (string) $session->difference,
+                'otherValues' => $values,
             ]);
 
             return $session;

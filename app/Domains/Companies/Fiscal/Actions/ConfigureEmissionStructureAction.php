@@ -5,6 +5,7 @@ namespace App\Domains\Companies\Fiscal\Actions;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Companies\Fiscal\DTOs\EmissionStructureData;
 use App\Domains\Companies\Models\Company;
+use App\Domains\Inventory\Models\Warehouse;
 use App\Models\User;
 use App\Shared\Audit\AuditRecorder;
 use Illuminate\Support\Facades\DB;
@@ -45,6 +46,20 @@ final class ConfigureEmissionStructureAction
                 'is_active' => true,
                 'is_default' => true,
             ])->save();
+
+            // Every new fiscal setup starts with a usable warehouse attached to its main establishment.
+            // firstOrCreate keeps this safe when the onboarding request is retried.
+            $warehouse = Warehouse::query()->firstOrCreate(
+                ['establishment_id' => $establishment->id, 'name' => 'Bodega 1'],
+                ['company_id' => $company->id, 'is_active' => true],
+            );
+            if ($warehouse->wasRecentlyCreated) {
+                $this->audit->record($actor, $company, 'warehouse.created', $warehouse, null, [
+                    'name' => $warehouse->name,
+                    'establishment' => $establishment->code,
+                    'source' => 'company.setup',
+                ]);
+            }
 
             $settings = $company->fiscalSettings()->firstOrNew();
             $oldSettings = [

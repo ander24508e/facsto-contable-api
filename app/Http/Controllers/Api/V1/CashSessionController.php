@@ -8,6 +8,7 @@ use App\Domains\Cash\Actions\RegisterCashMovementAction;
 use App\Domains\Cash\Models\CashMovement;
 use App\Domains\Cash\Models\CashSession;
 use App\Domains\Cash\Services\CashDenominations;
+use App\Domains\Cash\Services\CashTenderValues;
 use App\Domains\Companies\Context\CompanyContext;
 use App\Domains\Sales\Enums\SaleStatus;
 use App\Domains\Sales\Models\Sale;
@@ -135,7 +136,11 @@ final class CashSessionController extends Controller
     {
         $this->authorize('cash.view');
 
-        return response()->json(['data' => ['bills' => CashDenominations::BILLS, 'coins' => CashDenominations::COINS]]);
+        return response()->json(['data' => [
+            'bills' => CashDenominations::BILLS,
+            'coins' => CashDenominations::COINS,
+            'valueTypes' => CashTenderValues::catalog(),
+        ]]);
     }
 
     /** Opening and closing count the money the same way: a fixed amount or bills and coins. */
@@ -149,6 +154,10 @@ final class CashSessionController extends Controller
             'denominations.bills.*' => ['integer', 'min:0', 'max:100000'],
             'denominations.coins' => ['sometimes', 'array'],
             'denominations.coins.*' => ['integer', 'min:0', 'max:100000'],
+            'values' => ['sometimes', 'array', 'max:10'],
+            'values.*' => ['required', 'array:type,amount'],
+            'values.*.type' => ['required', Rule::in(CashTenderValues::TYPES)],
+            'values.*.amount' => ['required', 'regex:/^\d{1,9}(\.\d{1,2})?$/'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:255'],
         ];
     }
@@ -198,12 +207,14 @@ final class CashSessionController extends Controller
             'mode' => $session->opening_mode,
             'openingAmount' => (string) $session->opening_amount,
             'denominations' => $session->denominations,
+            'openingValues' => $session->opening_values ?? [],
             'notes' => $session->notes,
             'closedBy' => $session->closer?->name,
             'closedAt' => $session->closed_at?->toIso8601String(),
             'closingMode' => $session->closing_mode,
             'closingAmount' => $session->closing_amount !== null ? (string) $session->closing_amount : null,
             'closingDenominations' => $session->closing_denominations,
+            'closingValues' => $session->closing_values ?? [],
             'expectedAmount' => $session->expected_amount !== null ? (string) $session->expected_amount : null,
             'difference' => $session->difference !== null ? (string) $session->difference : null,
             'closingNotes' => $session->closing_notes,

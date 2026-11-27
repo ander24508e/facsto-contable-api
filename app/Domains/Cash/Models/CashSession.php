@@ -16,7 +16,7 @@ use Illuminate\Support\Str;
 /** One session of a cash register (an emission point): its opening, the money in and out, and its closing. */
 #[Fillable([
     'company_id', 'emission_point_id', 'warehouse_id', 'opened_by', 'opened_at', 'opening_mode', 'opening_amount', 'denominations', 'notes', 'status',
-    'closed_by', 'closed_at', 'closing_mode', 'closing_amount', 'closing_denominations', 'expected_amount', 'difference', 'closing_notes',
+    'opening_values', 'closed_by', 'closed_at', 'closing_mode', 'closing_amount', 'closing_denominations', 'closing_values', 'expected_amount', 'difference', 'closing_notes',
 ])]
 class CashSession extends Model
 {
@@ -93,8 +93,8 @@ class CashSession extends Model
     protected function casts(): array
     {
         return [
-            'opened_at' => 'datetime', 'closed_at' => 'datetime', 'opening_amount' => 'decimal:2', 'denominations' => 'array',
-            'closing_amount' => 'decimal:2', 'closing_denominations' => 'array', 'expected_amount' => 'decimal:2', 'difference' => 'decimal:2',
+            'opened_at' => 'datetime', 'closed_at' => 'datetime', 'opening_amount' => 'decimal:2', 'denominations' => 'array', 'opening_values' => 'array',
+            'closing_amount' => 'decimal:2', 'closing_denominations' => 'array', 'closing_values' => 'array', 'expected_amount' => 'decimal:2', 'difference' => 'decimal:2',
         ];
     }
 }

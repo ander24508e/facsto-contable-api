@@ -4,6 +4,7 @@ namespace App\Domains\Cash\Actions;
 
 use App\Domains\Cash\Models\CashSession;
 use App\Domains\Cash\Services\CashDenominations;
+use App\Domains\Cash\Services\CashTenderValues;
 use App\Domains\Companies\Models\Company;
 use App\Domains\Companies\Models\EmissionPoint;
 use App\Domains\Inventory\Models\Warehouse;
@@ -22,7 +23,7 @@ final class OpenCashSessionAction
     public function __construct(private readonly AuditRecorder $audit) {}
 
     /**
-     * @param  array{emissionPointPublicId: string, warehousePublicId: string, mode: string, amount?: string|null, denominations?: array<string, array<string, int>>|null, notes?: string|null}  $data
+     * @param  array{emissionPointPublicId: string, warehousePublicId: string, mode: string, amount?: string|null, denominations?: array<string, array<string, int>>|null, values?: list<array{type: string, amount: string}>|null, notes?: string|null}  $data
      */
     public function execute(User $user, Company $company, array $data): CashSession
     {
@@ -43,6 +44,7 @@ final class OpenCashSessionAction
             }
 
             [$amount, $denominations] = CashDenominations::resolve($data['mode'], $data['amount'] ?? null, $data['denominations'] ?? null);
+            $values = CashTenderValues::normalize($data['values'] ?? null);
             $notes = trim((string) ($data['notes'] ?? ''));
 
             $session = CashSession::query()->create([
@@ -54,6 +56,7 @@ final class OpenCashSessionAction
                 'opening_mode' => $data['mode'],
                 'opening_amount' => $amount,
                 'denominations' => $denominations,
+                'opening_values' => $values ?: null,
                 'notes' => $notes !== '' ? $notes : null,
                 'status' => CashSession::OPEN,
             ]);
@@ -61,6 +64,8 @@ final class OpenCashSessionAction
                 'emissionPoint' => $point->establishment->code.'-'.$point->code,
                 'mode' => $data['mode'],
                 'amount' => $amount,
+                'otherValues' => CashTenderValues::total($values),
+                'otherValueBreakdown' => $values,
             ]);
 
             return $session;

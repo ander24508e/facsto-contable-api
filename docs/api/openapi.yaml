@@ -1747,6 +1747,11 @@ paths:
                   properties:
                     bills: { type: object, additionalProperties: { type: integer, minimum: 0 } }
                     coins: { type: object, additionalProperties: { type: integer, minimum: 0 } }
+                values:
+                  type: array
+                  maxItems: 10
+                  description: "Otros valores declarados, separados del efectivo físico."
+                  items: { $ref: "#/components/schemas/CashTenderValue" }
                 notes: { type: string, maxLength: 255 }
       responses: { "201": { description: Caja abierta }, "409": { $ref: "#/components/responses/ConflictError" }, "422": { $ref: "#/components/responses/ValidationError" } }
   /api/v1/cash-sessions/denominations:
@@ -1755,7 +1760,7 @@ paths:
       summary: Billetes y monedas que ofrece el contador de dinero (dólares en Ecuador).
       operationId: listCashDenominations
       security: [{ sessionCookie: [] }]
-      responses: { "200": { description: "{ bills: [...], coins: [...] }" } }
+      responses: { "200": { description: "{ bills: [...], coins: [...], valueTypes: [{ code, name }] }" } }
   /api/v1/proformas:
     get:
       tags: [Sales]
@@ -1886,6 +1891,11 @@ paths:
                 mode: { type: string, enum: [MANUAL, COUNTED] }
                 amount: { type: string, pattern: '^\d{1,9}(\.\d{1,2})?$', description: Obligatorio con MANUAL }
                 denominations: { type: object, description: "Obligatorio con COUNTED: { bills: {...}, coins: {...} }" }
+                values:
+                  type: array
+                  maxItems: 10
+                  description: "Otros valores declarados al cierre, separados del efectivo físico."
+                  items: { $ref: "#/components/schemas/CashTenderValue" }
                 notes: { type: string, maxLength: 255 }
       responses: { "200": { description: "Caja cerrada con esperado, contado y diferencia" }, "409": { $ref: "#/components/responses/ConflictError" }, "422": { $ref: "#/components/responses/ValidationError" } }
   /api/v1/warehouses:
@@ -2875,6 +2885,12 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/ApiErrorResponse" }
   schemas:
+    CashTenderValue:
+      type: object
+      required: [type, amount]
+      properties:
+        type: { type: string, enum: [CHECK, TRANSFER, OTHER] }
+        amount: { type: string, pattern: '^\d{1,9}(\.\d{1,2})?$' }
     IdentificationType:
       type: string
       enum: [RUC, CEDULA, PASSPORT, FINAL_CONSUMER, FOREIGN_IDENTIFICATION]
